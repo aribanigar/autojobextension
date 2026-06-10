@@ -1,0 +1,170 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>JobBot – Auto Apply Agent for LinkedIn, Indeed & Naukri</title>
+  <meta name="description" content="JobBot is a browser extension that automates job applications on LinkedIn, Indeed, and Naukri. Fills forms, clicks Continue, and moves through jobs automatically." />
+  <style>
+    :root {
+      --violet: #7c3aed;
+      --violet-dark: #6d28d9;
+      --bg: #0f0a1f;
+      --card: #1a1230;
+      --text: #ece9f7;
+      --muted: #a89fc8;
+      --border: rgba(124, 58, 237, 0.25);
+    }
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      line-height: 1.6;
+      min-height: 100vh;
+    }
+    .container { max-width: 880px; margin: 0 auto; padding: 0 24px; }
+
+    header {
+      padding: 80px 0 48px;
+      text-align: center;
+      background:
+        radial-gradient(ellipse 60% 50% at 50% 0%, rgba(124,58,237,.28), transparent),
+        var(--bg);
+    }
+    .logo { font-size: 56px; }
+    h1 {
+      font-size: clamp(32px, 5vw, 48px);
+      margin: 12px 0 8px;
+      background: linear-gradient(90deg, #c4b5fd, #7c3aed);
+      -webkit-background-clip: text;
+      background-clip: text;
+      color: transparent;
+    }
+    .tagline { font-size: 18px; color: var(--muted); max-width: 560px; margin: 0 auto 32px; }
+
+    .platforms { display: flex; gap: 10px; justify-content: center; margin-bottom: 36px; flex-wrap: wrap; }
+    .platform {
+      padding: 6px 16px; border-radius: 999px; font-size: 14px; font-weight: 600;
+      border: 1px solid var(--border); background: var(--card);
+    }
+    .p-li { color: #60a5fa; } .p-in { color: #818cf8; } .p-nk { color: #34d399; }
+
+    .btn {
+      display: inline-block; padding: 14px 36px; border-radius: 12px;
+      font-size: 17px; font-weight: 700; text-decoration: none;
+      background: linear-gradient(135deg, var(--violet), var(--violet-dark));
+      color: #fff; box-shadow: 0 8px 28px rgba(124,58,237,.4);
+      transition: transform .15s, box-shadow .15s;
+    }
+    .btn:hover { transform: translateY(-2px); box-shadow: 0 12px 34px rgba(124,58,237,.55); }
+    .btn-note { display: block; margin-top: 12px; font-size: 13px; color: var(--muted); }
+
+    section { padding: 48px 0; }
+    h2 { font-size: 26px; margin-bottom: 20px; }
+
+    .features { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 16px; }
+    .feature {
+      background: var(--card); border: 1px solid var(--border);
+      border-radius: 14px; padding: 22px;
+    }
+    .feature .ico { font-size: 26px; }
+    .feature h3 { font-size: 16px; margin: 10px 0 6px; }
+    .feature p { font-size: 14px; color: var(--muted); }
+
+    .steps { counter-reset: step; display: flex; flex-direction: column; gap: 14px; }
+    .step {
+      background: var(--card); border: 1px solid var(--border);
+      border-radius: 14px; padding: 18px 22px; display: flex; gap: 16px; align-items: flex-start;
+    }
+    .step::before {
+      counter-increment: step; content: counter(step);
+      flex-shrink: 0; width: 30px; height: 30px; border-radius: 50%;
+      background: var(--violet); color: #fff; font-weight: 700;
+      display: flex; align-items: center; justify-content: center; font-size: 15px;
+    }
+    .step code {
+      background: rgba(124,58,237,.18); padding: 2px 7px; border-radius: 6px;
+      font-size: 13px; color: #c4b5fd;
+    }
+
+    .disclaimer {
+      background: rgba(146, 64, 14, .15); border: 1px solid rgba(217, 119, 6, .35);
+      border-radius: 14px; padding: 18px 22px; font-size: 14px; color: #fcd34d;
+    }
+
+    footer { padding: 36px 0 48px; text-align: center; font-size: 13px; color: var(--muted); }
+    footer a { color: #a78bfa; }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="container">
+      <div class="logo">🤖</div>
+      <h1>JobBot</h1>
+      <p class="tagline">An auto-apply agent that fills forms, clicks Continue, and moves through job listings for you.</p>
+      <div class="platforms">
+        <span class="platform p-li">LinkedIn Easy Apply</span>
+        <span class="platform p-in">Indeed Apply</span>
+        <span class="platform p-nk">Naukri</span>
+      </div>
+      <a class="btn" href="/jobbot-extension.zip" download>⬇ Download Extension</a>
+      <span class="btn-note">v1.0.0 · Chrome / Edge / Brave (Manifest V3)</span>
+    </div>
+  </header>
+
+  <section>
+    <div class="container">
+      <h2>What it does</h2>
+      <div class="features">
+        <div class="feature">
+          <span class="ico">📝</span>
+          <h3>Smart form filling</h3>
+          <p>Detects questions about experience, salary, notice period, relocation, and more — and answers from your saved profile.</p>
+        </div>
+        <div class="feature">
+          <span class="ico">🖱️</span>
+          <h3>Auto-navigates steps</h3>
+          <p>Clicks Continue, Review, and Submit through multi-step application flows, then moves to the next job.</p>
+        </div>
+        <div class="feature">
+          <span class="ico">👀</span>
+          <h3>Visible while it works</h3>
+          <p>A spotlight overlay highlights every field it fills and button it clicks, with a stop button always on screen.</p>
+        </div>
+        <div class="feature">
+          <span class="ico">📊</span>
+          <h3>Stats &amp; history</h3>
+          <p>Tracks applications per platform with a badge counter and keeps a history of the last 500 jobs applied to.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <div class="container">
+      <h2>Install in 4 steps</h2>
+      <div class="steps">
+        <div class="step"><div>Download the zip above and extract it anywhere on your computer.</div></div>
+        <div class="step"><div>Open <code>chrome://extensions</code> in Chrome (or <code>edge://extensions</code> in Edge) and turn on <strong>Developer mode</strong> in the top-right corner.</div></div>
+        <div class="step"><div>Click <strong>Load unpacked</strong> and select the extracted <code>extension</code> folder.</div></div>
+        <div class="step"><div>Open LinkedIn Jobs, Indeed, or Naukri, click the JobBot icon, fill in your profile, and hit <strong>Start</strong>.</div></div>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <div class="container">
+      <div class="disclaimer">
+        ⚠️ <strong>Use responsibly.</strong> Automated activity may violate the terms of service of LinkedIn, Indeed, or Naukri and can lead to account restrictions. Review every application setting carefully and use JobBot at your own risk.
+      </div>
+    </div>
+  </section>
+
+  <footer>
+    <div class="container">
+      JobBot · <a href="https://github.com/aribanigar/autojobextension">Source on GitHub</a>
+    </div>
+  </footer>
+</body>
+</html>
