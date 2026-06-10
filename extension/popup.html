@@ -1,0 +1,289 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>JobBot – Auto Apply</title>
+  <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+
+  <!-- ── Header ─────────────────────────────────────────────────── -->
+  <header class="header">
+    <div class="header-left">
+      <div class="logo-wrap">
+        <span id="logo-icon" class="logo-icon">🤖</span>
+      </div>
+      <div>
+        <div class="logo-title">JobBot</div>
+        <div class="logo-sub">Auto Apply Agent</div>
+      </div>
+    </div>
+    <div class="header-right">
+      <span id="platform-pill" class="pill pill--off">No site</span>
+      <span id="run-pill" class="run-pill" style="display:none">
+        <span class="run-dot"></span>Running
+      </span>
+    </div>
+  </header>
+
+  <!-- ── Stats ──────────────────────────────────────────────────── -->
+  <div class="stats-row">
+    <div class="stat">
+      <div id="s-li" class="stat-n">0</div>
+      <div class="stat-l"><span class="dot dot-li"></span>LinkedIn</div>
+    </div>
+    <div class="stat-sep"></div>
+    <div class="stat">
+      <div id="s-in" class="stat-n">0</div>
+      <div class="stat-l"><span class="dot dot-in"></span>Indeed</div>
+    </div>
+    <div class="stat-sep"></div>
+    <div class="stat">
+      <div id="s-nk" class="stat-n">0</div>
+      <div class="stat-l"><span class="dot dot-nk"></span>Naukri</div>
+    </div>
+    <div class="stat-sep"></div>
+    <div class="stat">
+      <div id="s-sk" class="stat-n stat-n--dim">0</div>
+      <div class="stat-l">Skipped</div>
+    </div>
+  </div>
+
+  <!-- ── Controls ───────────────────────────────────────────────── -->
+  <div class="ctrl">
+    <button id="btn-start" class="action-btn action-start">
+      <span class="btn-ico">▶</span> Start Agent
+    </button>
+    <button id="btn-stop" class="action-btn action-stop" style="display:none">
+      <span class="btn-ico">⏹</span> Stop Agent
+    </button>
+    <div id="status-txt" class="status-txt">Fill your profile below, then hit Start</div>
+  </div>
+
+  <!-- ── Tabs ───────────────────────────────────────────────────── -->
+  <nav class="tab-nav">
+    <button class="tab-btn active" data-tab="profile">👤 Profile</button>
+    <button class="tab-btn" data-tab="prefs">⚙️ Prefs</button>
+    <button class="tab-btn" data-tab="history">📋 History</button>
+  </nav>
+
+  <!-- ════════════════════════════════════════════════════════════ -->
+  <!-- PROFILE TAB                                                   -->
+  <!-- ════════════════════════════════════════════════════════════ -->
+  <div id="tab-profile" class="tab-pane active">
+
+    <div class="section">
+      <div class="section-hd"><span>👤</span> Personal</div>
+      <div class="grid-2">
+        <div class="field">
+          <label>Full Name</label>
+          <input id="f-name" type="text" placeholder="Your full name" autocomplete="name">
+        </div>
+        <div class="field">
+          <label>Phone</label>
+          <input id="f-phone" type="tel" placeholder="+91 98765 43210" autocomplete="tel">
+        </div>
+      </div>
+      <div class="field">
+        <label>Email</label>
+        <input id="f-email" type="email" placeholder="your@email.com" autocomplete="email">
+      </div>
+      <div class="grid-2">
+        <div class="field">
+          <label>City / Location</label>
+          <input id="f-location" type="text" placeholder="Mumbai, India">
+        </div>
+        <div class="field">
+          <label>Gender</label>
+          <select id="f-gender">
+            <option value="">Prefer not to say</option>
+            <option value="Male">Male</option>
+            <option value="Female">Female</option>
+            <option value="Other">Other</option>
+          </select>
+        </div>
+      </div>
+    </div>
+
+    <div class="section">
+      <div class="section-hd"><span>💼</span> Professional</div>
+      <div class="grid-2">
+        <div class="field">
+          <label>Current Title</label>
+          <input id="f-title" type="text" placeholder="Software Engineer">
+        </div>
+        <div class="field">
+          <label>Current Company</label>
+          <input id="f-company" type="text" placeholder="Company Name">
+        </div>
+      </div>
+      <div class="grid-3">
+        <div class="field">
+          <label>Experience (yrs)</label>
+          <input id="f-exp" type="number" min="0" max="40" placeholder="3">
+        </div>
+        <div class="field">
+          <label>Current Salary</label>
+          <input id="f-curr-sal" type="text" placeholder="12 LPA">
+        </div>
+        <div class="field">
+          <label>Expected Salary</label>
+          <input id="f-exp-sal" type="text" placeholder="18 LPA">
+        </div>
+      </div>
+      <div class="grid-2">
+        <div class="field">
+          <label>Notice Period</label>
+          <input id="f-notice" type="text" placeholder="30 days">
+        </div>
+        <div class="field">
+          <label>Education</label>
+          <input id="f-edu" type="text" placeholder="B.Tech / MBA">
+        </div>
+      </div>
+      <div class="field">
+        <label>Skills <small class="field-hint">comma-separated</small></label>
+        <input id="f-skills" type="text" placeholder="Python, React, SQL, Leadership">
+      </div>
+      <div class="field">
+        <label>Languages</label>
+        <input id="f-langs" type="text" placeholder="English, Hindi">
+      </div>
+    </div>
+
+    <div class="section">
+      <div class="section-hd">
+        <span>📝</span> Cover Statement
+        <span class="badge-pill">used for "Why apply?" questions</span>
+      </div>
+      <div class="field">
+        <textarea id="f-cover" rows="3" placeholder="I bring X years of experience in… I am excited about this role because…"></textarea>
+      </div>
+    </div>
+
+    <div class="form-footer">
+      <button id="btn-save-profile" class="save-btn">
+        <span>💾</span> Save Profile
+      </button>
+      <span id="ok-profile" class="ok-badge" style="display:none">✓ Saved!</span>
+    </div>
+
+  </div><!-- /tab-profile -->
+
+  <!-- ════════════════════════════════════════════════════════════ -->
+  <!-- PREFS TAB                                                     -->
+  <!-- ════════════════════════════════════════════════════════════ -->
+  <div id="tab-prefs" class="tab-pane">
+
+    <div class="section">
+      <div class="section-hd"><span>🎯</span> Preferences</div>
+      <div class="grid-2">
+        <div class="field">
+          <label>Work Mode</label>
+          <select id="p-mode">
+            <option value="hybrid">Hybrid</option>
+            <option value="remote">Remote</option>
+            <option value="onsite">On-site</option>
+          </select>
+        </div>
+        <div class="field">
+          <label>Travel Willingness</label>
+          <select id="p-travel">
+            <option value="0">0% – No travel</option>
+            <option value="25" selected>25%</option>
+            <option value="50">50%</option>
+            <option value="75">75%</option>
+            <option value="100">100%</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="toggle-group">
+        <div class="toggle-row">
+          <div class="toggle-text">
+            <span class="toggle-label">Willing to Relocate</span>
+            <span class="toggle-sub">Agent answers Yes on relocation questions</span>
+          </div>
+          <label class="toggle"><input id="p-relocate" type="checkbox"><span class="ttrack"></span></label>
+        </div>
+        <div class="toggle-row">
+          <div class="toggle-text">
+            <span class="toggle-label">LinkedIn: Easy Apply Only</span>
+            <span class="toggle-sub">Skip jobs that don't have Easy Apply</span>
+          </div>
+          <label class="toggle"><input id="p-easyonly" type="checkbox" checked><span class="ttrack"></span></label>
+        </div>
+        <div class="toggle-row">
+          <div class="toggle-text">
+            <span class="toggle-label">Authorized to Work in India</span>
+            <span class="toggle-sub">Auto-answers work authorization questions</span>
+          </div>
+          <label class="toggle"><input id="p-auth" type="checkbox" checked><span class="ttrack"></span></label>
+        </div>
+      </div>
+    </div>
+
+    <div class="section">
+      <div class="section-hd"><span>⚡</span> How the Agent Works</div>
+      <div class="info-list">
+        <div class="info-item">
+          <span class="info-ico">🎯</span>
+          <div>
+            <div class="info-title">Smart Form Filling</div>
+            <div class="info-desc">Detects 25+ question types and maps them to your profile automatically</div>
+          </div>
+        </div>
+        <div class="info-item">
+          <span class="info-ico">🔮</span>
+          <div>
+            <div class="info-title">Spotlight Mode</div>
+            <div class="info-desc">Every click is highlighted with a purple glow so you can watch live</div>
+          </div>
+        </div>
+        <div class="info-item">
+          <span class="info-ico">⏱️</span>
+          <div>
+            <div class="info-title">Human-like Speed</div>
+            <div class="info-desc">Random delays between actions — reduces bot-detection risk</div>
+          </div>
+        </div>
+        <div class="info-item">
+          <span class="info-ico">📄</span>
+          <div>
+            <div class="info-title">Multi-page Crawl</div>
+            <div class="info-desc">Automatically goes to the next page when all jobs on current page are processed</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="form-footer">
+      <button id="btn-save-prefs" class="save-btn">
+        <span>💾</span> Save Preferences
+      </button>
+      <span id="ok-prefs" class="ok-badge" style="display:none">✓ Saved!</span>
+    </div>
+
+  </div><!-- /tab-prefs -->
+
+  <!-- ════════════════════════════════════════════════════════════ -->
+  <!-- HISTORY TAB                                                   -->
+  <!-- ════════════════════════════════════════════════════════════ -->
+  <div id="tab-history" class="tab-pane">
+    <div class="hist-header">
+      <span class="hist-count-wrap"><span id="hist-total">0</span> Applications</span>
+      <button id="btn-clear" class="ghost-btn">Clear all</button>
+    </div>
+    <div id="hist-list" class="hist-list">
+      <div class="empty">
+        <span class="empty-ico">📭</span>
+        <span class="empty-title">No applications yet</span>
+        <span class="empty-sub">Start the agent on LinkedIn, Indeed or Naukri</span>
+      </div>
+    </div>
+  </div><!-- /tab-history -->
+
+  <script src="popup.js"></script>
+</body>
+</html>
