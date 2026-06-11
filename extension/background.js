@@ -17,6 +17,12 @@ const DEFAULT_PROFILE = {
 const VALID_PLATFORMS = ['linkedin', 'indeed', 'naukri'];
 const stats = { linkedin: 0, indeed: 0, naukri: 0, skipped: 0 };
 
+// The agent must only ever run after an explicit Start click in THIS browser
+// session. Clear any stale running flag left behind by a crash/closed browser,
+// so opening a job site never auto-starts the agent on its own.
+chrome.runtime.onStartup.addListener(() => chrome.storage.local.set({ jobbot_running: false }));
+chrome.runtime.onInstalled.addListener(() => chrome.storage.local.set({ jobbot_running: false }));
+
 // Stats survive service-worker eviction: hydrate on startup, persist on change
 const statsReady = new Promise(resolve => {
   chrome.storage.local.get('jobbot_stats', d => {

@@ -1360,7 +1360,12 @@
     if (IS_TOP) chrome.storage.local.set({ jobbot_running: true });
     let outcome = 'done';
     try { outcome = await agent.run(); }
-    catch (e) { SPOT.status(`Error: ${e.message}`, 'error'); }
+    catch (e) {
+      // An unexpected error must not end the run – keep the flag alive and let
+      // the keep-alive watchdog restart the agent in a few seconds.
+      SPOT.status(`Error: ${e.message} – retrying shortly…`, 'error');
+      outcome = 'nav';
+    }
     finally {
       if (IS_TOP && outcome !== 'nav') chrome.storage.local.set({ jobbot_running: false });
       agent = null;
