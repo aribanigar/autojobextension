@@ -1242,6 +1242,7 @@
         // Process jobs one by one, re-querying the list after each so the
         // sequence survives panel re-renders. Clicking Apply usually
         // navigates away; auto-resume brings the run back here afterwards.
+        let processedThisPage = false; // owner-approved stability addition
         let progressed = true;
         while (progressed && this.running) {
           progressed = false;
@@ -1263,6 +1264,8 @@
 
             card.scrollIntoView({ block: 'center' });
             await sleep(rand(300, 600));
+            processedThisPage = true;
+            pageChurn.set(0); // real work happened – reset the empty-page streak
             const res = await this.clickApply(card);
             if (res === 'clicked') await this.runApplication();
             else {
@@ -1273,6 +1276,22 @@
             await sleep(rand(900, 1700));
             progressed = true;
             break; // re-query the list for the next job
+          }
+        }
+
+        // Stability (owner-approved): an "empty" page (nothing new to apply)
+        // must not flash past. Dwell like a human, and after 5 empty pages in
+        // a row stop flipping and hold in monitor mode. The counter lives in
+        // sessionStorage because each pagination is a full navigation.
+        if (!processedThisPage) {
+          const churn = pageChurn.get() + 1;
+          pageChurn.set(churn);
+          SPOT.status(`Nothing new on this page (${churn}/5) – looking further…`, 'info');
+          await sleep(rand(2500, 4000));
+          if (churn >= 5) {
+            SPOT.status('No new jobs in the last 5 pages – monitoring here… (✕ to stop)', 'info');
+            this.running = false;
+            return 'nav';
           }
         }
 
@@ -1499,11 +1518,17 @@
 
       // 5) Click Save – a <div class="sendMsg"> or <button>; DISABLED until the
       //    answer registers, so wait for it to enable, then spotlight + click.
-      const findSave = () =>
-        $('div.sendMsg, [class*="sendMsgbtn"] div.sendMsg, [id^="sendMsgbtn_container"] div, ' +
-          '[class*="sendMsg"], [class*="send-btn"], [class*="saveBtn"]', drawer) ||
-        $$('button, div[role="button"], div', drawer).find(b =>
-          isVis(b) && /^(save|send|submit|next|continue)$/i.test(b.textContent.trim()));
+      // Prefer real buttons, then known sendMsg nodes, then generic divs –
+      // and only ever a VISIBLE candidate (hidden sendMsg nodes used to
+      // shadow the actual bottom Save button).
+      const saveText = b => /^(save|send|submit|next|continue)$/i.test(b.textContent.trim());
+      const findSave = () => [
+        ...$$('button', drawer).filter(saveText),
+        ...$$('div[role="button"]', drawer).filter(saveText),
+        ...$$('div.sendMsg, [class*="sendMsgbtn"] div.sendMsg, [id^="sendMsgbtn_container"] div, ' +
+              '[class*="sendMsg"], [class*="send-btn"], [class*="saveBtn"]', drawer),
+        ...$$('div', drawer).filter(saveText),
+      ].find(isVis) || null;
       const looksDisabled = el =>
         el.disabled || el.getAttribute('aria-disabled') === 'true'
         || /\bdisabled\b/i.test(el.className)
@@ -1743,6 +1768,14 @@
   })();
   const selectionMode = () => { try { return sessionStorage.getItem('jobbot_selmode') === '1'; } catch { return false; } };
 
+  // Consecutive result-pages with nothing new to apply to. Persisted in
+  // sessionStorage because Indeed pagination is a full navigation that would
+  // wipe an in-memory counter – this is what stops endless page-flipping.
+  const pageChurn = {
+    get: () => { try { return parseInt(sessionStorage.getItem('jobbot_churn'), 10) || 0; } catch { return 0; } },
+    set: n => { try { sessionStorage.setItem('jobbot_churn', String(n)); } catch {} },
+  };
+
   let agent = null;
   let lastDoneAt = 0; // when a full pass finished; throttles monitor-mode re-scans
   const IS_TOP = window === window.top;
@@ -1823,6 +1856,7 @@
       case 'START_AGENT':
         attemptedSet.clear(); // explicit user start = fresh scan of the list
         lastDoneAt = 0;       // and no monitor-mode cooldown
+        pageChurn.set(0);     // fresh empty-page streak
         // Ticked jobs present → this run applies only those, in sequence
         try { sessionStorage.setItem('jobbot_selmode', selectedSet.size() > 0 ? '1' : '0'); } catch {}
         startAgent(msg.profile || {});
@@ -1898,6 +1932,7 @@
           startBtn.style.display = 'none';
           attemptedSet.clear();
           lastDoneAt = 0;
+          pageChurn.set(0);
           try { sessionStorage.setItem('jobbot_selmode', '1'); } catch {}
           try {
             chrome.runtime.sendMessage({ type: 'GET_PROFILE' }, r => {
