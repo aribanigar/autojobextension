@@ -17,6 +17,25 @@ const DEFAULT_PROFILE = {
 const VALID_PLATFORMS = ['linkedin', 'indeed', 'naukri'];
 const stats = { linkedin: 0, indeed: 0, naukri: 0, skipped: 0 };
 
+// Stats survive service-worker eviction: hydrate on startup, persist on change
+const statsReady = new Promise(resolve => {
+  chrome.storage.local.get('jobbot_stats', d => {
+    if (d.jobbot_stats) Object.assign(stats, d.jobbot_stats);
+    updateBadge();
+    resolve();
+  });
+});
+
+function persistStats() {
+  chrome.storage.local.set({ jobbot_stats: { ...stats } });
+}
+
+function updateBadge() {
+  const total = stats.linkedin + stats.indeed + stats.naukri;
+  chrome.action.setBadgeText({ text: total > 0 ? String(total) : '' });
+  chrome.action.setBadgeBackgroundColor({ color: '#7c3aed' });
+}
+
 chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
   switch (msg.type) {
 
@@ -33,12 +52,13 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
       return true;
 
     case 'GET_STATS':
-      sendResponse({ stats: { ...stats } });
-      break;
+      statsReady.then(() => sendResponse({ stats: { ...stats } }));
+      return true;
 
     case 'JOB_APPLIED': {
       const plat = msg.platform;
       if (VALID_PLATFORMS.includes(plat)) stats[plat] = (stats[plat] || 0) + 1;
+      persistStats();
 
       chrome.storage.local.get('jobbot_history', d => {
         const h = Array.isArray(d.jobbot_history) ? d.jobbot_history : [];
@@ -46,14 +66,13 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
         chrome.storage.local.set({ jobbot_history: h.slice(0, 500) });
       });
 
-      const total = stats.linkedin + stats.indeed + stats.naukri;
-      chrome.action.setBadgeText({ text: total > 0 ? String(total) : '' });
-      chrome.action.setBadgeBackgroundColor({ color: '#7c3aed' });
+      updateBadge();
       break;
     }
 
     case 'JOB_SKIPPED':
       stats.skipped = (stats.skipped || 0) + 1;
+      persistStats();
       break;
 
     case 'GET_HISTORY':
@@ -66,6 +85,7 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
       chrome.storage.local.remove('jobbot_history', () => {
         VALID_PLATFORMS.forEach(k => { stats[k] = 0; });
         stats.skipped = 0;
+        persistStats();
         chrome.action.setBadgeText({ text: '' });
         sendResponse({ ok: true });
       });
@@ -74,6 +94,7 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
     case 'RESET_STATS':
       VALID_PLATFORMS.forEach(k => { stats[k] = 0; });
       stats.skipped = 0;
+      persistStats();
       chrome.action.setBadgeText({ text: '' });
       sendResponse({ ok: true });
       break;

@@ -64,14 +64,46 @@
     el.dispatchEvent(new Event('blur',   { bubbles: true }));
   }
 
+  // Full pointer/mouse event sequence – React buttons (Indeed) often ignore bare .click()
+  function realClick(el) {
+    const r = el.getBoundingClientRect();
+    const opts = {
+      bubbles: true, cancelable: true, view: window,
+      clientX: r.left + r.width / 2, clientY: r.top + r.height / 2,
+    };
+    el.dispatchEvent(new PointerEvent('pointerdown', opts));
+    el.dispatchEvent(new MouseEvent('mousedown', opts));
+    el.dispatchEvent(new PointerEvent('pointerup', opts));
+    el.dispatchEvent(new MouseEvent('mouseup', opts));
+    el.click();
+  }
+
   async function humanClick(el, msg = '') {
     if (!isVis(el)) return false;
     if (msg) SPOT.pulse(el, msg);
     el.scrollIntoView({ behavior: 'smooth', block: 'center' });
     await sleep(rand(250, 500));
-    el.click();
+    realClick(el);
     await sleep(rand(350, 700));
     return true;
+  }
+
+  // Safe messaging – never let a dead service worker / reloaded extension kill the run loop
+  function report(payload) {
+    try {
+      chrome.runtime.sendMessage(payload, () => void chrome.runtime.lastError);
+    } catch { /* extension context invalidated – keep the agent running */ }
+  }
+  function reportSkip() { report({ type: 'JOB_SKIPPED', platform: PLATFORM }); }
+
+  // Job lists render late on slow pages – retry before declaring the page empty
+  async function waitForCards(fn, tries = 6, delay = 1500) {
+    for (let i = 0; i < tries; i++) {
+      const cards = fn();
+      if (cards.length) return cards;
+      await sleep(delay);
+    }
+    return [];
   }
 
   // ─── Spotlight ────────────────────────────────────────────────────────────
@@ -361,13 +393,23 @@
 
     jobCards() {
       return $$(
-        'li.jobs-search-results__list-item, li[data-occludable-job-id], .job-card-container--clickable'
+        'li.jobs-search-results__list-item, li[data-occludable-job-id], ' +
+        'li.scaffold-layout__list-item, .job-card-container--clickable, div[data-job-id]'
       ).filter(isVis);
+    }
+
+    cardId(card) {
+      return card.getAttribute('data-occludable-job-id')
+          || card.getAttribute('data-job-id')
+          || $('[data-job-id]', card)?.getAttribute('data-job-id')
+          || $('a[href*="/jobs/view/"]', card)?.href
+          || '';
     }
 
     async openCard(card) {
       // Use specific title links, not generic <a> fallback
-      const link = $('a.job-card-list__title--link, a.job-card-list__title, a.job-card-container__link', card);
+      const link = $('a.job-card-list__title--link, a.job-card-list__title, ' +
+                     'a.job-card-container__link, a[class*="job-card-list__title"], a[href*="/jobs/view/"]', card);
       if (!link) return false;
       SPOT.pulse(link, `Opening: ${link.textContent.trim().substring(0, 60)}`);
       link.click();
@@ -422,10 +464,10 @@
     }
 
     async applyCard(card) {
-      if (!await this.openCard(card)) { this.skipped++; return; }
+      if (!await this.openCard(card)) { this.skipped++; reportSkip(); return; }
 
       const btn = await this.findEasyApply();
-      if (!btn) { SPOT.status('No Easy Apply – skipping', 'warning'); this.skipped++; return; }
+      if (!btn) { SPOT.status('No Easy Apply – skipping', 'warning'); this.skipped++; reportSkip(); return; }
 
       await humanClick(btn, 'Easy Apply clicked…');
       await sleep(rand(700, 1200));
@@ -436,7 +478,7 @@
         const r = await this.handleStep();
         if (r === 'done') {
           this.applied++;
-          chrome.runtime.sendMessage({ type: 'JOB_APPLIED', platform: 'linkedin', title: document.title });
+          report({ type: 'JOB_APPLIED', platform: 'linkedin', title: document.title, url: location.href });
           SPOT.status(`✓ Applied! (${this.applied} total)`, 'success');
           await sleep(rand(1500, 2500));
           return;
@@ -444,18 +486,20 @@
         if (r === 'stuck' || r === 'no-modal') {
           SPOT.status('Stuck – skipping job', 'warning');
           await this.dismissModal();
-          this.skipped++;
+          this.skipped++; reportSkip();
           return;
         }
         i++;
         await sleep(rand(700, 1400));
       }
       await this.dismissModal();
-      this.skipped++;
+      this.skipped++; reportSkip();
     }
 
     async nextPage() {
-      const btn = $('button[aria-label="View next page"], .artdeco-pagination__button--next:not([disabled])');
+      const btn = $('button[aria-label="View next page"], button[aria-label="Next"], ' +
+                    '.jobs-search-pagination__button--next:not([disabled]), ' +
+                    '.artdeco-pagination__button--next:not([disabled])');
       if (!btn || btn.disabled) return false;
       await humanClick(btn, 'Next page…');
       await sleep(rand(3000, 4500));
@@ -467,14 +511,27 @@
       SPOT.status('LinkedIn – scanning jobs…', 'info');
 
       while (this.running) {
-        const cards = this.jobCards();
+        const cards = await waitForCards(() => this.jobCards());
         SPOT.status(`${cards.length} jobs on page`, 'info');
-        if (!cards.length) { await sleep(2000); break; }
+        if (!cards.length) break;
 
-        for (const card of cards) {
-          if (!this.running) break;
-          await this.applyCard(card);
-          await sleep(rand(2200, 4000));
+        // LinkedIn virtualizes the list – cards detach from the DOM as you scroll.
+        // Re-query after every application and pick the first unseen card.
+        let progressed = true;
+        while (progressed && this.running) {
+          progressed = false;
+          for (const card of this.jobCards()) {
+            const id = this.cardId(card);
+            if (id && appliedSet.has(id)) continue;
+            if (id) appliedSet.add(id);
+
+            card.scrollIntoView({ block: 'center' });
+            await sleep(rand(400, 800));
+            await this.applyCard(card);
+            await sleep(rand(2200, 4000));
+            progressed = true;
+            break; // re-query the (possibly re-rendered) list
+          }
         }
 
         if (!await this.nextPage()) break;
@@ -492,36 +549,68 @@
     constructor(f) { this.f = f; this.applied = 0; this.skipped = 0; this.running = false; }
 
     isApplyPage() {
-      return /\/apply\b|apply\.indeed\.com/i.test(location.href)
-          || !!$('[data-testid="ia-continueButton"], [data-testid="ia-submitButton"], .ia-BasePage');
+      return /\/apply\b|apply\.indeed\.com|smartapply\.indeed\.com/i.test(location.href)
+          || !!$('[data-testid="ia-continueButton"], [data-testid="ia-submitButton"], ' +
+                 '.ia-BasePage, [data-testid="ia-Questions-main"], .ia-Modal, iframe[src*="indeedapply"]');
     }
 
     jobCards() {
       return $$('.job_seen_beacon, [data-testid="slider_item"], .resultContent').filter(isVis);
     }
 
+    findApplyButton(scope = document) {
+      // Dedicated ids / test-ids first (most stable)
+      const direct = $(
+        '#indeedApplyButton, [data-testid="indeedApplyButton"], ' +
+        'button[id*="applyButton"]:not([disabled]), [data-testid="applyButton"], ' +
+        '.jobsearch-IndeedApplyButton-newDesign, .ia-IndeedApplyButton',
+        scope
+      );
+      if (direct && isVis(direct)) return direct;
+
+      // Fallback: text match – "Apply now", "Apply with Indeed", "Easily apply"
+      return $$('button, a[role="button"], a[href*="smartapply"], a[href*="indeedapply"]', scope)
+        .find(el => isVis(el)
+          && /apply now|apply with indeed|easily apply/i.test(el.textContent)
+          && !/applied/i.test(el.textContent)) || null;
+    }
+
     async clickApply(card) {
       // First: try button already visible in card or panel
-      let btn = $('button[id*="applyButton"]:not([disabled]), [data-testid="indeedApplyButton"]', card);
+      let btn = this.findApplyButton(card);
 
       if (!btn) {
         // Click the job title to open detail panel
         const title = $('h2 a[data-jk], a.jcs-JobTitle, h2 a', card);
         if (title) {
           SPOT.pulse(title, `Opening: ${title.textContent.trim().substring(0, 55)}`);
-          title.click();
+          realClick(title);
           await sleep(rand(1200, 2200));
         }
-        // Look in the right-side detail panel
-        btn = $('[data-testid="indeedApplyButton"], #indeedApplyButton, button[id*="applyButton"]:not([disabled])');
+        // Look in the right-side detail panel – give it a moment to render
+        for (let i = 0; i < 4 && !btn; i++) {
+          btn = this.findApplyButton(document);
+          if (!btn) await sleep(800);
+        }
       }
 
       if (!btn || !isVis(btn)) return 'none';
       if (/applied/i.test(btn.textContent)) return 'already';
 
+      // If it's a link that opens a new tab, force same-tab so auto-resume works
+      if (btn.tagName === 'A') btn.setAttribute('target', '_self');
+
       await humanClick(btn, 'Opening Indeed Apply…');
-      await sleep(rand(1500, 2500));
-      return 'clicked';
+
+      // Wait for the apply flow to actually appear (navigation or in-page form);
+      // retry the click once if nothing happened – Indeed's button ignores
+      // the first click while its JS is still hydrating.
+      for (let i = 0; i < 8; i++) {
+        await sleep(800);
+        if (this.isApplyPage()) return 'clicked';
+        if (i === 3) { realClick(btn); SPOT.status('Retrying Apply click…', 'applying'); }
+      }
+      return this.isApplyPage() ? 'clicked' : 'none';
     }
 
     async fillStep() {
@@ -576,7 +665,7 @@
       while (steps < 40 && this.running) {
         if (this.isDone()) {
           this.applied++;
-          chrome.runtime.sendMessage({ type: 'JOB_APPLIED', platform: 'indeed', title: document.title });
+          report({ type: 'JOB_APPLIED', platform: 'indeed', title: document.title, url: location.href });
           SPOT.status(`✓ Applied on Indeed! (${this.applied} total)`, 'success');
           await sleep(rand(1800, 2800));
           history.back();
@@ -592,7 +681,7 @@
           await sleep(1500);
           if (this.isDone()) continue;
           SPOT.status('No Continue/Submit found – skipping', 'warning');
-          this.skipped++;
+          this.skipped++; reportSkip();
           history.back();
           await sleep(2000);
           return false;
@@ -602,7 +691,7 @@
           await sleep(1500);
           if (!this.isDone()) continue; // form might have more steps
           this.applied++;
-          chrome.runtime.sendMessage({ type: 'JOB_APPLIED', platform: 'indeed', title: document.title });
+          report({ type: 'JOB_APPLIED', platform: 'indeed', title: document.title, url: location.href });
           SPOT.status(`✓ Applied on Indeed! (${this.applied} total)`, 'success');
           await sleep(rand(1800, 2800));
           history.back();
@@ -640,9 +729,9 @@
       SPOT.status('Indeed – scanning jobs…', 'info');
 
       while (this.running) {
-        const cards = this.jobCards();
+        const cards = await waitForCards(() => this.jobCards());
         SPOT.status(`${cards.length} jobs on page`, 'info');
-        if (!cards.length) { await sleep(2000); break; }
+        if (!cards.length) break;
 
         for (const card of cards) {
           if (!this.running) break;
@@ -654,7 +743,7 @@
 
           const res = await this.clickApply(card);
           if (res === 'clicked') await this.runApplication();
-          else this.skipped++;
+          else this.skipped++; reportSkip();
 
           await sleep(rand(2000, 4000));
         }
@@ -751,9 +840,9 @@
       SPOT.status('Naukri – scanning jobs…', 'info');
 
       while (this.running) {
-        const cards = this.jobCards();
+        const cards = await waitForCards(() => this.jobCards());
         SPOT.status(`${cards.length} jobs on page`, 'info');
-        if (!cards.length) { await sleep(2000); break; }
+        if (!cards.length) break;
 
         for (const card of cards) {
           if (!this.running) break;
@@ -763,15 +852,15 @@
           if (jid && appliedSet.has(jid)) continue;
           if (jid) appliedSet.add(jid);
 
-          if (!await this.openJob(card)) { this.skipped++; continue; }
-          if (!await this.clickApply())  { this.skipped++; history.back(); await sleep(2000); continue; }
+          if (!await this.openJob(card)) { this.skipped++; reportSkip(); continue; }
+          if (!await this.clickApply())  { this.skipped++; reportSkip(); history.back(); await sleep(2000); continue; }
 
           let steps = 0;
           while (steps < 20 && this.running) {
             const r = await this.handleForm();
             if (r === 'done') {
               this.applied++;
-              chrome.runtime.sendMessage({ type: 'JOB_APPLIED', platform: 'naukri', title: document.title });
+              report({ type: 'JOB_APPLIED', platform: 'naukri', title: document.title, url: location.href });
               SPOT.status(`✓ Applied on Naukri! (${this.applied} total)`, 'success');
               await sleep(rand(1500, 2500));
               history.back();
@@ -779,7 +868,7 @@
               break;
             }
             if (r === 'stuck') {
-              this.skipped++;
+              this.skipped++; reportSkip();
               history.back();
               await sleep(2000);
               break;
