@@ -1960,7 +1960,11 @@
     // "Clear all" when everything visible is already ticked.
     let selAllBtn = null;
     function visibleIds() {
-      try { return probe.jobCards().map(c => probe.cardId(c)).filter(Boolean); } catch { return []; }
+      try {
+        let cards = probe.jobCards();
+        cards = cards.filter(c => !cards.some(o => o !== c && o.contains(c))); // outermost only
+        return cards.map(c => probe.cardId(c)).filter(Boolean);
+      } catch { return []; }
     }
     function paintTicks() {
       $$('.jb-tick').forEach(t => {
@@ -1999,10 +2003,29 @@
       SPOT.ensure(); // styles must exist before any run starts, or ticks render invisible
       let cards;
       try { cards = probe.jobCards(); } catch { return; }
+
+      // ONE tick per job: selectors can match nested elements of the same
+      // card – keep only the outermost match.
+      cards = cards.filter(c => !cards.some(o => o !== c && o.contains(c)));
+
+      // Cleanup: remove ticks that ended up nested inside another ticked card
+      // (from nested matches in earlier passes/builds).
+      $$('.jb-tick').forEach(t => {
+        const host = t.parentElement;
+        if (host && host.parentElement && host.parentElement.closest('[data-jb-tick]')) {
+          t.remove();
+          host.removeAttribute('data-jb-tick');
+        }
+      });
+
       for (const card of cards) {
-        if (card.querySelector('.jb-tick')) continue;
+        if (card.querySelector(':scope > .jb-tick')) { card.setAttribute('data-jb-tick', '1'); continue; }
+        if (card.closest('[data-jb-tick]') !== null && card.closest('[data-jb-tick]') !== card) continue;
+        // Must look like a real job card – keeps ticks off dropdowns/filters
+        if (!$('a, [data-jk], [data-job-id], [data-occludable-job-id]', card)) continue;
         const id = probe.cardId(card);
         if (!id) continue;
+        card.setAttribute('data-jb-tick', '1');
         if (getComputedStyle(card).position === 'static') card.style.position = 'relative';
         const t = document.createElement('div');
         t.className = 'jb-tick' + (selectedSet.has(id) ? ' on' : '');
@@ -2015,7 +2038,7 @@
           SPOT.status(selectedSet.size()
             ? `${selectedSet.size()} job(s) ticked – press ▶ to apply them in sequence`
             : 'No jobs ticked – Start applies all jobs', 'info');
-          syncStartBtn();
+          syncStartBtn(); syncSelAllBtn();
         }, true);
         card.appendChild(t);
       }
