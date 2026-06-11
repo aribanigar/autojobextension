@@ -862,6 +862,9 @@
 
     async reportApplied() {
       this.applied++;
+      // Mark the job as done from the apply-page URL too (jk= job key), so it
+      // is remembered even if the list-side card id differed.
+      appliedSet.add(normalizeJobId(location.href));
       report({ type: 'JOB_APPLIED', platform: 'indeed', title: document.title, url: location.href });
       SPOT.status(`✓ Applied on Indeed! (${this.applied} total) – returning to job list…`, 'success');
       await sleep(rand(1500, 2500));
@@ -968,10 +971,13 @@
     }
 
     cardId(card) {
-      return $('a[data-jk]', card)?.getAttribute('data-jk')
-          || $('a', card)?.getAttribute('data-jk')
-          || $('h2 a', card)?.href
-          || card.textContent.trim().slice(0, 80);
+      const jk = $('a[data-jk]', card)?.getAttribute('data-jk')
+              || $('a', card)?.getAttribute('data-jk')
+              || card.getAttribute('data-jk');
+      if (jk) return 'jk:' + jk.toLowerCase();
+      const href = $('h2 a', card)?.href || $('a[href*="viewjob"], a[href*="/rc/clk"]', card)?.href;
+      if (href) return normalizeJobId(href);
+      return card.textContent.trim().slice(0, 80);
     }
 
     // Are we on a Indeed search-results page (vs. a single job / transitional page)?
@@ -1059,9 +1065,11 @@
     }
 
     cardId(card) {
-      return card.getAttribute('data-job-id')
-          || this.cardLink(card)?.href
-          || card.textContent.trim().slice(0, 80);
+      const id = card.getAttribute('data-job-id');
+      if (id) return 'nk:' + id;
+      const href = this.cardLink(card)?.href;
+      if (href) return normalizeJobId(href);
+      return card.textContent.trim().slice(0, 80);
     }
 
     async openJob(card) {
@@ -1268,6 +1276,7 @@
       // Resumed on a job detail page after same-tab navigation – apply here,
       // then go back; auto-resume continues the run on the job list.
       if (/\/job-listings-/i.test(location.pathname) && !this.jobCards().length) {
+        appliedSet.add(normalizeJobId(location.href)); // remember this job either way
         const out = await this.applyHere();
         if (out === 'done') {
           this.applied++;
@@ -1328,20 +1337,43 @@
   }
 
   // ─── Controller ───────────────────────────────────────────────────────────
-  // Seen-job memory backed by sessionStorage: survives the full-page
-  // navigations of Indeed/Naukri apply flows and pagination (per tab).
+  // Memory of already-handled jobs. Durable: chrome.storage.local survives the
+  // cross-origin hops of the Indeed apply flow (www → smartapply), tab
+  // navigations, and browser restarts, so a job is never applied to twice.
+  // sessionStorage is kept as a synchronous fast path within the tab.
   const appliedSet = (() => {
-    let s;
-    try { s = new Set(JSON.parse(sessionStorage.getItem('jobbot_seen') || '[]')); }
-    catch { s = new Set(); }
+    let s = new Set();
+    try { s = new Set(JSON.parse(sessionStorage.getItem('jobbot_seen') || '[]')); } catch {}
+    let resolveReady;
+    const ready = new Promise(r => (resolveReady = r));
+    try {
+      chrome.storage.local.get('jobbot_seen', d => {
+        (Array.isArray(d.jobbot_seen) ? d.jobbot_seen : []).forEach(id => s.add(id));
+        resolveReady();
+      });
+    } catch { resolveReady(); }
+    const persist = () => {
+      const arr = [...s].slice(-3000);
+      try { sessionStorage.setItem('jobbot_seen', JSON.stringify(arr)); } catch {}
+      try { chrome.storage.local.set({ jobbot_seen: arr }); } catch {}
+    };
     return {
+      ready,
       has: id => s.has(id),
-      add: id => {
-        s.add(id);
-        try { sessionStorage.setItem('jobbot_seen', JSON.stringify([...s].slice(-2000))); } catch {}
-      },
+      add: id => { if (!id) return; s.add(id); persist(); },
     };
   })();
+
+  // Stable job identity from a URL: prefer the jk/vjk job key (Indeed), else
+  // origin+pathname – never the raw href, whose tracking params change between
+  // visits and previously made the same job look "new" every time.
+  function normalizeJobId(raw) {
+    if (!raw) return '';
+    const m = String(raw).match(/[?&](?:jk|vjk)=([a-f0-9]+)/i);
+    if (m) return 'jk:' + m[1].toLowerCase();
+    try { const u = new URL(raw, location.href); return u.origin + u.pathname; }
+    catch { return String(raw); }
+  }
 
   let agent = null;
   const IS_TOP = window === window.top;
@@ -1357,6 +1389,10 @@
     // Only the top frame owns the running flag; 'nav' means the page is about
     // to navigate mid-run (apply flow / back / next page) and the run resumes
     // on the next page load – so the flag must survive.
+    // Wait for the durable seen-jobs memory before scanning, so a job applied
+    // just before this navigation is never picked again.
+    try { await appliedSet.ready; } catch {}
+
     if (IS_TOP) chrome.storage.local.set({ jobbot_running: true });
     let outcome = 'done';
     try { outcome = await agent.run(); }
