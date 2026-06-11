@@ -1517,7 +1517,11 @@
     // just before this navigation is never picked again.
     try { await appliedSet.ready; } catch {}
 
-    if (IS_TOP) chrome.storage.local.set({ jobbot_running: true });
+    // setStore: chrome.* throws once the extension is reloaded ("context
+    // invalidated") – never let that kill the page or the run loop.
+    const setStore = obj => { try { chrome.storage.local.set(obj); } catch {} };
+
+    if (IS_TOP) setStore({ jobbot_running: true });
     let outcome = 'done';
     try { outcome = await agent.run(); }
     catch (e) {
@@ -1527,14 +1531,14 @@
       outcome = 'nav';
     }
     finally {
-      if (IS_TOP && outcome !== 'nav') chrome.storage.local.set({ jobbot_running: false });
+      if (IS_TOP && outcome !== 'nav') setStore({ jobbot_running: false });
       agent = null;
     }
   }
 
   function stopAgent() {
     if (agent) { agent.stop(); agent = null; }
-    chrome.storage.local.set({ jobbot_running: false });
+    try { chrome.storage.local.set({ jobbot_running: false }); } catch {}
     SPOT.clearAttention();
     SPOT.status('Agent stopped', 'warning');
     setTimeout(() => SPOT.hide(), 5000);
@@ -1593,14 +1597,32 @@
   // (re)start it. Covers any case where a run exits on a transitional page,
   // a slow load, or an unhandled hiccup. A deliberate Stop clears the flag, so
   // this never fights the user.
+  //
+  // When the extension is reloaded/updated, this old content script keeps
+  // running but its chrome.* APIs are dead ("Extension context invalidated").
+  // contextAlive() detects that and shuts the watchdog down silently — the
+  // freshly injected script takes over.
+  function contextAlive() {
+    try { return !!chrome.runtime?.id; } catch { return false; }
+  }
+
   if (IS_TOP) {
-    setInterval(() => {
+    const watchdog = setInterval(() => {
+      if (!contextAlive()) {
+        clearInterval(watchdog);
+        if (agent) agent.stop();
+        SPOT.hide();
+        return;
+      }
       if (agent && agent.running) return;
-      chrome.storage.local.get(['jobbot_running', 'jobbot_profile'], d => {
-        if (d.jobbot_running && d.jobbot_profile && !(agent && agent.running)) {
-          startAgent(d.jobbot_profile);
-        }
-      });
+      try {
+        chrome.storage.local.get(['jobbot_running', 'jobbot_profile'], d => {
+          if (chrome.runtime.lastError) return;
+          if (d.jobbot_running && d.jobbot_profile && !(agent && agent.running)) {
+            startAgent(d.jobbot_profile);
+          }
+        });
+      } catch { clearInterval(watchdog); }
     }, 5000);
   }
 
