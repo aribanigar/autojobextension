@@ -35,6 +35,7 @@ Three contexts communicate via `chrome.runtime.sendMessage` with `{ type: ... }`
 
 ## Locked integrations
 
+- **LinkedIn is LOCKED** (owner directive, June 2026). The `LinkedInAgent` class in `extension/content.js` (marked with `═══ LinkedIn Agent — LOCKED ═══` banners) handles all three A/B-served search layouts (legacy `li[data-occludable-job-id]`, `div[data-view-name="job-card"]`, and the "AI-powered search" SDUI `div[role="button"][componentkey]` cards), the tick-queue system, the Easy Apply modal flow, and post-submit/discard modal cleanup. Do **not** modify anything inside those banners unless the user explicitly asks for a LinkedIn change.
 - **Indeed is LOCKED** (owner directive, June 2026). The `IndeedAgent` class in `extension/content.js` (marked with `═══ Indeed Agent — LOCKED ═══` banners) is verified working end-to-end: Apply-with-Indeed clicking, multi-step Continue/Submit flow, captcha human-hand-off, job sequencing, and the two-tier attempted/applied dedupe. Do **not** modify anything inside those banners — selectors, timings, or logic — unless the user explicitly asks for an Indeed change. Shared helpers it depends on (`realClick`, `moveTo`, `humanClick`, `SPOT`, `Filler`, `appliedSet`/`attemptedSet`, `waitForCards`, auto-resume, watchdog) must stay backward-compatible; if you change a shared helper, verify the Indeed flow is unaffected.
 
 ## Conventions and gotchas

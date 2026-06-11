@@ -541,18 +541,42 @@
   }
 
   // ─── LinkedIn Agent ────────────────────────────────────────────────────────
+  // ═══ LinkedIn Agent — LOCKED ═════════════════════════════════════════════
+  // Handles all three A/B-served search layouts (legacy li cards, 2024
+  // data-view-name cards, and the "AI-powered search" SDUI with anonymous
+  // role=button cards), tick-queue, Easy Apply modal flow, and blocking-modal
+  // cleanup. Do NOT modify without the owner's explicit approval — see
+  // CLAUDE.md "Locked integrations".
   class LinkedInAgent {
     constructor(f) { this.f = f; this.applied = 0; this.skipped = 0; this.running = false; }
 
+    // LinkedIn A/B-serves three search layouts (verified against the
+    // first2apply v1-v6 parsers and other 2025 bots):
+    //   A legacy Ember:  li[data-occludable-job-id]
+    //   B 2024 redesign: div[data-view-name="job-card"]
+    //   C "AI-powered search" SDUI: no <li>, no ids, no anchors - cards are
+    //     div[role="button"][componentkey] under SearchResultsMainContent,
+    //     classes are randomized hashes. NEVER match by class there.
     jobCards() {
-      const direct = $$(
-        'li.jobs-search-results__list-item, li[data-occludable-job-id], li[data-job-id], ' +
-        'li.scaffold-layout__list-item, .job-card-container--clickable, div[data-job-id]'
-      ).filter(isVis);
-      if (direct.length) return direct;
+      // Layout A
+      let cards = $$('li[data-occludable-job-id], li.jobs-search-results__list-item, ' +
+                     'li.scaffold-layout__list-item, li[data-job-id]').filter(isVis);
+      if (cards.length) return cards;
 
-      // Class names churn constantly; structure doesn't. Every job card
-      // contains an anchor to /jobs/view/ – use its containing <li> as the card.
+      // Layout B
+      cards = $$('div[data-view-name="job-card"], .job-card-job-posting-card-wrapper, ' +
+                 '.job-card-container--clickable, div[data-job-id]').filter(isVis);
+      if (cards.length) return cards;
+
+      // Layout C (AI-powered search beta)
+      const main = $('div[componentkey="SearchResultsMainContent"], [componentkey*="SearchResults"]');
+      if (main) {
+        cards = $$('div[role="button"][componentkey]', main)
+          .filter(c => isVis(c) && c.textContent.trim().length > 60);
+        if (cards.length) return cards;
+      }
+
+      // Structural last resort: a job card contains a /jobs/view/ anchor
       const seen = new Set();
       return $$('a[href*="/jobs/view/"]')
         .map(a => a.closest('li') || a.closest('[data-job-id]') || a.closest('div[class*="job-card"]'))
@@ -564,6 +588,15 @@
     }
 
     cardId(card) {
+      // Layout C: componentkey="job-card-component-ref-<jobId>" (or opaque UUID)
+      const ck = card.getAttribute('componentkey');
+      if (ck) {
+        const m = ck.match(/job-card-component-ref-(\d+)/);
+        return m ? 'li:' + m[1] : 'ck:' + ck;
+      }
+      // Layout B: card link carries currentJobId=<id>
+      const cur = $('a[href*="currentJobId="]', card)?.href.match(/currentJobId=(\d+)/);
+      if (cur) return 'li:' + cur[1];
       return card.getAttribute('data-occludable-job-id')
           || card.getAttribute('data-job-id')
           || $('[data-job-id]', card)?.getAttribute('data-job-id')
@@ -572,12 +605,17 @@
     }
 
     async openCard(card) {
-      // Use specific title links, not generic <a> fallback
       const link = $('a.job-card-list__title--link, a.job-card-list__title, ' +
-                     'a.job-card-container__link, a[class*="job-card-list__title"], a[href*="/jobs/view/"]', card);
-      if (!link) return false;
-      SPOT.pulse(link, `Opening: ${link.textContent.trim().substring(0, 60)}`);
-      realClick(link);
+                     'a.job-card-container__link, a[class*="job-card-list__title"], ' +
+                     'a.job-card-job-posting-card-wrapper__card-link, a[href*="/jobs/view/"], ' +
+                     'a[href*="currentJobId="]', card);
+      // Layout C has no anchors at all – the card div itself is role="button";
+      // real mouse events on it open the right-side detail pane.
+      const target = link || card;
+      const label = (link?.textContent || $('p, strong', card)?.textContent || card.textContent || '')
+        .trim().substring(0, 60);
+      SPOT.pulse(target, `Opening: ${label}`);
+      realClick(target);
       await sleep(rand(1800, 3000));
       return true;
     }
@@ -587,11 +625,15 @@
         const btn = await waitFor(
           '.jobs-apply-button--top-card button, .jobs-s-apply button, ' +
           'button.jobs-apply-button, [data-live-test-job-apply-button], ' +
+          '#jobs-apply-button-id, button[aria-label^="Easy Apply"], ' +
           'button[aria-label*="Easy Apply"], button[data-job-id][class*="apply"]',
           document, 6000
         );
         const txt = btn.textContent.trim() + ' ' + (btn.getAttribute('aria-label') || '');
         if (/applied|saved/i.test(txt) || !/apply/i.test(txt)) return null;
+        // External apply masquerades with the same data attribute but is a
+        // role="link" / "on company website" – never leave the site for it.
+        if (btn.getAttribute('role') === 'link' || /company website|company site/i.test(txt)) return null;
         return btn;
       } catch { return null; }
     }
@@ -617,7 +659,9 @@
     }
 
     async handleStep() {
-      const modal = $('.jobs-easy-apply-content, [data-test-modal]');
+      const modal = $('.jobs-easy-apply-modal, div[data-test-modal-id="easy-apply-modal"], ' +
+                      '.jobs-easy-apply-content, [data-test-modal]')
+                 || $$('div[role="dialog"]').find(d => isVis(d) && $('button, input, select', d));
       if (this.isDone()) return 'done';
       if (!modal) return 'no-modal';
 
@@ -783,6 +827,8 @@
 
     stop() { this.running = false; }
   }
+
+  // ═══ End of LinkedIn Agent (LOCKED) ═══════════════════════════════════════
 
   // ═══ Indeed Agent — LOCKED ═══════════════════════════════════════════════
   // Verified working end-to-end (apply click, multi-step forms, captcha
