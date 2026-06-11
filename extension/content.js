@@ -243,6 +243,7 @@
       if (/\bexpected.*(salary|ctc)|salary.expectation\b/i.test(t)) return pro.expectedSalary || '';
       if (/\bnotice.period|available.to.join|joining.date\b/i.test(t)) return pro.noticePeriod || '30 days';
       if (/\b(mobile|phone|contact.*(no|number|detail))\b/i.test(t)) return per.phone || '';
+      if (/\b(postal|zip|pin)\s*.?code\b|pincode/i.test(t))   return per.postalCode || '';
       if (/\b(city|location|based.in|current.location)\b/i.test(t))  return per.location || '';
       if (/\bwilling.*(relocat|move)\b/i.test(t))             return prf.willingToRelocate ? 'Yes' : 'No';
       if (/\b(authoriz|authoris|eligible.to.work|work.permit|visa|right.to.work)\b/i.test(t)) return 'Yes';
@@ -449,7 +450,7 @@
           || card.getAttribute('data-job-id')
           || $('[data-job-id]', card)?.getAttribute('data-job-id')
           || $('a[href*="/jobs/view/"]', card)?.href
-          || '';
+          || card.textContent.trim().slice(0, 80);
     }
 
     async openCard(card) {
@@ -666,13 +667,22 @@
       await sleep(rand(350, 600));
     }
 
-    async clickContinue() {
-      // Try dedicated test IDs first (most reliable)
+    btnText(el) { return (el.textContent || el.value || '').trim(); }
+
+    findStepButtons() {
+      const els = $$('button, [role="button"], input[type="submit"], input[type="button"]');
       const cont =
-        $('[data-testid="ia-continueButton"]') ||
-        $('[data-testid="continue-button"]')    ||
-        $$('button[type="submit"]').find(b => isVis(b) && /^continue$/i.test(b.textContent.trim())) ||
-        $$('button').find(b => isVis(b) && /continue/i.test(b.textContent) && !/skip/i.test(b.textContent));
+        $('[data-testid="ia-continueButton"], [data-testid="continue-button"]') ||
+        els.find(b => /^(continue|continue applying|next|save and continue)$/i.test(this.btnText(b))) ||
+        els.find(b => /continue/i.test(this.btnText(b)) && !/skip|without/i.test(this.btnText(b)));
+      const sub =
+        $('[data-testid="ia-submitButton"], [data-testid="submit-button"]') ||
+        els.find(b => /submit (my |your )?application|^submit$|apply now/i.test(this.btnText(b)));
+      return { cont, sub };
+    }
+
+    async clickContinue() {
+      const { cont, sub } = this.findStepButtons();
 
       if (cont && isVis(cont)) {
         SPOT.pulse(cont, '✨ Clicking CONTINUE…');
@@ -682,11 +692,6 @@
         return 'continue';
       }
 
-      const sub =
-        $('[data-testid="ia-submitButton"], [data-testid="submit-button"]') ||
-        $$('button[type="submit"], button').find(b =>
-          isVis(b) && /submit (my |your )?application|^submit$|apply now/i.test(b.textContent.trim()));
-
       if (sub && isVis(sub)) {
         SPOT.pulse(sub, '🎉 Submitting my application!');
         await sleep(rand(800, 1300)); // hold the spotlight so the submit click is visible
@@ -695,6 +700,8 @@
         return 'submitted';
       }
 
+      // Button exists but is disabled → required fields are still empty
+      if ((cont && cont.disabled) || (sub && sub.disabled)) return 'blocked';
       return null;
     }
 
@@ -705,16 +712,37 @@
       );
     }
 
+    applyFrame() {
+      return $('iframe[src*="indeedapply"], iframe[src*="smartapply"], iframe[src*="apply.indeed"]');
+    }
+
+    async reportApplied() {
+      this.applied++;
+      report({ type: 'JOB_APPLIED', platform: 'indeed', title: document.title, url: location.href });
+      SPOT.status(`✓ Applied on Indeed! (${this.applied} total)`, 'success');
+      await sleep(rand(1800, 2800));
+      history.back();
+      await sleep(rand(2500, 3500));
+    }
+
     async runApplication() {
       SPOT.status('Processing Indeed application…', 'applying');
-      let steps = 0;
+      let steps = 0, misses = 0;
 
-      while (steps < 40 && this.running) {
-        if (this.isDone()) {
-          this.applied++;
-          report({ type: 'JOB_APPLIED', platform: 'indeed', title: document.title, url: location.href });
-          SPOT.status(`✓ Applied on Indeed! (${this.applied} total)`, 'success');
-          await sleep(rand(1800, 2800));
+      while (steps < 60 && this.running) {
+        if (this.isDone()) { await this.reportApplied(); return true; }
+
+        // Apply form rendered inside Indeed's embedded iframe: our content
+        // script injected in that frame runs its own agent (auto-resume).
+        // The top-page agent must wait for it, not skip the job.
+        if (this.applyFrame()) {
+          SPOT.status('Apply form open – agent working inside it…', 'applying');
+          for (let w = 0; w < 60 && this.running; w++) {       // up to ~3 min
+            await sleep(3000);
+            if (!this.applyFrame() || this.isDone()) break;
+          }
+          // The frame agent reports the application itself – don't double-count
+          await sleep(1500);
           history.back();
           await sleep(rand(2500, 3500));
           return true;
@@ -723,31 +751,45 @@
         await this.fillStep();
         const res = await this.clickContinue();
 
-        if (!res) {
-          // Check once more for thank-you page after a moment
-          await sleep(1500);
-          if (this.isDone()) continue;
-          SPOT.status('No Continue/Submit found – skipping', 'warning');
-          this.skipped++; reportSkip();
-          history.back();
-          await sleep(2000);
-          return false;
+        if (res === 'continue') {
+          misses = 0;
+          steps++;
+          await sleep(rand(900, 1600));
+          continue; // next screen → fill and click Continue again, in sequence
         }
 
         if (res === 'submitted') {
           await sleep(1500);
-          if (!this.isDone()) continue; // form might have more steps
-          this.applied++;
-          report({ type: 'JOB_APPLIED', platform: 'indeed', title: document.title, url: location.href });
-          SPOT.status(`✓ Applied on Indeed! (${this.applied} total)`, 'success');
-          await sleep(rand(1800, 2800));
-          history.back();
-          await sleep(rand(2500, 3500));
+          if (!this.isDone()) { steps++; continue; } // form might have more steps
+          await this.reportApplied();
           return true;
         }
 
-        steps++;
-        await sleep(rand(700, 1400));
+        if (res === 'blocked') {
+          // Continue is visible but disabled – a required field is still empty.
+          // Refill (AI fallback included) and try again before giving up.
+          misses++;
+          if (misses < 4) {
+            SPOT.status('Required fields pending – refilling…', 'warning');
+            await sleep(2000);
+            continue;
+          }
+        } else {
+          // Nothing found – the next step may simply still be loading
+          misses++;
+          if (this.isDone()) continue;
+          if (misses < 4) {
+            SPOT.status('Waiting for next step…', 'applying');
+            await sleep(2500);
+            continue;
+          }
+        }
+
+        SPOT.status('Stuck on this form – skipping job', 'warning');
+        this.skipped++; reportSkip();
+        history.back();
+        await sleep(2000);
+        return false;
       }
 
       history.back();
@@ -765,12 +807,22 @@
       return true;
     }
 
+    cardId(card) {
+      return $('a[data-jk]', card)?.getAttribute('data-jk')
+          || $('a', card)?.getAttribute('data-jk')
+          || $('h2 a', card)?.href
+          || card.textContent.trim().slice(0, 80);
+    }
+
     async run() {
       this.running = true;
 
       if (this.isApplyPage()) {
+        // Resumed mid-application after navigation – the run continues on the
+        // job list after history.back(), so keep the running flag alive.
         await this.runApplication();
-        return;
+        this.running = false;
+        return 'nav';
       }
 
       SPOT.status('Indeed – scanning jobs…', 'info');
@@ -780,19 +832,27 @@
         SPOT.status(`${cards.length} jobs on page`, 'info');
         if (!cards.length) break;
 
-        for (const card of cards) {
-          if (!this.running) break;
+        // Process jobs one by one, re-querying the list after each so the
+        // sequence survives panel re-renders. Clicking Apply usually
+        // navigates away; auto-resume brings the run back here afterwards.
+        let progressed = true;
+        while (progressed && this.running) {
+          progressed = false;
+          for (const card of this.jobCards()) {
+            const jk = this.cardId(card);
+            if (jk && appliedSet.has(jk)) continue;
+            if (jk) appliedSet.add(jk);
 
-          // Deduplicate by job key
-          const jk = $('a[data-jk]', card)?.getAttribute('data-jk') || $('a', card)?.getAttribute('data-jk') || '';
-          if (jk && appliedSet.has(jk)) continue;
-          if (jk) appliedSet.add(jk);
+            card.scrollIntoView({ block: 'center' });
+            await sleep(rand(400, 800));
+            const res = await this.clickApply(card);
+            if (res === 'clicked') await this.runApplication();
+            else { this.skipped++; reportSkip(); }
 
-          const res = await this.clickApply(card);
-          if (res === 'clicked') await this.runApplication();
-          else this.skipped++; reportSkip();
-
-          await sleep(rand(2000, 4000));
+            await sleep(rand(2000, 4000));
+            progressed = true;
+            break; // re-query the list for the next job
+          }
         }
 
         if (!await this.nextPage()) break;
@@ -884,6 +944,33 @@
 
     async run() {
       this.running = true;
+      // Resumed on a job detail page after same-tab navigation – apply here,
+      // then go back; auto-resume continues the run on the job list.
+      if (/\/job-listings-/i.test(location.pathname) && !this.jobCards().length) {
+        if (await this.clickApply()) {
+          let steps = 0;
+          while (steps < 20 && this.running) {
+            const r = await this.handleForm();
+            if (r === 'done') {
+              this.applied++;
+              report({ type: 'JOB_APPLIED', platform: 'naukri', title: document.title, url: location.href });
+              SPOT.status(`✓ Applied on Naukri! (${this.applied} total)`, 'success');
+              await sleep(rand(1500, 2500));
+              break;
+            }
+            if (r === 'stuck') { this.skipped++; reportSkip(); break; }
+            steps++;
+            await sleep(rand(700, 1500));
+          }
+        } else {
+          this.skipped++; reportSkip();
+        }
+        history.back();
+        await sleep(rand(2500, 3500));
+        this.running = false;
+        return 'nav';
+      }
+
       SPOT.status('Naukri – scanning jobs…', 'info');
 
       while (this.running) {
@@ -938,8 +1025,23 @@
   }
 
   // ─── Controller ───────────────────────────────────────────────────────────
-  const appliedSet = new Set();
+  // Seen-job memory backed by sessionStorage: survives the full-page
+  // navigations of Indeed/Naukri apply flows and pagination (per tab).
+  const appliedSet = (() => {
+    let s;
+    try { s = new Set(JSON.parse(sessionStorage.getItem('jobbot_seen') || '[]')); }
+    catch { s = new Set(); }
+    return {
+      has: id => s.has(id),
+      add: id => {
+        s.add(id);
+        try { sessionStorage.setItem('jobbot_seen', JSON.stringify([...s].slice(-2000))); } catch {}
+      },
+    };
+  })();
+
   let agent = null;
+  const IS_TOP = window === window.top;
 
   async function startAgent(profile) {
     if (agent?.running) return;
@@ -949,10 +1051,17 @@
     else if (PLATFORM === 'naukri')   agent = new NaukriAgent(f);
     else { SPOT.status('Not a supported job site', 'error'); return; }
 
-    chrome.storage.local.set({ jobbot_running: true });
-    try { await agent.run(); }
+    // Only the top frame owns the running flag; 'nav' means the page is about
+    // to navigate mid-run (apply flow / back / next page) and the run resumes
+    // on the next page load – so the flag must survive.
+    if (IS_TOP) chrome.storage.local.set({ jobbot_running: true });
+    let outcome = 'done';
+    try { outcome = await agent.run(); }
     catch (e) { SPOT.status(`Error: ${e.message}`, 'error'); }
-    finally   { chrome.storage.local.set({ jobbot_running: false }); agent = null; }
+    finally {
+      if (IS_TOP && outcome !== 'nav') chrome.storage.local.set({ jobbot_running: false });
+      agent = null;
+    }
   }
 
   function stopAgent() {
@@ -984,16 +1093,26 @@
     return true;
   });
 
-  // Auto-resume for Indeed apply page navigation
+  // Auto-resume: Indeed/Naukri apply flows and pagination are full page
+  // navigations that destroy the running agent. If a run is in progress,
+  // restart the right agent on every page load so the run continues
+  // seamlessly: job → apply → back to list → next job → next page.
   chrome.storage.local.get(['jobbot_running', 'jobbot_profile'], data => {
-    if (data.jobbot_running && data.jobbot_profile && PLATFORM === 'indeed') {
-      const tmpAgent = new IndeedAgent(new Filler(data.jobbot_profile));
-      if (tmpAgent.isApplyPage()) {
-        agent = tmpAgent;
-        agent.run().finally(() => {
-          chrome.storage.local.set({ jobbot_running: false });
-          agent = null;
-        });
+    if (!data.jobbot_running || !data.jobbot_profile) return;
+
+    if (IS_TOP) {
+      startAgent(data.jobbot_profile);
+      return;
+    }
+
+    // Inside Indeed's embedded apply iframe: run the form-filler only.
+    // The top-frame agent is waiting on this frame and owns the run state.
+    if (PLATFORM === 'indeed') {
+      const a = new IndeedAgent(new Filler(data.jobbot_profile));
+      if (a.isApplyPage()) {
+        a.running = true;
+        agent = a; // so STOP_AGENT reaches this frame's agent too
+        a.runApplication().catch(() => {}).finally(() => { agent = null; });
       }
     }
   });

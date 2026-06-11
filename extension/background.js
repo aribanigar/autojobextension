@@ -1,7 +1,7 @@
 // background.js – JobBot service worker
 
 const DEFAULT_PROFILE = {
-  personal: { name: '', email: '', phone: '', location: '', gender: '' },
+  personal: { name: '', email: '', phone: '', location: '', postalCode: '', gender: '' },
   professional: {
     currentTitle: '', currentCompany: '', experience: '3',
     currentSalary: '', expectedSalary: '', noticePeriod: '30 days',

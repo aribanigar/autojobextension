@@ -54,6 +54,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     s('f-email',    p.personal?.email);
     s('f-phone',    p.personal?.phone);
     s('f-location', p.personal?.location);
+    s('f-zip',      p.personal?.postalCode);
     s('f-gender',   p.personal?.gender);
     s('f-title',    p.professional?.currentTitle);
     s('f-company',  p.professional?.currentCompany);
@@ -84,6 +85,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         email:    v('f-email'),
         phone:    v('f-phone'),
         location: v('f-location'),
+        postalCode: v('f-zip'),
         gender:   v('f-gender'),
       },
       professional: {
