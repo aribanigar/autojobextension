@@ -664,13 +664,18 @@
     constructor(f) { this.f = f; this.applied = 0; this.skipped = 0; this.running = false; }
 
     isApplyPage() {
-      return /\/apply\b|apply\.indeed\.com|smartapply\.indeed\.com/i.test(location.href)
-          || !!$('[data-testid="ia-continueButton"], [data-testid="ia-submitButton"], ' +
-                 '.ia-BasePage, [data-testid="ia-Questions-main"], .ia-Modal, iframe[src*="indeedapply"]');
+      if (/\/apply\b|apply\.indeed\.com|smartapply\.indeed\.com/i.test(location.href)) return true;
+      // The form UI must be VISIBLE – Indeed preloads a hidden apply iframe on
+      // its home/search pages, which previously faked an in-progress application.
+      if (this.applyFrame()) return true;
+      return $$('[data-testid="ia-continueButton"], [data-testid="ia-submitButton"], ' +
+                '.ia-BasePage, [data-testid="ia-Questions-main"], .ia-Modal').some(isVis);
     }
 
     jobCards() {
-      return $$('.job_seen_beacon, [data-testid="slider_item"], .resultContent').filter(isVis);
+      return $$('.job_seen_beacon, [data-testid="slider_item"], .resultContent, ' +
+                '[data-testid="job-card"], li[class*="result"] [class*="cardOutline"], ' +
+                'div[class*="jobCard"], li.eu4oa1w0').filter(isVis);
     }
 
     findApplyButton(scope = document) {
@@ -695,15 +700,16 @@
       let btn = this.findApplyButton(card);
 
       if (!btn) {
-        // Click the job title to open detail panel
-        const title = $('h2 a[data-jk], a.jcs-JobTitle, h2 a', card);
+        // Click the job title/card to open the right-side detail panel
+        const title = $('h2 a[data-jk], a.jcs-JobTitle, h2 a, a[class*="JobTitle"], ' +
+                        'a[id^="job_"], [class*="title"] a', card) || card;
         if (title) {
-          SPOT.pulse(title, `Opening: ${title.textContent.trim().substring(0, 55)}`);
+          SPOT.pulse(title, `Opening: ${(title.textContent || '').trim().substring(0, 55)}`);
           realClick(title);
           await sleep(rand(1200, 2200));
         }
         // Look in the right-side detail panel – give it a moment to render
-        for (let i = 0; i < 4 && !btn; i++) {
+        for (let i = 0; i < 6 && !btn; i++) {
           btn = this.findApplyButton(document);
           if (!btn) await sleep(800);
         }
@@ -715,15 +721,26 @@
       // If it's a link that opens a new tab, force same-tab so auto-resume works
       if (btn.tagName === 'A') btn.setAttribute('target', '_self');
 
-      await humanClick(btn, 'Opening Indeed Apply…');
+      // Keep the spotlight locked on "Apply with Indeed" through the whole
+      // click + retry sequence so it's obvious and reliably registers.
+      SPOT.pulse(btn, '🟦 Clicking "Apply with Indeed"…');
+      btn.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      await sleep(rand(400, 700));
+      const r = btn.getBoundingClientRect();
+      await moveTo(r.left + r.width / 2, r.top + r.height / 2);
+      await sleep(rand(120, 260));
+      realClick(btn);
 
       // Wait for the apply flow to actually appear (navigation or in-page form);
-      // retry the click once if nothing happened – Indeed's button ignores
+      // re-click a few times if nothing happened – Indeed's button ignores
       // the first click while its JS is still hydrating.
-      for (let i = 0; i < 8; i++) {
+      for (let i = 0; i < 10; i++) {
         await sleep(800);
-        if (this.isApplyPage()) return 'clicked';
-        if (i === 3) { realClick(btn); SPOT.status('Retrying Apply click…', 'applying'); }
+        if (this.isApplyPage() || this.isDone()) return 'clicked';
+        if ((i === 2 || i === 5) && btn.isConnected && isVis(btn)) {
+          SPOT.pulse(btn, '🟦 Retrying "Apply with Indeed"…');
+          realClick(btn);
+        }
       }
       return this.isApplyPage() ? 'clicked' : 'none';
     }
@@ -802,23 +819,44 @@
     }
 
     isDone() {
-      return !!$(
-        '[data-testid="ia-ThankYou"], [data-testid="ia-congrats"], .ia-ThankYou, ' +
-        '[class*="ThankYou"], [class*="thank-you"], h1[data-testid*="thank"]'
-      );
+      if ($('[data-testid="ia-ThankYou"], [data-testid="ia-congrats"], .ia-ThankYou, ' +
+            '[class*="ThankYou"], [class*="thank-you"], h1[data-testid*="thank"]')) return true;
+      // The post-apply confirmation screen ("Your application has been submitted!")
+      return $$('h1, h2, [role="heading"], [class*="title"]').some(el =>
+        isVis(el) && /your application has been submitted|application (has been |was )?submitted|successfully applied/i.test(el.textContent));
     }
 
+    // Only a VISIBLE apply iframe counts – Indeed preloads a hidden one
     applyFrame() {
-      return $('iframe[src*="indeedapply"], iframe[src*="smartapply"], iframe[src*="apply.indeed"]');
+      const f = $('iframe[src*="indeedapply"], iframe[src*="smartapply"], iframe[src*="apply.indeed"]');
+      return f && isVis(f) ? f : null;
     }
 
     async reportApplied() {
       this.applied++;
       report({ type: 'JOB_APPLIED', platform: 'indeed', title: document.title, url: location.href });
-      SPOT.status(`✓ Applied on Indeed! (${this.applied} total)`, 'success');
-      await sleep(rand(1800, 2800));
+      SPOT.status(`✓ Applied on Indeed! (${this.applied} total) – returning to job list…`, 'success');
+      await sleep(rand(1500, 2500));
+      await this.returnToList();
+    }
+
+    // After submitting, get back to the search results so the run continues.
+    // Prefer the explicit "Return to job search" button on the confirmation
+    // page; fall back to history.back (twice if we're still on the apply flow).
+    async returnToList() {
+      const back = $$('a, button').find(b =>
+        isVis(b) && /return to job search|back to (job )?results|see more jobs|view more jobs/i.test(b.textContent));
+      if (back) {
+        await humanClick(back, 'Returning to job list…');
+        await sleep(rand(2500, 3800));
+        return;
+      }
       history.back();
       await sleep(rand(2500, 3500));
+      if (/\/apply\b|apply\.indeed\.com|smartapply\.indeed\.com|post-apply/i.test(location.href)) {
+        history.back();
+        await sleep(rand(2000, 3000));
+      }
     }
 
     async runApplication() {
@@ -837,10 +875,10 @@
             await sleep(3000);
             if (!this.applyFrame() || this.isDone()) break;
           }
-          // The frame agent reports the application itself – don't double-count
           await sleep(1500);
-          history.back();
-          await sleep(rand(2500, 3500));
+          if (this.isDone()) { await this.reportApplied(); return true; }
+          // The frame agent reported the application itself – just return to list
+          await this.returnToList();
           return true;
         }
 
