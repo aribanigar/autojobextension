@@ -104,6 +104,8 @@
 
   async function humanClick(el, msg = '') {
     if (!isVis(el)) return false;
+    await yieldToLeadsLoft(); // don't fight if LeadsLoft is mid-action
+    if (!isVis(el)) return false;
     if (msg) SPOT.pulse(el, msg);
     el.scrollIntoView({ behavior: 'smooth', block: 'center' });
     await sleep(rand(250, 500));
@@ -114,6 +116,32 @@
     await sleep(rand(350, 700));
     return true;
   }
+
+  // ─── LeadsLoft / other-extension coexistence ─────────────────────────────
+  // Both extensions inject into the same pages. The two risks:
+  //   1) LeadsLoft locks the pointer on the same element JobBot is about to
+  //      click → one of them wins, the other retries anyway so no harm done.
+  //   2) LeadsLoft deletes our overlay nodes → we just rebuild them next tick.
+  // We guard against (2) by detecting when our bar/box nodes are gone and
+  // re-injecting. There is nothing we can do about (1) except use human-like
+  // delays so the two bots rarely collide. We expose a window flag so
+  // LeadsLoft can check if JobBot is mid-run and yield accordingly (the
+  // mirror flag LL_ACTIVE lets us yield to LeadsLoft).
+  Object.defineProperty(window, '__jobbotRunning', {
+    get: () => !!(typeof agent !== 'undefined' && agent?.running),
+    configurable: true,
+  });
+
+  // If LeadsLoft is doing something right now, yield for up to 10 s
+  async function yieldToLeadsLoft() {
+    for (let i = 0; i < 20; i++) {
+      const llBusy = window.__ll_active || window.__leadsLoftRunning
+                  || window.__llRunning  || window.LeadsLoftActive;
+      if (!llBusy) return;
+      await sleep(500);
+    }
+  }
+
 
   // Safe messaging – never let a dead service worker / reloaded extension kill the run loop
   function report(payload) {
@@ -208,6 +236,18 @@
       box = document.createElement('div');
       box.id = 'jobbotx-box';
       document.body.appendChild(box);
+
+      // If another extension (e.g. LeadsLoft) removes our overlay nodes,
+      // rebuild them on the next MutationObserver tick so the agent keeps
+      // its status bar and spotlight without any manual intervention.
+      if (typeof MutationObserver !== 'undefined') {
+        new MutationObserver(() => {
+          if (bar && !document.body.contains(bar)) {
+            bar = null; box = null;
+            if (window.__jobbotRunning) init();
+          }
+        }).observe(document.body, { childList: true, subtree: false });
+      }
     }
 
     const CLR = {
