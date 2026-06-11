@@ -527,7 +527,7 @@
                      'a.job-card-container__link, a[class*="job-card-list__title"], a[href*="/jobs/view/"]', card);
       if (!link) return false;
       SPOT.pulse(link, `Opening: ${link.textContent.trim().substring(0, 60)}`);
-      link.click();
+      realClick(link);
       await sleep(rand(1800, 3000));
       return true;
     }
@@ -535,20 +535,41 @@
     async findEasyApply() {
       try {
         const btn = await waitFor(
-          '.jobs-apply-button--top-card button, .jobs-s-apply button, button[aria-label*="Easy Apply"]',
+          '.jobs-apply-button--top-card button, .jobs-s-apply button, ' +
+          'button.jobs-apply-button, [data-live-test-job-apply-button], ' +
+          'button[aria-label*="Easy Apply"], button[data-job-id][class*="apply"]',
           document, 6000
         );
-        const txt = btn.textContent.trim();
+        const txt = btn.textContent.trim() + ' ' + (btn.getAttribute('aria-label') || '');
         if (/applied|saved/i.test(txt) || !/apply/i.test(txt)) return null;
         return btn;
       } catch { return null; }
     }
 
+    // Post-submit "Application sent" state – also shown as a modal that MUST be
+    // closed before the next job, or it blocks every following card click.
+    isDone() {
+      if ($('.artdeco-inline-feedback--success, .jobs-post-apply-nirvanaBanner, [class*="post-apply"]')) return true;
+      return $$('h2, h3, [role="heading"]').some(el =>
+        isVis(el) && /application sent|your application was sent/i.test(el.textContent));
+    }
+
+    async closeSuccessModal() {
+      for (let i = 0; i < 3; i++) {
+        const done = $$('button').find(b => isVis(b) &&
+          /^(done|dismiss|not now|no thanks)$/i.test(b.textContent.trim()
+            || b.getAttribute('aria-label') || ''));
+        const x = done || $('.artdeco-modal button[aria-label="Dismiss"]');
+        if (!x) return;
+        realClick(x);
+        await sleep(rand(600, 1100));
+      }
+    }
+
     async handleStep() {
       const modal = $('.jobs-easy-apply-content, [data-test-modal]');
+      if (this.isDone()) return 'done';
       if (!modal) return 'no-modal';
-
-      if ($('.artdeco-inline-feedback--success, .jobs-post-apply-nirvanaBanner', document)) return 'done';
 
       await this.f.all(modal);
       await sleep(rand(350, 600));
@@ -575,10 +596,17 @@
 
     async dismissModal() {
       const btn = $('[data-test-modal-close-btn], button[aria-label="Dismiss"], button[aria-label="Discard"]');
-      if (btn) { btn.click(); await sleep(rand(600, 1000)); }
+      if (btn) { realClick(btn); await sleep(rand(700, 1100)); }
+      // LinkedIn then asks "Discard application?" – answer it, or the
+      // confirmation dialog blocks every following job.
+      const discard =
+        $('[data-control-name="discard_application_confirm_btn"]') ||
+        $$('.artdeco-modal button, [role="alertdialog"] button, [data-test-dialog] button')
+          .find(b => isVis(b) && /^discard$/i.test(b.textContent.trim()));
+      if (discard) { realClick(discard); await sleep(rand(600, 1000)); }
     }
 
-    async applyCard(card) {
+    async applyCard(card, id) {
       if (!await this.openCard(card)) { this.skipped++; reportSkip(); return; }
 
       const btn = await this.findEasyApply();
@@ -593,9 +621,11 @@
         const r = await this.handleStep();
         if (r === 'done') {
           this.applied++;
+          if (id) appliedSet.add(id); // confirmed → permanent memory
           report({ type: 'JOB_APPLIED', platform: 'linkedin', title: document.title, url: location.href });
           SPOT.status(`✓ Applied! (${this.applied} total)`, 'success');
-          await sleep(rand(1500, 2500));
+          await sleep(rand(1200, 2000));
+          await this.closeSuccessModal(); // unblock the page for the next job
           return;
         }
         if (r === 'stuck' || r === 'no-modal') {
@@ -642,8 +672,8 @@
 
             card.scrollIntoView({ block: 'center' });
             await sleep(rand(400, 800));
-            await this.applyCard(card);
-            await sleep(rand(2200, 4000));
+            await this.applyCard(card, id);
+            await sleep(rand(1500, 2800));
             progressed = true;
             break; // re-query the (possibly re-rendered) list
           }
@@ -1354,6 +1384,8 @@
             const out = await this.applyHere();
             if (out === 'done') {
               this.applied++;
+              if (jid) appliedSet.add(jid); // confirmed → permanent memory
+              appliedSet.add(normalizeJobId(location.href));
               report({ type: 'JOB_APPLIED', platform: 'naukri', title: document.title, url: location.href });
               SPOT.status(`✓ Applied on Naukri! (${this.applied} total)`, 'success');
             } else { this.skipped++; reportSkip(); }
