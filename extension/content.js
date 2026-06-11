@@ -64,13 +64,37 @@
     el.dispatchEvent(new Event('blur',   { bubbles: true }));
   }
 
+  // Glide the (synthetic) cursor toward an element so movement isn't teleport-like.
+  // Indeed/reCAPTCHA score mouse activity; a few mousemove events before a click
+  // read more like a person than an instant click at dead-center.
+  let _mx = Math.random() * window.innerWidth, _my = Math.random() * window.innerHeight;
+  async function moveTo(x, y) {
+    const steps = rand(5, 11);
+    for (let i = 1; i <= steps; i++) {
+      const t = i / steps;
+      // ease-in-out + slight wobble
+      const ex = _mx + (x - _mx) * t + (Math.random() - 0.5) * 6;
+      const ey = _my + (y - _my) * t + (Math.random() - 0.5) * 6;
+      const tgt = document.elementFromPoint(
+        Math.max(0, Math.min(innerWidth - 1, ex)),
+        Math.max(0, Math.min(innerHeight - 1, ey))
+      );
+      (tgt || document.body)?.dispatchEvent(new MouseEvent('mousemove', {
+        bubbles: true, cancelable: true, view: window, clientX: ex, clientY: ey,
+      }));
+      await sleep(rand(8, 22));
+    }
+    _mx = x; _my = y;
+  }
+
   // Full pointer/mouse event sequence – React buttons (Indeed) often ignore bare .click()
   function realClick(el) {
     const r = el.getBoundingClientRect();
-    const opts = {
-      bubbles: true, cancelable: true, view: window,
-      clientX: r.left + r.width / 2, clientY: r.top + r.height / 2,
-    };
+    // aim for a random point inside the element, not always the exact center
+    const cx = r.left + r.width * (0.35 + Math.random() * 0.3);
+    const cy = r.top + r.height * (0.35 + Math.random() * 0.3);
+    const opts = { bubbles: true, cancelable: true, view: window, clientX: cx, clientY: cy };
+    el.dispatchEvent(new MouseEvent('mousemove',  opts));
     el.dispatchEvent(new PointerEvent('pointerdown', opts));
     el.dispatchEvent(new MouseEvent('mousedown', opts));
     el.dispatchEvent(new PointerEvent('pointerup', opts));
@@ -83,6 +107,9 @@
     if (msg) SPOT.pulse(el, msg);
     el.scrollIntoView({ behavior: 'smooth', block: 'center' });
     await sleep(rand(250, 500));
+    const r = el.getBoundingClientRect();
+    await moveTo(r.left + r.width / 2, r.top + r.height / 2);
+    await sleep(rand(80, 200));
     realClick(el);
     await sleep(rand(350, 700));
     return true;
@@ -134,6 +161,11 @@
             0%,100%{box-shadow:0 0 0 3px rgba(124,58,237,.45),0 0 14px rgba(124,58,237,.3)}
             50%{box-shadow:0 0 0 7px rgba(124,58,237,.65),0 0 32px rgba(124,58,237,.7)}}
           .jb-pulse{animation:jb-glow .75s ease-in-out 3!important;}
+          @keyframes jb-glow-act{
+            0%,100%{box-shadow:0 0 0 3px rgba(217,119,6,.6),0 0 16px rgba(217,119,6,.5)}
+            50%{box-shadow:0 0 0 9px rgba(217,119,6,.85),0 0 40px rgba(245,158,11,.9)}}
+          .jb-act{animation:jb-glow-act .7s ease-in-out infinite!important;border-color:#f59e0b!important;}
+          #jb-bar.jb-bar-act{animation:jb-bl 1s ease-in-out infinite;}
         `;
         document.head.appendChild(s);
       }
@@ -188,9 +220,45 @@
         clearTimeout(box._t);
         box._t = setTimeout(() => { if (box) box.style.display = 'none'; }, 2200);
       },
+      // Persistent attention spotlight for human-in-the-loop steps (e.g. captcha).
+      // Stays locked on the element and keeps the status bar pulsing until cleared.
+      attention(el, msg) {
+        init();
+        const [bg, fg] = ['#b45309', '#fff'];
+        bar.style.cssText += `;background:${bg};color:${fg};`;
+        bar.style.display = 'flex';
+        bar.classList.add('jb-bar-act');
+        const m = document.getElementById('jb-msg');
+        if (m) m.textContent = `JobBot: ${msg}`;
+        clearInterval(box._loop);
+        clearTimeout(box._t);
+        const lock = () => {
+          if (!el || !el.isConnected) return;
+          const r = el.getBoundingClientRect();
+          if (r.width === 0 || r.height === 0) return;
+          Object.assign(box.style, {
+            display: 'block',
+            top: `${Math.max(0, r.top - 6)}px`, left: `${Math.max(0, r.left - 6)}px`,
+            width: `${r.width + 12}px`, height: `${r.height + 12}px`,
+          });
+          box.classList.add('jb-act');
+        };
+        lock();
+        box._loop = setInterval(lock, 600); // follow the element if the page scrolls
+        try { // gentle audio nudge so the user notices even on another tab
+          const ac = new (window.AudioContext || window.webkitAudioContext)();
+          const o = ac.createOscillator(), g = ac.createGain();
+          o.connect(g); g.connect(ac.destination); o.frequency.value = 880;
+          g.gain.value = 0.05; o.start(); o.stop(ac.currentTime + 0.18);
+        } catch {}
+      },
+      clearAttention() {
+        if (box) { clearInterval(box._loop); box.classList.remove('jb-act'); box.style.display = 'none'; }
+        if (bar) bar.classList.remove('jb-bar-act');
+      },
       hide() {
-        if (bar) bar.style.display = 'none';
-        if (box) box.style.display = 'none';
+        if (bar) { bar.style.display = 'none'; bar.classList.remove('jb-bar-act'); }
+        if (box) { clearInterval(box._loop); box.style.display = 'none'; }
       },
     };
   })();
@@ -681,23 +749,51 @@
       return { cont, sub };
     }
 
+    // A reCAPTCHA the user must solve by hand. We never try to tick or solve it:
+    // a scripted click can't satisfy reCAPTCHA and only raises bot suspicion.
+    hasCaptcha() {
+      return !!$('iframe[src*="recaptcha"], iframe[title*="reCAPTCHA"], .g-recaptcha, ' +
+                 '[data-testid*="captcha"], iframe[src*="hcaptcha"]');
+    }
+
+    // Pause and let the human tick the captcha; resume the moment Submit enables.
+    async waitForCaptcha(sub) {
+      SPOT.attention(this.hasCaptcha() ? ($('iframe[src*="recaptcha"]') || sub) : sub,
+        '🔐 Please tick the "I\'m not a robot" box — I\'ll submit automatically');
+      for (let i = 0; i < 600 && this.running; i++) { // wait up to ~10 min
+        await sleep(1000);
+        const { sub: s2 } = this.findStepButtons();
+        if (this.isDone()) { SPOT.clearAttention(); return 'submitted'; }
+        if (s2 && isVis(s2) && !s2.disabled) {       // captcha solved → button live
+          SPOT.clearAttention();
+          await sleep(rand(500, 1100));
+          await humanClick(s2, '🎉 Submitting my application!');
+          await sleep(rand(1500, 2500));
+          return 'submitted';
+        }
+      }
+      SPOT.clearAttention();
+      return 'blocked';
+    }
+
     async clickContinue() {
       const { cont, sub } = this.findStepButtons();
 
-      if (cont && isVis(cont)) {
-        SPOT.pulse(cont, '✨ Clicking CONTINUE…');
-        await sleep(rand(600, 1000)); // visible spotlight pause
-        realClick(cont);
-        await sleep(rand(1200, 2000));
+      if (cont && isVis(cont) && !cont.disabled) {
+        await humanClick(cont, '✨ Clicking CONTINUE…');
+        await sleep(rand(900, 1600));
         return 'continue';
       }
 
-      if (sub && isVis(sub)) {
-        SPOT.pulse(sub, '🎉 Submitting my application!');
-        await sleep(rand(800, 1300)); // hold the spotlight so the submit click is visible
-        realClick(sub);
+      if (sub && isVis(sub) && !sub.disabled) {
+        await humanClick(sub, '🎉 Submitting my application!');
         await sleep(rand(1500, 2500));
         return 'submitted';
+      }
+
+      // Submit is present but disabled while a captcha is unsolved → hand to human
+      if (sub && sub.disabled && this.hasCaptcha()) {
+        return await this.waitForCaptcha(sub);
       }
 
       // Button exists but is disabled → required fields are still empty
@@ -1067,6 +1163,7 @@
   function stopAgent() {
     if (agent) { agent.stop(); agent = null; }
     chrome.storage.local.set({ jobbot_running: false });
+    SPOT.clearAttention();
     SPOT.status('Agent stopped', 'warning');
     setTimeout(() => SPOT.hide(), 5000);
   }
