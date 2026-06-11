@@ -761,11 +761,22 @@
     }
 
     async nextPage() {
-      const btn = $('button[aria-label="View next page"], button[aria-label="Next"], ' +
-                    '.jobs-search-pagination__button--next:not([disabled]), ' +
-                    '.artdeco-pagination__button--next:not([disabled])');
+      let btn = $('button[aria-label="View next page"], button[aria-label="Next"], ' +
+                  '.jobs-search-pagination__button--next:not([disabled]), ' +
+                  '.artdeco-pagination__button--next:not([disabled])');
+
+      // Numbered pagination (newer layout): click the page after the current one
+      if (!btn) {
+        const pages = $$('button[aria-label^="Page "]').filter(isVis);
+        const cur = pages.findIndex(b =>
+          b.getAttribute('aria-current') === 'true'
+          || b.closest('li')?.className.match(/active|selected|current/i));
+        if (cur >= 0 && pages[cur + 1]) btn = pages[cur + 1];
+      }
+
       if (!btn || btn.disabled) return false;
-      await humanClick(btn, 'Next page…');
+      SPOT.status('Page finished – moving to the next page…', 'info');
+      await humanClick(btn, '➡️ Next page…');
       await sleep(rand(3000, 4500));
       return true;
     }
@@ -1556,12 +1567,22 @@
     }
 
     async nextPage() {
-      const btn =
+      let btn =
         $('a[class*="pagination"][title="Next"], a.styles_btn-secondary__next, ' +
           '[class*="pagination"] a[class*="next"], a[title="Next"]') ||
-        $$('a, button').find(a => isVis(a) && /^next( page)?$/i.test(a.textContent.trim()));
+        $$('a, button').find(a => isVis(a) && /^next( page)?\s*$|^>$/i.test(a.textContent.trim()));
+
+      // Numbered pagination fallback: the link after the selected page number
+      if (!btn) {
+        const pages = $$('[class*="pagination"] a, [class*="pagination"] span').filter(el => isVis(el) && /^\d+$/.test(el.textContent.trim()));
+        const cur = pages.findIndex(el =>
+          el.tagName !== 'A' || el.className.match(/active|selected|current/i));
+        if (cur >= 0 && pages[cur + 1] && pages[cur + 1].tagName === 'A') btn = pages[cur + 1];
+      }
+
       if (!btn || btn.getAttribute('aria-disabled') === 'true') return false;
-      await humanClick(btn, 'Next page…');
+      SPOT.status('Page finished – moving to the next page…', 'info');
+      await humanClick(btn, '➡️ Next page…');
       await sleep(rand(2800, 4200));
       return true;
     }
