@@ -3,8 +3,8 @@
 
 (function () {
   'use strict';
-  if (window.__jobBotInstalled) return;
-  window.__jobBotInstalled = true;
+  if (window.__jobBotAutoApplyInstalled_v2) return;
+  window.__jobBotAutoApplyInstalled_v2 = true;
 
   // ─── Platform ─────────────────────────────────────────────────────────────
   const PLATFORM = (() => {
@@ -142,71 +142,71 @@
     function init() {
       if (bar || !document.body) return;
 
-      if (!document.getElementById('jb-style')) {
+      if (!document.getElementById('jobbotx-style')) {
         const s = document.createElement('style');
-        s.id = 'jb-style';
+        s.id = 'jobbotx-style';
         s.textContent = `
-          #jb-bar{position:fixed;top:0;left:0;right:0;z-index:2147483647;
+          #jobbotx-bar{position:fixed;top:0;left:0;right:0;z-index:2147483647;
             display:none;align-items:center;gap:10px;padding:10px 18px;
             font:600 13px/1 system-ui,-apple-system,sans-serif;
             box-shadow:0 3px 20px rgba(0,0,0,.4);transition:background .25s;}
-          #jb-bar .jd{width:8px;height:8px;border-radius:50%;background:#fff;
-            animation:jb-bl 1.1s ease-in-out infinite;}
-          #jb-bar .jx{margin-left:auto;cursor:pointer;opacity:.7;font-size:17px;
+          #jobbotx-bar .jd{width:8px;height:8px;border-radius:50%;background:#fff;
+            animation:jobbotx-bl 1.1s ease-in-out infinite;}
+          #jobbotx-bar .jx{margin-left:auto;cursor:pointer;opacity:.7;font-size:17px;
             background:none;border:none;color:inherit;line-height:1;padding:0;}
-          #jb-box{position:fixed;z-index:2147483646;pointer-events:none;
+          #jobbotx-box{position:fixed;z-index:2147483646;pointer-events:none;
             border-radius:8px;display:none;
             transition:top .28s cubic-bezier(.4,0,.2,1),left .28s cubic-bezier(.4,0,.2,1),
               width .28s cubic-bezier(.4,0,.2,1),height .28s cubic-bezier(.4,0,.2,1);}
-          @keyframes jb-bl{0%,100%{opacity:1}50%{opacity:.25}}
-          @keyframes jb-glow{
+          @keyframes jobbotx-bl{0%,100%{opacity:1}50%{opacity:.25}}
+          @keyframes jobbotx-glow{
             0%,100%{box-shadow:0 0 0 3px rgba(124,58,237,.45),0 0 14px rgba(124,58,237,.3)}
             50%{box-shadow:0 0 0 7px rgba(124,58,237,.65),0 0 32px rgba(124,58,237,.7)}}
-          .jb-pulse{animation:jb-glow .75s ease-in-out 4!important;}
-          @keyframes jb-spot{
+          .jobbotx-pulse{animation:jobbotx-glow .75s ease-in-out 4!important;}
+          @keyframes jobbotx-spot{
             0%,100%{box-shadow:0 0 0 4px rgba(124,58,237,.55),0 0 18px rgba(124,58,237,.5),
               0 0 0 9999px rgba(10,5,25,.30)}
             50%{box-shadow:0 0 0 9px rgba(124,58,237,.85),0 0 40px rgba(167,139,250,.9),
               0 0 0 9999px rgba(10,5,25,.38)}}
-          .jb-spot{animation:jb-spot .8s ease-in-out infinite!important;}
-          #jb-start{position:fixed;bottom:26px;right:26px;z-index:2147483647;display:none;
+          .jobbotx-spot{animation:jobbotx-spot .8s ease-in-out infinite!important;}
+          #jobbotx-start{position:fixed;bottom:26px;right:26px;z-index:2147483647;display:none;
             padding:13px 22px;border:none;border-radius:999px;cursor:pointer;
             font:700 14px/1 system-ui,-apple-system,sans-serif;color:#fff;
             background:linear-gradient(135deg,#7c3aed,#6d28d9);
             box-shadow:0 8px 28px rgba(124,58,237,.5);}
-          #jb-start:hover{transform:translateY(-2px);box-shadow:0 12px 34px rgba(124,58,237,.65);}
-          #jb-selall{position:fixed;bottom:78px;right:26px;z-index:2147483647;display:none;
+          #jobbotx-start:hover{transform:translateY(-2px);box-shadow:0 12px 34px rgba(124,58,237,.65);}
+          #jobbotx-selall{position:fixed;bottom:78px;right:26px;z-index:2147483647;display:none;
             padding:10px 18px;border-radius:999px;cursor:pointer;
             font:600 13px/1 system-ui,-apple-system,sans-serif;color:#c4b5fd;
             background:#1a1230;border:2px solid #7c3aed;
             box-shadow:0 6px 20px rgba(124,58,237,.35);}
-          #jb-selall:hover{color:#fff;background:#241740;}
-          .jb-tick{position:absolute;top:8px;right:42px;z-index:9999;width:22px;height:22px;
+          #jobbotx-selall:hover{color:#fff;background:#241740;}
+          .jobbotx-tick{position:absolute;top:8px;right:42px;z-index:9999;width:22px;height:22px;
             border-radius:6px;border:2px solid #7c3aed;background:#fff;cursor:pointer;
             display:flex;align-items:center;justify-content:center;
             font:700 13px/1 system-ui;color:#c4b5fd;transition:all .15s;}
-          .jb-tick:hover{transform:scale(1.15);}
-          .jb-tick.on{background:#7c3aed;color:#fff;box-shadow:0 0 8px rgba(124,58,237,.6);}
-          @keyframes jb-glow-act{
+          .jobbotx-tick:hover{transform:scale(1.15);}
+          .jobbotx-tick.on{background:#7c3aed;color:#fff;box-shadow:0 0 8px rgba(124,58,237,.6);}
+          @keyframes jobbotx-glow-act{
             0%,100%{box-shadow:0 0 0 3px rgba(217,119,6,.6),0 0 16px rgba(217,119,6,.5),
               0 0 0 9999px rgba(10,5,25,.35)}
             50%{box-shadow:0 0 0 9px rgba(217,119,6,.85),0 0 40px rgba(245,158,11,.9),
               0 0 0 9999px rgba(10,5,25,.45)}}
-          .jb-act{animation:jb-glow-act .7s ease-in-out infinite!important;border-color:#f59e0b!important;}
-          #jb-bar.jb-bar-act{animation:jb-bl 1s ease-in-out infinite;}
+          .jobbotx-act{animation:jobbotx-glow-act .7s ease-in-out infinite!important;border-color:#f59e0b!important;}
+          #jobbotx-bar.jobbotx-bar-act{animation:jobbotx-bl 1s ease-in-out infinite;}
         `;
         document.head.appendChild(s);
       }
 
       bar = document.createElement('div');
-      bar.id = 'jb-bar';
-      bar.innerHTML = '<span class="jd"></span><span id="jb-msg">JobBot active</span>' +
+      bar.id = 'jobbotx-bar';
+      bar.innerHTML = '<span class="jd"></span><span id="jobbotx-msg">JobBot active</span>' +
                       '<button class="jx" title="Stop">✕</button>';
       bar.querySelector('.jx').onclick = stopAgent;
       document.body.appendChild(bar);
 
       box = document.createElement('div');
-      box.id = 'jb-box';
+      box.id = 'jobbotx-box';
       document.body.appendChild(box);
     }
 
@@ -227,7 +227,7 @@
         const [bg, fg] = CLR[type] || CLR.info;
         bar.style.cssText += `;background:${bg};color:${fg};`;
         bar.style.display = 'flex';
-        const el = document.getElementById('jb-msg');
+        const el = document.getElementById('jobbotx-msg');
         if (el) el.textContent = `JobBot: ${msg}`;
       },
       pulse(el, msg = '') {
@@ -253,14 +253,14 @@
           });
         };
         place();
-        box.classList.remove('jb-act');
-        box.classList.remove('jb-spot');
+        box.classList.remove('jobbotx-act');
+        box.classList.remove('jobbotx-spot');
         void box.offsetWidth; // force reflow so the animation restarts
-        box.classList.add('jb-spot');
+        box.classList.add('jobbotx-spot');
         box._loop = setInterval(place, 150); // track the element while spotlit
         box._t = setTimeout(() => {
           clearInterval(box._loop);
-          box.classList.remove('jb-spot');
+          box.classList.remove('jobbotx-spot');
           box.style.display = 'none';
         }, 3500);
       },
@@ -271,8 +271,8 @@
         const [bg, fg] = ['#b45309', '#fff'];
         bar.style.cssText += `;background:${bg};color:${fg};`;
         bar.style.display = 'flex';
-        bar.classList.add('jb-bar-act');
-        const m = document.getElementById('jb-msg');
+        bar.classList.add('jobbotx-bar-act');
+        const m = document.getElementById('jobbotx-msg');
         if (m) m.textContent = `JobBot: ${msg}`;
         clearInterval(box._loop);
         clearTimeout(box._t);
@@ -285,9 +285,9 @@
             top: `${Math.max(0, r.top - 6)}px`, left: `${Math.max(0, r.left - 6)}px`,
             width: `${r.width + 12}px`, height: `${r.height + 12}px`,
           });
-          box.classList.add('jb-act');
+          box.classList.add('jobbotx-act');
         };
-        box.classList.remove('jb-spot');
+        box.classList.remove('jobbotx-spot');
         lock();
         box._loop = setInterval(lock, 300); // follow the element if the page scrolls
         try { // gentle audio nudge so the user notices even on another tab
@@ -300,16 +300,16 @@
       clearAttention() {
         if (box) {
           clearInterval(box._loop);
-          box.classList.remove('jb-act'); box.classList.remove('jb-spot');
+          box.classList.remove('jobbotx-act'); box.classList.remove('jobbotx-spot');
           box.style.display = 'none';
         }
-        if (bar) bar.classList.remove('jb-bar-act');
+        if (bar) bar.classList.remove('jobbotx-bar-act');
       },
       hide() {
-        if (bar) { bar.style.display = 'none'; bar.classList.remove('jb-bar-act'); }
+        if (bar) { bar.style.display = 'none'; bar.classList.remove('jobbotx-bar-act'); }
         if (box) {
           clearInterval(box._loop);
-          box.classList.remove('jb-act'); box.classList.remove('jb-spot');
+          box.classList.remove('jobbotx-act'); box.classList.remove('jobbotx-spot');
           box.style.display = 'none';
         }
       },
@@ -2157,7 +2157,7 @@
       const show = n > 0 && !(agent && agent.running);
       if (show && !startBtn && document.body) {
         startBtn = document.createElement('button');
-        startBtn.id = 'jb-start';
+        startBtn.id = 'jobbotx-start';
         startBtn.addEventListener('click', () => {
           startBtn.style.display = 'none';
           attemptedSet.clear();
@@ -2190,7 +2190,7 @@
       } catch { return []; }
     }
     function paintTicks() {
-      $$('.jb-tick').forEach(t => {
+      $$('.jobbotx-tick').forEach(t => {
         const card = t.parentElement;
         if (!card) return;
         const id = probe.cardId(card);
@@ -2202,7 +2202,7 @@
       const show = ids.length > 0 && !(agent && agent.running);
       if (show && !selAllBtn && document.body) {
         selAllBtn = document.createElement('button');
-        selAllBtn.id = 'jb-selall';
+        selAllBtn.id = 'jobbotx-selall';
         selAllBtn.addEventListener('click', () => {
           const cur = visibleIds();
           const allOn = cur.length && cur.every(id => selectedSet.has(id));
@@ -2245,24 +2245,24 @@
 
       // Cleanup: remove duplicated nested ticks and ticks whose host turned
       // out not to be a job card (nav items, icons, dropdowns).
-      $$('.jb-tick').forEach(t => {
+      $$('.jobbotx-tick').forEach(t => {
         const host = t.parentElement;
         if (!host) { t.remove(); return; }
-        if (!isJobCard(host) || host.parentElement?.closest('[data-jb-tick]')) {
+        if (!isJobCard(host) || host.parentElement?.closest('[data-jobbotx-tick]')) {
           t.remove();
-          host.removeAttribute('data-jb-tick');
+          host.removeAttribute('data-jobbotx-tick');
         }
       });
 
       for (const card of cards) {
-        if (card.querySelector(':scope > .jb-tick')) { card.setAttribute('data-jb-tick', '1'); continue; }
-        if (card.closest('[data-jb-tick]') !== null && card.closest('[data-jb-tick]') !== card) continue;
+        if (card.querySelector(':scope > .jobbotx-tick')) { card.setAttribute('data-jobbotx-tick', '1'); continue; }
+        if (card.closest('[data-jobbotx-tick]') !== null && card.closest('[data-jobbotx-tick]') !== card) continue;
         const id = probe.cardId(card);
         if (!id) continue;
-        card.setAttribute('data-jb-tick', '1');
+        card.setAttribute('data-jobbotx-tick', '1');
         if (getComputedStyle(card).position === 'static') card.style.position = 'relative';
         const t = document.createElement('div');
-        t.className = 'jb-tick' + (selectedSet.has(id) ? ' on' : '');
+        t.className = 'jobbotx-tick' + (selectedSet.has(id) ? ' on' : '');
         t.textContent = '✓';
         t.title = 'JobBot: tick to queue this job, then press Start';
         t.addEventListener('click', e => {
