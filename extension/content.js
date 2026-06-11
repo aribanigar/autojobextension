@@ -162,7 +162,13 @@
           @keyframes jb-glow{
             0%,100%{box-shadow:0 0 0 3px rgba(124,58,237,.45),0 0 14px rgba(124,58,237,.3)}
             50%{box-shadow:0 0 0 7px rgba(124,58,237,.65),0 0 32px rgba(124,58,237,.7)}}
-          .jb-pulse{animation:jb-glow .75s ease-in-out 3!important;}
+          .jb-pulse{animation:jb-glow .75s ease-in-out 4!important;}
+          .jb-tick{position:absolute;top:8px;right:42px;z-index:9999;width:22px;height:22px;
+            border-radius:6px;border:2px solid #7c3aed;background:#fff;cursor:pointer;
+            display:flex;align-items:center;justify-content:center;
+            font:700 13px/1 system-ui;color:#c4b5fd;transition:all .15s;}
+          .jb-tick:hover{transform:scale(1.15);}
+          .jb-tick.on{background:#7c3aed;color:#fff;box-shadow:0 0 8px rgba(124,58,237,.6);}
           @keyframes jb-glow-act{
             0%,100%{box-shadow:0 0 0 3px rgba(217,119,6,.6),0 0 16px rgba(217,119,6,.5)}
             50%{box-shadow:0 0 0 9px rgba(217,119,6,.85),0 0 40px rgba(245,158,11,.9)}}
@@ -220,7 +226,7 @@
         void box.offsetWidth; // force reflow
         box.classList.add('jb-pulse');
         clearTimeout(box._t);
-        box._t = setTimeout(() => { if (box) box.style.display = 'none'; }, 2200);
+        box._t = setTimeout(() => { if (box) box.style.display = 'none'; }, 3500);
       },
       // Persistent attention spotlight for human-in-the-loop steps (e.g. captcha).
       // Stays locked on the element and keeps the status bar pulsing until cleared.
@@ -700,14 +706,26 @@
         let scrollTries = 0;
         while (this.running) {
           let progressed = false;
+          const selMode = selectionMode();
+          if (selMode && !selectedSet.size()) {
+            SPOT.status('All ticked jobs done – tick more jobs, or ✕ to stop', 'success');
+            this.running = false;
+            return 'nav'; // stay alive in monitor mode awaiting more ticks
+          }
           for (const card of this.jobCards()) {
             const id = this.cardId(card);
-            if (id && (appliedSet.has(id) || attemptedSet.has(id))) continue;
+            // Tick mode: only the jobs the user queued, in list order
+            if (selMode && (!id || !selectedSet.has(id))) continue;
+            if (id && (appliedSet.has(id) || attemptedSet.has(id))) {
+              if (id) selectedSet.remove(id);
+              continue;
+            }
             if (id) attemptedSet.add(id);
 
             card.scrollIntoView({ block: 'center' });
             await sleep(rand(400, 800));
             await this.applyCard(card, id);
+            if (id) selectedSet.remove(id); // tick consumed
             await sleep(rand(1500, 2800));
             progressed = true;
             break; // re-query the (possibly re-rendered) list
@@ -1516,6 +1534,22 @@
     catch { return String(raw); }
   }
 
+  // Ticked jobs: the user queues specific jobs with the ✓ boxes injected on
+  // LinkedIn cards; Start then applies ONLY those, in list order. No ticks =
+  // apply everything (default). Per-tab, survives in-tab navigation.
+  const selectedSet = (() => {
+    let s = new Set();
+    try { s = new Set(JSON.parse(sessionStorage.getItem('jobbot_selected') || '[]')); } catch {}
+    const persist = () => { try { sessionStorage.setItem('jobbot_selected', JSON.stringify([...s])); } catch {} };
+    return {
+      size: () => s.size,
+      has: id => s.has(id),
+      toggle(id) { s.has(id) ? s.delete(id) : s.add(id); persist(); return s.has(id); },
+      remove(id) { s.delete(id); persist(); },
+    };
+  })();
+  const selectionMode = () => { try { return sessionStorage.getItem('jobbot_selmode') === '1'; } catch { return false; } };
+
   let agent = null;
   let lastDoneAt = 0; // when a full pass finished; throttles monitor-mode re-scans
   const IS_TOP = window === window.top;
@@ -1578,6 +1612,8 @@
       case 'START_AGENT':
         attemptedSet.clear(); // explicit user start = fresh scan of the list
         lastDoneAt = 0;       // and no monitor-mode cooldown
+        // Ticked jobs present → this run applies only those, in sequence
+        try { sessionStorage.setItem('jobbot_selmode', selectedSet.size() > 0 ? '1' : '0'); } catch {}
         startAgent(msg.profile || {});
         reply({ ok: true });
         break;
@@ -1616,6 +1652,37 @@
       }
     }
   });
+
+  // ─── Tick boxes on LinkedIn job cards ───────────────────────────────────────
+  // Lets the user queue specific jobs: tick ✓ on cards, press Start, and the
+  // agent applies exactly those in sequence. LinkedIn only (Indeed is locked).
+  if (IS_TOP && PLATFORM === 'linkedin') {
+    const probe = new LinkedInAgent(new Filler({}));
+    const tickTimer = setInterval(() => {
+      if (!contextAlive()) { clearInterval(tickTimer); return; }
+      let cards;
+      try { cards = probe.jobCards(); } catch { return; }
+      for (const card of cards) {
+        if (card.querySelector('.jb-tick')) continue;
+        const id = probe.cardId(card);
+        if (!id) continue;
+        if (getComputedStyle(card).position === 'static') card.style.position = 'relative';
+        const t = document.createElement('div');
+        t.className = 'jb-tick' + (selectedSet.has(id) ? ' on' : '');
+        t.textContent = '✓';
+        t.title = 'JobBot: tick to queue this job, then press Start';
+        t.addEventListener('click', e => {
+          e.preventDefault(); e.stopPropagation();
+          const on = selectedSet.toggle(id);
+          t.classList.toggle('on', on);
+          SPOT.status(selectedSet.size()
+            ? `${selectedSet.size()} job(s) ticked – press Start to apply them in sequence`
+            : 'No jobs ticked – Start applies all jobs', 'info');
+        }, true);
+        card.appendChild(t);
+      }
+    }, 1500);
+  }
 
   // ─── Keep-alive watchdog ────────────────────────────────────────────────────
   // The single guarantee that the agent "never stops" once started: while a run
