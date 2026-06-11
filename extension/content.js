@@ -1425,39 +1425,68 @@
     // Naukri has two buttons: "Apply" (on-platform, automatable) and
     // "Apply on company site" (external tab – we can't fill that, so skip).
     findApplyButton() {
-      const company = $('#company-site-button, [class*="company-site"]');
-      const apply = $('#apply-button, button[class*="apply-button"], a[class*="apply-button"]')
-        || $$('button, a[role="button"]').find(b =>
-            isVis(b) && /^apply\b/i.test(b.textContent.trim()) && !/company\s*site/i.test(b.textContent));
-      if (apply && isVis(apply) && !/applied/i.test(apply.textContent)) return { btn: apply, external: false };
-      if (apply && /applied/i.test(apply.textContent)) return { btn: null, external: false, already: true };
-      if (company && isVis(company) && !apply) return { btn: null, external: true };
+      // Company-site button – must detect first so we can skip those jobs
+      const company = $$(
+        '#company-site-button, [class*="company-site"], [class*="companySite"], ' +
+        'a[class*="apply"][href*="://"][href*="apply"], button[id*="company"]'
+      ).find(isVis);
+
+      // "Already Applied" state – button text flips
+      const alreadyEl = $$('#apply-button, button, [class*="apply"]')
+        .find(b => isVis(b) && /\balready applied\b|^applied$/i.test(b.textContent.trim()));
+      if (alreadyEl) return { btn: null, external: false, already: true };
+
+      // Primary Naukri Apply button – wide net of selectors
+      const apply =
+        $('#apply-button') ||
+        $('[class*="apply-button"]:not([class*="company"]):not([class*="similar"])') ||
+        $('a[id*="apply"]:not([id*="company"]), button[id*="apply"]:not([id*="company"])') ||
+        $$('button, a').find(b =>
+          isVis(b)
+          && /^apply$/i.test(b.textContent.trim())
+          && !/company\s*site|external/i.test(b.textContent)
+          && !b.closest('aside, [class*="sidebar"], [class*="similar"], [class*="interested"]')
+        );
+
+      if (apply && isVis(apply) && !/\balready applied\b|^applied$/i.test(apply.textContent)) {
+        return { btn: apply, external: false };
+      }
+      if (apply && /\balready applied\b|^applied$/i.test(apply.textContent)) {
+        return { btn: null, external: false, already: true };
+      }
+      if (company && !apply) return { btn: null, external: true };
       return { btn: null, external: false };
     }
 
     async clickApply() {
-      const { btn, external, already } = this.findApplyButton();
+      // Wait up to 5s for the Apply button to hydrate after page load
+      let { btn, external, already } = this.findApplyButton();
+      if (!btn && !external && !already) {
+        for (let w = 0; w < 10; w++) {
+          await sleep(500);
+          ({ btn, external, already } = this.findApplyButton());
+          if (btn || external || already) break;
+        }
+      }
       if (already) return 'already';
       if (external) return 'external';
       if (!btn) return false;
 
-      // Locked spotlight on APPLY through the click + verify + retry sequence
-      SPOT.pulse(btn, '🟦 Clicking APPLY…');
+      // Smooth scroll + cursor glide + spotlight before clicking
       btn.scrollIntoView({ behavior: 'smooth', block: 'center' });
-      await sleep(rand(400, 700));
-      const r = btn.getBoundingClientRect();
-      await moveTo(r.left + r.width / 2, r.top + r.height / 2);
-      await sleep(rand(100, 220));
-      realClick(btn);
+      await sleep(rand(600, 900));
+      await humanClick(btn, '🎯 Clicking APPLY…');
 
       // Success = the question drawer opens OR an instant-apply toast fires.
-      // Naukri's button can swallow early clicks while its JS hydrates.
-      for (let i = 0; i < 10; i++) {
-        await sleep(800);
+      // Naukri's button can swallow early clicks while JS hydrates – retry twice.
+      for (let i = 0; i < 14; i++) {
+        await sleep(700);
         if (this.chatbot() || this.isApplied()) return true;
-        if ((i === 3 || i === 6) && btn.isConnected && isVis(btn)) {
-          SPOT.pulse(btn, '🟦 Retrying APPLY…');
-          realClick(btn);
+        // Retry at 3s and 7s if the button is still there
+        if ((i === 4 || i === 9) && btn.isConnected && isVis(btn)
+            && !/already applied|applied/i.test(btn.textContent)) {
+          SPOT.pulse(btn, '🎯 Re-clicking APPLY…');
+          await humanClick(btn, '🎯 Re-clicking APPLY…');
         }
       }
       return !!(this.chatbot() || this.isApplied());
@@ -1465,19 +1494,26 @@
 
     // The apply chatbot drawer that pops in after clicking Apply
     chatbot() {
-      return $('.chatbot_DrawerContentWrapper, [class*="chatbot_Drawer"], div._chatBotContainer, ' +
-               '.chatbot_MessageContainer, [class*="apply-popup"]');
+      return $(
+        '.chatbot_DrawerContentWrapper, [class*="chatbot_Drawer"], ' +
+        'div._chatBotContainer, .chatbot_MessageContainer, ' +
+        '[class*="chatBotContainer"], [class*="chatbot-container"], ' +
+        '[class*="applyDrawer"], [class*="apply-drawer"], ' +
+        '[class*="apply-popup"], [id*="chatbot"], [id*="applyChat"]'
+      );
     }
 
     isApplied() {
-      // Green success toast / message Naukri shows on a successful apply
-      if ($$('[class*="apply"], [class*="success"], [class*="toast"]')
-            .some(el => isVis(el) && /successfully applied|application sent|you have applied/i.test(el.textContent))) {
+      // Green success toast / confirmation message
+      if ($$('[class*="apply"], [class*="success"], [class*="toast"], ' +
+              '[class*="confirmation"], [class*="submitted"]')
+            .some(el => isVis(el) && /successfully applied|application sent|you have applied|application submitted|applied successfully/i.test(el.textContent))) {
         return true;
       }
-      // The Apply button flips to "Applied"
-      const b = $('#apply-button');
-      return !!b && /applied/i.test(b.textContent) && !/apply\b(?!ied)/i.test(b.textContent.trim());
+      // Apply button text flips to "Applied" or "Already Applied"
+      const btns = $$('#apply-button, [class*="apply-button"], button, a')
+        .filter(b => isVis(b) && /^(already applied|applied)$/i.test(b.textContent.trim()));
+      return btns.length > 0;
     }
 
     // Read the current question: the LAST bot bubble (li.botItem), text in .botMsg span
@@ -1639,27 +1675,34 @@
         || /\bdisabled\b/i.test(el.className)
         || parseFloat(getComputedStyle(el).opacity) < 0.55;
 
-      for (let i = 0; i < 8; i++) {
+      // Wait up to ~6 s for Save to enable, polling every 600 ms.
+      // On the last two tries click it even if it still looks disabled
+      // (Naukri sometimes keeps the class but removes the actual guard).
+      for (let i = 0; i < 10; i++) {
         const send = findSave();
-        if (send && isVis(send) && !looksDisabled(send)) {
+        const forceClick = i >= 8;
+        if (send && isVis(send) && (!looksDisabled(send) || forceClick)) {
+          SPOT.pulse(send, '💾 Clicking SAVE…');
+          await sleep(rand(300, 500));
           await humanClick(send, '💾 Saving answer…');
-          await sleep(rand(800, 1500));
+          await sleep(rand(900, 1600));
           return true;
         }
-        await sleep(700); // Save enables once the selection registers
+        // Show waiting status on first poll so the user can see activity
+        if (i === 0) SPOT.status('⏳ Waiting for Save to enable…', 'applying');
+        await sleep(600);
       }
 
-      // Save never enabled – Naukri's chat also submits on Enter in the
-      // textbox; try that before giving up on the question.
+      // Save never enabled – try Enter in the textbox (Naukri accepts it)
       const box = $('div.textArea[contenteditable="true"], [contenteditable="true"], textarea, input', drawer);
-      if (box && isVis(box) && box.textContent?.trim()) {
-        SPOT.pulse(box, '↵ Sending answer…');
+      if (box && isVis(box) && (box.textContent?.trim() || box.value?.trim())) {
+        SPOT.pulse(box, '↵ Sending with Enter…');
         box.focus();
         const k = { bubbles: true, cancelable: true, key: 'Enter', code: 'Enter', keyCode: 13, which: 13 };
         box.dispatchEvent(new KeyboardEvent('keydown',  k));
         box.dispatchEvent(new KeyboardEvent('keypress', k));
         box.dispatchEvent(new KeyboardEvent('keyup',    k));
-        await sleep(rand(800, 1500));
+        await sleep(rand(900, 1600));
         return true;
       }
       return false;
@@ -1756,21 +1799,27 @@
     async run() {
       this.running = true;
 
-      // Resumed on a job detail page after same-tab navigation – apply here,
-      // then go back; auto-resume continues the run on the job list.
+      // Resumed on a job detail page mid-run (same-tab navigation landed here).
+      // Apply, go back, and return 'nav' so the watchdog restarts us on the list.
       if (this.onDetailPage()) {
-        attemptedSet.add(normalizeJobId(location.href)); // no loops this session
+        attemptedSet.add(normalizeJobId(location.href));
         const out = await this.applyHere();
         if (out === 'done') {
-          appliedSet.add(normalizeJobId(location.href)); // confirmed → permanent
+          appliedSet.add(normalizeJobId(location.href));
           this.applied++;
           report({ type: 'JOB_APPLIED', platform: 'naukri', title: document.title, url: location.href });
-          SPOT.status(`✓ Applied on Naukri! (${this.applied} total)`, 'success');
+          SPOT.status(`✓ Applied on Naukri! (${this.applied} total) – returning to list…`, 'success');
           await sleep(rand(1500, 2500));
-        } else { this.skipped++; reportSkip(); }
+        } else {
+          this.skipped++;
+          reportSkip();
+          SPOT.status('Skipping – returning to job list…', 'warning');
+          await sleep(rand(800, 1400));
+        }
         history.back();
         await sleep(rand(2500, 3500));
-        this.running = false;
+        // Do NOT clear running here – return 'nav' keeps the flag alive
+        // and the watchdog restarts us on the list page.
         return 'nav';
       }
 
@@ -1778,55 +1827,71 @@
 
       while (this.running) {
         const cards = await waitForCards(() => this.jobCards());
-        SPOT.status(`${cards.length} jobs on page`, 'info');
-        if (!cards.length) break;
+        if (!cards.length) {
+          SPOT.status('No job cards found – waiting for page to load…', 'info');
+          await sleep(rand(2000, 3500));
+          if (!this.jobCards().length) break; // truly empty, go to monitor
+          continue;
+        }
+        SPOT.status(`Found ${cards.length} jobs – scanning…`, 'info');
 
-        // One job at a time, re-querying after each so the sequence survives
-        // re-renders. Opening a job navigates; auto-resume returns us here.
+        // One job at a time. After openJob() the page navigates away and the
+        // watchdog/auto-resume reloads the run here via 'nav' path above.
         let progressed = true;
         while (progressed && this.running) {
           progressed = false;
           const selMode = selectionMode();
+          // When all ticked jobs are consumed, exit tick-mode and scan everything
           if (selMode && !selectedSet.size()) {
-            SPOT.status('All ticked jobs done – tick more jobs, or ✕ to stop', 'success');
-            this.running = false;
-            return 'nav'; // stay alive in monitor mode awaiting more ticks
+            try { sessionStorage.removeItem('jobbot_selmode'); } catch {}
+            SPOT.status('Ticked jobs done – continuing with all remaining jobs…', 'info');
+            await sleep(rand(800, 1400));
+            // Loop continues now without selMode restriction
           }
           for (const card of this.jobCards()) {
+            if (!this.running) break;
             const jid = this.cardId(card);
-            if (selMode && (!jid || !selectedSet.has(jid))) continue;
+            const nowSelMode = selectionMode();
+            if (nowSelMode && (!jid || !selectedSet.has(jid))) continue;
             if (jid && (appliedSet.has(jid) || attemptedSet.has(jid))) {
               if (jid) selectedSet.remove(jid);
               continue;
             }
-            if (jid) attemptedSet.add(jid); // permanent mark happens on confirmed apply
+            if (jid) attemptedSet.add(jid);
 
-            card.scrollIntoView({ block: 'center' });
-            await sleep(rand(500, 1000));
+            card.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            await sleep(rand(600, 1100));
             if (!await this.openJob(card)) { this.skipped++; reportSkip(); progressed = true; break; }
 
+            // openJob navigated to a detail page – applyHere handles it,
+            // but on same-page open (detail panel) handle inline too.
             const out = await this.applyHere();
             if (out === 'done') {
               this.applied++;
-              if (jid) appliedSet.add(jid); // confirmed → permanent memory
+              if (jid) appliedSet.add(jid);
               appliedSet.add(normalizeJobId(location.href));
               report({ type: 'JOB_APPLIED', platform: 'naukri', title: document.title, url: location.href });
-              SPOT.status(`✓ Applied on Naukri! (${this.applied} total)`, 'success');
+              SPOT.status(`✓ Applied! (${this.applied} total) – next job…`, 'success');
             } else { this.skipped++; reportSkip(); }
 
             await sleep(rand(1500, 2500));
-            history.back();
-            await sleep(rand(2800, 3800));
+            // Go back to the list and re-scan from top
+            if (this.onDetailPage()) {
+              history.back();
+              await sleep(rand(2800, 3800));
+            }
             progressed = true;
-            break; // re-query the refreshed list
+            break;
           }
         }
 
+        if (!this.running) break;
         if (!await this.nextPage()) break;
       }
 
-      SPOT.status(`Done ✓ Applied: ${this.applied} | Skipped: ${this.skipped}`, 'success');
-      this.running = false;
+      // All visible pages exhausted – hand off to monitor mode (watchdog will
+      // re-scan after ~60 s). Do NOT clear the running flag; only Stop does that.
+      SPOT.status(`All jobs processed – monitoring for new ones… ✓ ${this.applied} applied`, 'info');
     }
 
     stop() { this.running = false; }
