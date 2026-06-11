@@ -1517,6 +1517,7 @@
   }
 
   let agent = null;
+  let lastDoneAt = 0; // when a full pass finished; throttles monitor-mode re-scans
   const IS_TOP = window === window.top;
 
   async function startAgent(profile) {
@@ -1548,7 +1549,14 @@
       outcome = 'nav';
     }
     finally {
-      if (IS_TOP && outcome !== 'nav') setStore({ jobbot_running: false });
+      // The run NEVER ends itself – only an explicit user Stop clears the
+      // flag. When all visible jobs are processed ('done'), go into monitor
+      // mode: the watchdog re-scans after a cooldown and picks up any new
+      // postings, pagination, or a search the user tweaks.
+      if (IS_TOP && outcome !== 'nav') {
+        lastDoneAt = Date.now();
+        SPOT.status('All visible jobs processed – monitoring for new ones… (✕ to stop)', 'info');
+      }
       agent = null;
     }
   }
@@ -1569,6 +1577,7 @@
         break;
       case 'START_AGENT':
         attemptedSet.clear(); // explicit user start = fresh scan of the list
+        lastDoneAt = 0;       // and no monitor-mode cooldown
         startAgent(msg.profile || {});
         reply({ ok: true });
         break;
@@ -1632,6 +1641,9 @@
         return;
       }
       if (agent && agent.running) return;
+      // Monitor mode: after a full pass, re-scan every ~60s for new postings
+      // instead of hammering an exhausted list.
+      if (lastDoneAt && Date.now() - lastDoneAt < 60000) return;
       try {
         chrome.storage.local.get(['jobbot_running', 'jobbot_profile'], d => {
           if (chrome.runtime.lastError) return;
