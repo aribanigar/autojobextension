@@ -398,6 +398,13 @@
       if (/\bfresher\b/i.test(t))                             return parseInt(pro.experience || '0') === 0 ? 'Yes' : 'No';
       if (/\bname\b/i.test(t) && !/company|employer/i.test(t)) return per.name || '';
       if (/\bemail\b/i.test(t))                               return per.email || '';
+      // Naukri chatbot phrasings (additive – evaluated after all the above)
+      if (/\b(are you )?(comfortable|okay|open|fine)\b.*\b(with|to|for)\b/i.test(t)) return 'Yes';
+      if (/\bimmediate(ly)?\s*(joiner|join)/i.test(t)) {
+        const days = parseInt((pro.noticePeriod || '30').match(/\d+/)?.[0] || '30', 10);
+        return days <= 15 ? 'Yes' : 'No';
+      }
+      if (/\b(total|overall|relevant)\b.*\bexperience\b/i.test(t)) return pro.experience || '3';
       return null;
     }
 
@@ -1474,7 +1481,9 @@
     }
 
     // Answer one chatbot question: chips, radios, checkboxes, or free text.
-    async answerChat(drawer) {
+    // `attempt` rises when the same question survives a Save – later attempts
+    // switch strategy (AI first, alternate option) instead of repeating a miss.
+    async answerChat(drawer, attempt = 1) {
       const question = this.chatQuestion(drawer);
 
       // Notice-period buckets: profile stores free text ("30 days") but Naukri
@@ -1504,7 +1513,42 @@
         }
         if (pick) return labels.findIndex(o => o === pick);
         const skip = labels.findIndex(l => /skip this question/i.test(l));
-        return skip >= 0 ? skip : 0;
+        if (skip >= 0) return skip;
+        // Retry of the same question → the first guess didn't take; rotate
+        return (attempt - 1) % labels.length;
+      };
+
+      // Naukri's chat textbox often validates numbers-only (CTC in lakhs,
+      // years of experience). Feeding it "12 LPA" silently fails – coerce.
+      const fitAnswer = (input, ans) => {
+        if (ans == null) return ans;
+        ans = String(ans);
+        const numericQ = /\b(in (years?|yrs|lakhs?|lpa|months?)|how many|number of|years? of|ctc|salary|percentage|%)\b/i.test(question);
+        const numericInput = input && (input.inputMode === 'numeric' || input.type === 'number'
+          || input.getAttribute?.('inputmode') === 'numeric');
+        if (numericQ || numericInput) {
+          const m = ans.match(/\d+(\.\d+)?/);
+          if (m) return m[0];
+        }
+        return ans;
+      };
+
+      // Free-text into Naukri's contenteditable <div class="textArea">:
+      // execCommand makes the drawer's JS see real keystrokes (textContent
+      // alone often leaves Save disabled), with a plain fallback after it.
+      const typeChat = async (input, ans) => {
+        input.focus();
+        await sleep(rand(150, 350));
+        if (input.isContentEditable) {
+          try { document.getSelection()?.selectAllChildren(input); } catch {}
+          let ok = false;
+          try { ok = document.execCommand('insertText', false, ans); } catch {}
+          if (!ok || !input.textContent.trim()) input.textContent = ans;
+          input.dispatchEvent(new InputEvent('input', { bubbles: true, data: ans }));
+          input.dispatchEvent(new KeyboardEvent('keyup', { bubbles: true }));
+        } else {
+          await typeInto(input, ans);
+        }
       };
 
       // 1) Radio buttons – click the <input> itself, NOT the wrapper
@@ -1522,11 +1566,13 @@
       if (radioWraps.length) {
         const idx = await choose(radioWraps.map(r => r.label));
         const r = radioWraps[idx] || radioWraps[0];
-        SPOT.pulse(r.input.closest('label') || r.input, `Selecting: "${r.label.slice(0, 40)}"`);
-        await sleep(rand(400, 800));
-        realClick(r.input);
-        r.input.checked = true;
-        r.input.dispatchEvent(new Event('change', { bubbles: true }));
+        await humanClick(r.input.closest('label') || r.input, `🔘 Selecting: "${r.label.slice(0, 40)}"`);
+        realClick(r.input); // the input itself must register, not just the label
+        if (!r.input.checked) {
+          r.input.checked = true;
+          r.input.dispatchEvent(new Event('change', { bubbles: true }));
+          r.input.dispatchEvent(new Event('input',  { bubbles: true }));
+        }
         await sleep(rand(300, 600));
       } else {
         // 2) Chips (single & multi-select share the same class)
@@ -1540,27 +1586,21 @@
         if (optEls.length) {
           const opts = optEls.map(c => c.textContent.trim());
           const el = optEls[await choose(opts)] || optEls[0];
-          SPOT.pulse(el, `Selecting: "${el.textContent.trim().slice(0, 40)}"`);
-          await sleep(rand(300, 700));
-          realClick(el);
+          await humanClick(el, `🔘 Selecting: "${el.textContent.trim().slice(0, 40)}"`);
           await sleep(rand(300, 600));
         } else {
-          // 4) Free text – Naukri uses a contenteditable <div class="textArea">,
-          //    not a real input, so set textContent + input event
+          // 4) Free text – Naukri uses a contenteditable <div class="textArea">
           const input = $('div.textArea[contenteditable="true"], [contenteditable="true"], ' +
-                          'textarea, input[type="text"], input:not([type])', drawer);
+                          'textarea, input[type="text"], input[type="number"], input:not([type])', drawer);
           if (input && isVis(input)) {
-            let ans = this.f.map(question) || await this.f.aiAnswer(question);
+            // On a retry the profile answer clearly didn't fit – ask the AI first
+            let ans = attempt > 1
+              ? (await this.f.aiAnswer(question) || this.f.map(question))
+              : (this.f.map(question) || await this.f.aiAnswer(question));
             if (!ans) ans = this.f.p.professional?.coverLetter || 'Yes';
-            SPOT.pulse(input, `Answering: "${question.slice(0, 40)}"`);
-            if (input.isContentEditable) {
-              input.focus();
-              await sleep(rand(150, 350));
-              input.textContent = ans;
-              input.dispatchEvent(new Event('input', { bubbles: true }));
-            } else {
-              await typeInto(input, ans);
-            }
+            ans = fitAnswer(input, ans);
+            SPOT.pulse(input, `⌨️ Answering: "${question.slice(0, 40)}"`);
+            await typeChat(input, ans);
             await sleep(rand(300, 600));
           }
         }
@@ -1571,7 +1611,7 @@
       // Prefer real buttons, then known sendMsg nodes, then generic divs –
       // and only ever a VISIBLE candidate (hidden sendMsg nodes used to
       // shadow the actual bottom Save button).
-      const saveText = b => /^(save|send|submit|next|continue)$/i.test(b.textContent.trim());
+      const saveText = b => /^(save|send|submit|next|continue|apply|done|ok|confirm)$/i.test(b.textContent.trim());
       const findSave = () => [
         ...$$('button', drawer).filter(saveText),
         ...$$('div[role="button"]', drawer).filter(saveText),
@@ -1587,13 +1627,25 @@
       for (let i = 0; i < 8; i++) {
         const send = findSave();
         if (send && isVis(send) && !looksDisabled(send)) {
-          SPOT.pulse(send, '💾 Clicking SAVE…');
-          await sleep(rand(500, 900));
           await humanClick(send, '💾 Saving answer…');
           await sleep(rand(800, 1500));
           return true;
         }
         await sleep(700); // Save enables once the selection registers
+      }
+
+      // Save never enabled – Naukri's chat also submits on Enter in the
+      // textbox; try that before giving up on the question.
+      const box = $('div.textArea[contenteditable="true"], [contenteditable="true"], textarea, input', drawer);
+      if (box && isVis(box) && box.textContent?.trim()) {
+        SPOT.pulse(box, '↵ Sending answer…');
+        box.focus();
+        const k = { bubbles: true, cancelable: true, key: 'Enter', code: 'Enter', keyCode: 13, which: 13 };
+        box.dispatchEvent(new KeyboardEvent('keydown',  k));
+        box.dispatchEvent(new KeyboardEvent('keypress', k));
+        box.dispatchEvent(new KeyboardEvent('keyup',    k));
+        await sleep(rand(800, 1500));
+        return true;
       }
       return false;
     }
@@ -1604,7 +1656,30 @@
       const drawer = this.chatbot();
       if (drawer) {
         this._sawDrawer = true;
-        await this.answerChat(drawer);
+
+        // Track per-question attempts so the loop answers EVERY question in
+        // sequence instead of hammering one that didn't register – and walks
+        // away after 3 failed tries rather than looping forever.
+        const sig = this.chatQuestion(drawer);
+        this._qTries = this._qTries || new Map();
+        const attempt = (this._qTries.get(sig) || 0) + 1;
+        this._qTries.set(sig, attempt);
+        if (attempt > 3) {
+          SPOT.status('Question won\'t accept an answer – skipping this job', 'warning');
+          return 'stuck';
+        }
+        if (attempt === 1 && sig) SPOT.status(`❓ Q${this._qTries.size}: ${sig.slice(0, 60)}`, 'applying');
+
+        await this.answerChat(drawer, attempt);
+
+        // Wait for progression: next question appears, drawer closes, or the
+        // success toast fires. This is what carries multi-question flows.
+        for (let i = 0; i < 10; i++) {
+          await sleep(800);
+          if (this.isApplied()) return 'done';
+          const d2 = this.chatbot();
+          if (!d2 || this.chatQuestion(d2) !== sig) break;
+        }
         return 'continue';
       }
 
@@ -1624,6 +1699,7 @@
     // Run the full apply sequence on a job detail page
     async applyHere() {
       this._sawDrawer = false;
+      this._qTries = new Map(); // fresh question memory per job
       const r = await this.clickApply();
       if (r === 'external') { SPOT.status('Apply on company site – skipping', 'warning'); return 'skip'; }
       if (r === 'already')  { SPOT.status('Already applied – skipping', 'info');        return 'skip'; }
