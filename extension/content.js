@@ -967,100 +967,180 @@
 
     jobCards() {
       return $$(
-        '.srp-jobtuple-wrapper, article.jobTupleHeader, .jobTuple, .cust-job-tuple, [data-job-id]'
+        '.srp-jobtuple-wrapper, [class*="jobTuple"], .cust-job-tuple, ' +
+        'article[class*="jobTuple"], div[data-job-id]'
       ).filter(isVis);
     }
 
+    cardLink(card) {
+      return $('a.title, a[class*="title"], a[class*="jobTitle"], a[href*="/job-listings-"], h2 a', card);
+    }
+
+    cardId(card) {
+      return card.getAttribute('data-job-id')
+          || this.cardLink(card)?.href
+          || card.textContent.trim().slice(0, 80);
+    }
+
     async openJob(card) {
-      const link = $('a.title, a.jobTitle, a[title][href*="naukri.com/"]', card)
-                || $('h2 a, a[class*="title"]', card);
+      const link = this.cardLink(card);
       if (!link) return false;
       SPOT.pulse(link, `Opening: ${link.textContent.trim().substring(0, 60)}`);
-      link.setAttribute('target', '_self');
-      link.click();
+      link.setAttribute('target', '_self'); // keep it in the same tab so the run can resume
+      await sleep(rand(300, 700));
+      realClick(link);
       await sleep(rand(2800, 4200));
       return true;
     }
 
+    // Naukri has two buttons: "Apply" (on-platform, automatable) and
+    // "Apply on company site" (external tab – we can't fill that, so skip).
+    findApplyButton() {
+      const company = $('#company-site-button, [class*="company-site"]');
+      const apply = $('#apply-button, button[class*="apply-button"], a[class*="apply-button"]')
+        || $$('button, a[role="button"]').find(b =>
+            isVis(b) && /^apply\b/i.test(b.textContent.trim()) && !/company\s*site/i.test(b.textContent));
+      if (apply && isVis(apply) && !/applied/i.test(apply.textContent)) return { btn: apply, external: false };
+      if (apply && /applied/i.test(apply.textContent)) return { btn: null, external: false, already: true };
+      if (company && isVis(company) && !apply) return { btn: null, external: true };
+      return { btn: null, external: false };
+    }
+
     async clickApply() {
-      const btn =
-        $('button#apply-button, button.apply-button, a.apply-button, [id*="applyBtn"]:not([disabled])') ||
-        $$('button').find(b => isVis(b) && /^apply( now)?$/i.test(b.textContent.trim()));
+      const { btn, external, already } = this.findApplyButton();
+      if (already) return 'already';
+      if (external) return 'external';
       if (!btn) return false;
       await humanClick(btn, 'Applying on Naukri…');
-      await sleep(rand(900, 1700));
+      await sleep(rand(1200, 2000));
       return true;
     }
 
+    // The apply chatbot drawer that pops in after clicking Apply
+    chatbot() {
+      return $('[class*="chatbot_DrawerContentWrapper"], [class*="chatbot_Drawer"], ' +
+               '[class*="_drawer"], .chatbot_MessageContainer, [class*="apply-popup"]');
+    }
+
+    isApplied() {
+      // Green success toast / message Naukri shows on a successful apply
+      if ($$('[class*="apply"], [class*="success"], [class*="toast"]')
+            .some(el => isVis(el) && /successfully applied|application sent|you have applied/i.test(el.textContent))) {
+        return true;
+      }
+      // The Apply button flips to "Applied"
+      const b = $('#apply-button');
+      return !!b && /applied/i.test(b.textContent) && !/apply\b(?!ied)/i.test(b.textContent.trim());
+    }
+
+    // Read the current question the chatbot is asking (last bot bubble)
+    chatQuestion(drawer) {
+      const msgs = $$('[class*="botMsg"], [class*="botItem"], [class*="MessageContainer"] [class*="msg"], li', drawer)
+        .filter(el => isVis(el) && el.textContent.trim().length > 3);
+      return msgs.length ? msgs[msgs.length - 1].textContent.trim() : '';
+    }
+
+    // Answer one chatbot question: chips (single/multi-select) or free text.
+    async answerChat(drawer) {
+      const question = this.chatQuestion(drawer);
+
+      // 1) Chip / radio / checkbox options
+      const chips = $$('[class*="chip"], [class*="ssrc__"], [class*="radio"] label, ' +
+                       '[role="radio"], [role="checkbox"]', drawer)
+        .filter(c => isVis(c) && c.textContent.trim());
+      if (chips.length) {
+        const opts = chips.map(c => c.textContent.trim());
+        let pick = this.f.bestOption(question, opts);
+        if (!pick) {
+          const ai = await this.f.aiAnswer(question, opts);
+          if (ai) pick = opts.find(o => o.toLowerCase() === ai.toLowerCase())
+                       || opts.find(o => o.toLowerCase().includes(ai.toLowerCase()));
+        }
+        const chip = chips[pick ? opts.findIndex(o => o === pick) : 0];
+        if (chip) { SPOT.pulse(chip, `Selecting: "${chip.textContent.trim().slice(0, 40)}"`); await sleep(rand(300, 700)); realClick(chip); await sleep(rand(300, 600)); }
+      } else {
+        // 2) Free-text answer
+        const input = $('textarea, input[type="text"], input:not([type]), [contenteditable="true"]', drawer);
+        if (input && isVis(input)) {
+          let ans = this.f.map(question) || await this.f.aiAnswer(question);
+          if (!ans) ans = this.f.p.professional?.coverLetter || 'Yes';
+          SPOT.pulse(input, `Answering: "${question.slice(0, 40)}"`);
+          if (input.isContentEditable) { input.focus(); input.textContent = ans; input.dispatchEvent(new Event('input', { bubbles: true })); }
+          else await typeInto(input, ans);
+          await sleep(rand(300, 600));
+        }
+      }
+
+      // 3) Send / Save the answer to advance to the next question
+      const send =
+        $('[class*="sendMsg"], [class*="sendMsgbtn"], [class*="send-btn"], [class*="saveBtn"], ' +
+          'div[class*="send"]', drawer) ||
+        $$('button, div[role="button"]', drawer).find(b =>
+          isVis(b) && /^(save|send|submit|next|continue)$/i.test(b.textContent.trim()));
+      if (send && isVis(send)) { await humanClick(send, 'Sending answer…'); await sleep(rand(800, 1500)); return true; }
+      return false;
+    }
+
     async handleForm() {
-      // Look for apply popup/chatbot first, then fall back to page
-      const popup = $('.apply-popup, .qapply-popup, [class*="apply-popup"], .chatbot_DrawerContent');
+      if (this.isApplied()) return 'done';
 
-      // Check success ONLY within popup if it exists, else full document
-      const successRoot = popup || document;
-      if ($('[class*="thankYou"], [class*="success-message"], .success-container, [class*="successScreen"]', successRoot)) {
-        return 'done';
+      const drawer = this.chatbot();
+      if (drawer) {
+        if (this.isApplied()) return 'done';
+        const advanced = await this.answerChat(drawer);
+        return advanced ? 'continue' : 'continue';
       }
 
-      const container = popup || document.body;
-      await this.f.all(container);
-      await sleep(rand(350, 600));
-
-      // Submit button
-      const sub =
-        $('button[type="submit"], button#submit-apply, button.submit-btn', container) ||
-        $$('button', container).find(b => isVis(b) && /^(submit|apply now|send application)$/i.test(b.textContent.trim()));
-      if (sub && isVis(sub)) {
-        await humanClick(sub, 'Submitting on Naukri…');
-        await sleep(rand(1500, 2500));
-        if ($('[class*="thankYou"], [class*="success"]', successRoot)) return 'done';
-      }
-
-      // Chatbot Next button
-      const nxt =
-        $('[class*="nextBtn"]:not([disabled]), [data-id="nextbtn"], .chatbot_NextButton') ||
-        $$('button', container).find(b => isVis(b) && /^(next|continue|proceed)$/i.test(b.textContent.trim()));
-      if (nxt && isVis(nxt)) {
-        await humanClick(nxt, 'Next step…');
-        return 'continue';
-      }
-
+      // No chatbot and no success yet – clicking Apply may apply instantly.
+      // Give Naukri a moment to show the toast before deciding.
+      await sleep(rand(800, 1400));
+      if (this.isApplied()) return 'done';
       return 'stuck';
+    }
+
+    // Run the full apply sequence on a job detail page
+    async applyHere() {
+      const r = await this.clickApply();
+      if (r === 'external') { SPOT.status('Apply on company site – skipping', 'warning'); return 'skip'; }
+      if (r === 'already')  { SPOT.status('Already applied – skipping', 'info');        return 'skip'; }
+      if (!r)               return 'skip';
+
+      let steps = 0, misses = 0;
+      while (steps < 25 && this.running) {
+        const res = await this.handleForm();
+        if (res === 'done') return 'done';
+        if (res === 'stuck') { if (++misses >= 3) return 'skip'; }
+        else misses = 0;
+        steps++;
+        await sleep(rand(700, 1500));
+      }
+      return 'skip';
     }
 
     async nextPage() {
       const btn =
-        $('a[title="Next"], .pagination a.next, .styles_paginationarrow__next__1O8ea') ||
-        $$('a').find(a => isVis(a) && /^next page$/i.test(a.textContent.trim()));
-      if (!btn) return false;
+        $('a[class*="pagination"][title="Next"], a.styles_btn-secondary__next, ' +
+          '[class*="pagination"] a[class*="next"], a[title="Next"]') ||
+        $$('a, button').find(a => isVis(a) && /^next( page)?$/i.test(a.textContent.trim()));
+      if (!btn || btn.getAttribute('aria-disabled') === 'true') return false;
       await humanClick(btn, 'Next page…');
-      await sleep(rand(2500, 4000));
+      await sleep(rand(2800, 4200));
       return true;
     }
 
     async run() {
       this.running = true;
+
       // Resumed on a job detail page after same-tab navigation – apply here,
       // then go back; auto-resume continues the run on the job list.
       if (/\/job-listings-/i.test(location.pathname) && !this.jobCards().length) {
-        if (await this.clickApply()) {
-          let steps = 0;
-          while (steps < 20 && this.running) {
-            const r = await this.handleForm();
-            if (r === 'done') {
-              this.applied++;
-              report({ type: 'JOB_APPLIED', platform: 'naukri', title: document.title, url: location.href });
-              SPOT.status(`✓ Applied on Naukri! (${this.applied} total)`, 'success');
-              await sleep(rand(1500, 2500));
-              break;
-            }
-            if (r === 'stuck') { this.skipped++; reportSkip(); break; }
-            steps++;
-            await sleep(rand(700, 1500));
-          }
-        } else {
-          this.skipped++; reportSkip();
-        }
+        const out = await this.applyHere();
+        if (out === 'done') {
+          this.applied++;
+          report({ type: 'JOB_APPLIED', platform: 'naukri', title: document.title, url: location.href });
+          SPOT.status(`✓ Applied on Naukri! (${this.applied} total)`, 'success');
+          await sleep(rand(1500, 2500));
+        } else { this.skipped++; reportSkip(); }
         history.back();
         await sleep(rand(2500, 3500));
         this.running = false;
@@ -1074,40 +1154,33 @@
         SPOT.status(`${cards.length} jobs on page`, 'info');
         if (!cards.length) break;
 
-        for (const card of cards) {
-          if (!this.running) break;
+        // One job at a time, re-querying after each so the sequence survives
+        // re-renders. Opening a job navigates; auto-resume returns us here.
+        let progressed = true;
+        while (progressed && this.running) {
+          progressed = false;
+          for (const card of this.jobCards()) {
+            const jid = this.cardId(card);
+            if (jid && appliedSet.has(jid)) continue;
+            if (jid) appliedSet.add(jid);
 
-          const link = $('a.title, a.jobTitle, a[class*="title"]', card);
-          const jid  = link?.href || '';
-          if (jid && appliedSet.has(jid)) continue;
-          if (jid) appliedSet.add(jid);
+            card.scrollIntoView({ block: 'center' });
+            await sleep(rand(500, 1000));
+            if (!await this.openJob(card)) { this.skipped++; reportSkip(); progressed = true; break; }
 
-          if (!await this.openJob(card)) { this.skipped++; reportSkip(); continue; }
-          if (!await this.clickApply())  { this.skipped++; reportSkip(); history.back(); await sleep(2000); continue; }
-
-          let steps = 0;
-          while (steps < 20 && this.running) {
-            const r = await this.handleForm();
-            if (r === 'done') {
+            const out = await this.applyHere();
+            if (out === 'done') {
               this.applied++;
               report({ type: 'JOB_APPLIED', platform: 'naukri', title: document.title, url: location.href });
               SPOT.status(`✓ Applied on Naukri! (${this.applied} total)`, 'success');
-              await sleep(rand(1500, 2500));
-              history.back();
-              await sleep(rand(2800, 3800));
-              break;
-            }
-            if (r === 'stuck') {
-              this.skipped++; reportSkip();
-              history.back();
-              await sleep(2000);
-              break;
-            }
-            steps++;
-            await sleep(rand(700, 1500));
-          }
+            } else { this.skipped++; reportSkip(); }
 
-          await sleep(rand(2000, 3500));
+            await sleep(rand(1500, 2500));
+            history.back();
+            await sleep(rand(2800, 3800));
+            progressed = true;
+            break; // re-query the refreshed list
+          }
         }
 
         if (!await this.nextPage()) break;
