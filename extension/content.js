@@ -1095,6 +1095,21 @@
     // Prefer the explicit "Return to job search" button on the confirmation
     // page; fall back to history.back (twice if we're still on the apply flow).
     async returnToList() {
+      // Owner-approved: jump straight back to the saved search-results URL
+      // (original query, filters, page) so the run resumes exactly where it
+      // left off; the button/history paths below are fallbacks.
+      const saved = await new Promise(res => {
+        try { chrome.storage.local.get('jobbot_return_url', d => { void chrome.runtime.lastError; res(d?.jobbot_return_url || null); }); }
+        catch { res(null); }
+      });
+      if (saved && saved !== location.href) {
+        SPOT.status('Returning to your job search…', 'info');
+        await sleep(rand(800, 1400));
+        location.href = saved; // navigation hands over to auto-resume
+        await sleep(6000);
+        return;
+      }
+
       const back = $$('a, button').find(b =>
         isVis(b) && /return to job search|back to (job )?results|see more jobs|view more jobs/i.test(b.textContent));
       if (back) {
@@ -1825,6 +1840,11 @@
 
     try { await tabReady; } catch {}
     if (IS_TOP) setStore({ jobbot_running: MY_TAB ?? true });
+    // Remember the exact search-results page (query + filters + page number)
+    // so the apply flow can return to it and continue with the next job.
+    if (IS_TOP && PLATFORM === 'indeed' && agent.onResultsPage?.()) {
+      setStore({ jobbot_return_url: location.href });
+    }
     let outcome = 'done';
     try { outcome = await agent.run(); }
     catch (e) {
