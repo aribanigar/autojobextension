@@ -1998,21 +1998,34 @@
         selAllBtn.style.display = show ? 'block' : 'none';
       }
     }
+    // A genuine job card must contain a JOB link/id – not just any link.
+    // (Generic utility-class selectors can match header nav, icons, etc.)
+    const isJobCard = card =>
+      !!$('a[data-jk], [data-jk], [data-job-id], [data-occludable-job-id], ' +
+          'a[href*="viewjob"], a[href*="/jobs/view/"], a[href*="/rc/clk"], a[href*="job-listings"]', card)
+      || (card.matches && card.matches('[data-jk], [data-job-id], [data-occludable-job-id]'));
+
     const tickTimer = setInterval(() => {
       if (!contextAlive()) { clearInterval(tickTimer); return; }
       SPOT.ensure(); // styles must exist before any run starts, or ticks render invisible
+
+      // No ticks on apply/transitional pages – only on job lists
+      if (PLATFORM === 'indeed' && probe.isApplyPage()) return;
+
       let cards;
       try { cards = probe.jobCards(); } catch { return; }
 
       // ONE tick per job: selectors can match nested elements of the same
-      // card – keep only the outermost match.
+      // card – keep only the outermost match, and only real job cards.
+      cards = cards.filter(isJobCard);
       cards = cards.filter(c => !cards.some(o => o !== c && o.contains(c)));
 
-      // Cleanup: remove ticks that ended up nested inside another ticked card
-      // (from nested matches in earlier passes/builds).
+      // Cleanup: remove duplicated nested ticks and ticks whose host turned
+      // out not to be a job card (nav items, icons, dropdowns).
       $$('.jb-tick').forEach(t => {
         const host = t.parentElement;
-        if (host && host.parentElement && host.parentElement.closest('[data-jb-tick]')) {
+        if (!host) { t.remove(); return; }
+        if (!isJobCard(host) || host.parentElement?.closest('[data-jb-tick]')) {
           t.remove();
           host.removeAttribute('data-jb-tick');
         }
@@ -2021,8 +2034,6 @@
       for (const card of cards) {
         if (card.querySelector(':scope > .jb-tick')) { card.setAttribute('data-jb-tick', '1'); continue; }
         if (card.closest('[data-jb-tick]') !== null && card.closest('[data-jb-tick]') !== card) continue;
-        // Must look like a real job card – keeps ticks off dropdowns/filters
-        if (!$('a, [data-jk], [data-job-id], [data-occludable-job-id]', card)) continue;
         const id = probe.cardId(card);
         if (!id) continue;
         card.setAttribute('data-jb-tick', '1');
