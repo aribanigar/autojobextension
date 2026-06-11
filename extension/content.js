@@ -973,7 +973,9 @@
     }
 
     cardLink(card) {
-      return $('a.title, a[class*="title"], a[class*="jobTitle"], a[href*="/job-listings-"], h2 a', card);
+      // Recommended-jobs tiles render the title as <p class="title">, not an anchor
+      return $('a.title, a[class*="title"], a[class*="jobTitle"], a[href*="/job-listings-"], h2 a', card)
+          || $('p.title, .title', card);
     }
 
     cardId(card) {
@@ -986,7 +988,7 @@
       const link = this.cardLink(card);
       if (!link) return false;
       SPOT.pulse(link, `Opening: ${link.textContent.trim().substring(0, 60)}`);
-      link.setAttribute('target', '_self'); // keep it in the same tab so the run can resume
+      if (link.tagName === 'A') link.setAttribute('target', '_self'); // same tab so the run can resume
       await sleep(rand(300, 700));
       realClick(link);
       await sleep(rand(2800, 4200));
@@ -1018,8 +1020,8 @@
 
     // The apply chatbot drawer that pops in after clicking Apply
     chatbot() {
-      return $('[class*="chatbot_DrawerContentWrapper"], [class*="chatbot_Drawer"], ' +
-               '[class*="_drawer"], .chatbot_MessageContainer, [class*="apply-popup"]');
+      return $('.chatbot_DrawerContentWrapper, [class*="chatbot_Drawer"], div._chatBotContainer, ' +
+               '.chatbot_MessageContainer, [class*="apply-popup"]');
     }
 
     isApplied() {
@@ -1033,49 +1035,94 @@
       return !!b && /applied/i.test(b.textContent) && !/apply\b(?!ied)/i.test(b.textContent.trim());
     }
 
-    // Read the current question the chatbot is asking (last bot bubble)
+    // Read the current question: the LAST bot bubble (li.botItem), text in .botMsg span
     chatQuestion(drawer) {
-      const msgs = $$('[class*="botMsg"], [class*="botItem"], [class*="MessageContainer"] [class*="msg"], li', drawer)
+      const items = $$('li.botItem, li[class*="botItem"]', drawer).filter(isVis);
+      const last = items[items.length - 1];
+      if (last) {
+        const span = $('div.botMsg span, .botMsg', last);
+        const txt = (span || last).textContent.trim();
+        if (txt.length > 3) return txt;
+      }
+      // Fallback for older drawer markup
+      const msgs = $$('[class*="botMsg"], [class*="MessageContainer"] [class*="msg"]', drawer)
         .filter(el => isVis(el) && el.textContent.trim().length > 3);
       return msgs.length ? msgs[msgs.length - 1].textContent.trim() : '';
     }
 
-    // Answer one chatbot question: chips (single/multi-select) or free text.
+    // Answer one chatbot question: chips, radios, checkboxes, or free text.
     async answerChat(drawer) {
       const question = this.chatQuestion(drawer);
 
-      // 1) Chip / radio / checkbox options
-      const chips = $$('[class*="chip"], [class*="ssrc__"], [class*="radio"] label, ' +
-                       '[role="radio"], [role="checkbox"]', drawer)
-        .filter(c => isVis(c) && c.textContent.trim());
-      if (chips.length) {
-        const opts = chips.map(c => c.textContent.trim());
-        let pick = this.f.bestOption(question, opts);
+      // Resolve which option the profile/AI would pick from a list of labels
+      const choose = async (labels) => {
+        let pick = this.f.bestOption(question, labels);
         if (!pick) {
-          const ai = await this.f.aiAnswer(question, opts);
-          if (ai) pick = opts.find(o => o.toLowerCase() === ai.toLowerCase())
-                       || opts.find(o => o.toLowerCase().includes(ai.toLowerCase()));
+          const ai = await this.f.aiAnswer(question, labels);
+          if (ai) pick = labels.find(o => o.toLowerCase() === ai.toLowerCase())
+                      || labels.find(o => o.toLowerCase().includes(ai.toLowerCase())
+                                       || ai.toLowerCase().includes(o.toLowerCase()));
         }
-        const chip = chips[pick ? opts.findIndex(o => o === pick) : 0];
-        if (chip) { SPOT.pulse(chip, `Selecting: "${chip.textContent.trim().slice(0, 40)}"`); await sleep(rand(300, 700)); realClick(chip); await sleep(rand(300, 600)); }
+        return pick ? labels.findIndex(o => o === pick) : 0;
+      };
+
+      // 1) Radio buttons – click the <input> itself, NOT the wrapper
+      //    (clicking the container lands in padding and never registers)
+      const radioWraps = $$('div.ssrc__radio-btn-container, [class*="ssrc__radio"]', drawer)
+        .map(w => ({ input: $('input[type="radio"], input.ssrc__radio', w) || (w.matches('input') ? w : null),
+                     label: ($('.ssrc__label', w) || w).textContent.trim() }))
+        .filter(r => r.input && r.label);
+      if (radioWraps.length) {
+        const idx = await choose(radioWraps.map(r => r.label));
+        const r = radioWraps[idx] || radioWraps[0];
+        SPOT.pulse(r.input, `Selecting: "${r.label.slice(0, 40)}"`);
+        await sleep(rand(300, 700));
+        realClick(r.input);
+        r.input.dispatchEvent(new Event('change', { bubbles: true }));
+        await sleep(rand(300, 600));
       } else {
-        // 2) Free-text answer
-        const input = $('textarea, input[type="text"], input:not([type]), [contenteditable="true"]', drawer);
-        if (input && isVis(input)) {
-          let ans = this.f.map(question) || await this.f.aiAnswer(question);
-          if (!ans) ans = this.f.p.professional?.coverLetter || 'Yes';
-          SPOT.pulse(input, `Answering: "${question.slice(0, 40)}"`);
-          if (input.isContentEditable) { input.focus(); input.textContent = ans; input.dispatchEvent(new Event('input', { bubbles: true })); }
-          else await typeInto(input, ans);
+        // 2) Chips (single & multi-select share the same class)
+        const chips = $$('div.chatbot_Chip, [class*="chipItem"], [class*="chatbot_Chip"]', drawer)
+          .filter(c => isVis(c) && c.textContent.trim());
+        // 3) Multi-select checkboxes
+        const checks = $$('.multicheckboxes-container .mcc__checkbox, [class*="mcc__"] label', drawer)
+          .filter(c => isVis(c) && c.textContent.trim());
+        const optEls = chips.length ? chips : checks;
+
+        if (optEls.length) {
+          const opts = optEls.map(c => c.textContent.trim());
+          const el = optEls[await choose(opts)] || optEls[0];
+          SPOT.pulse(el, `Selecting: "${el.textContent.trim().slice(0, 40)}"`);
+          await sleep(rand(300, 700));
+          realClick(el);
           await sleep(rand(300, 600));
+        } else {
+          // 4) Free text – Naukri uses a contenteditable <div class="textArea">,
+          //    not a real input, so set textContent + input event
+          const input = $('div.textArea[contenteditable="true"], [contenteditable="true"], ' +
+                          'textarea, input[type="text"], input:not([type])', drawer);
+          if (input && isVis(input)) {
+            let ans = this.f.map(question) || await this.f.aiAnswer(question);
+            if (!ans) ans = this.f.p.professional?.coverLetter || 'Yes';
+            SPOT.pulse(input, `Answering: "${question.slice(0, 40)}"`);
+            if (input.isContentEditable) {
+              input.focus();
+              await sleep(rand(150, 350));
+              input.textContent = ans;
+              input.dispatchEvent(new Event('input', { bubbles: true }));
+            } else {
+              await typeInto(input, ans);
+            }
+            await sleep(rand(300, 600));
+          }
         }
       }
 
-      // 3) Send / Save the answer to advance to the next question
+      // 5) Click Save/Send – it's a <div class="sendMsg">, not a <button>
       const send =
-        $('[class*="sendMsg"], [class*="sendMsgbtn"], [class*="send-btn"], [class*="saveBtn"], ' +
-          'div[class*="send"]', drawer) ||
-        $$('button, div[role="button"]', drawer).find(b =>
+        $('div.sendMsg, [class*="sendMsgbtn"] div.sendMsg, [id^="sendMsgbtn_container"] div, ' +
+          '[class*="sendMsg"], [class*="send-btn"], [class*="saveBtn"]', drawer) ||
+        $$('button, div[role="button"], div', drawer).find(b =>
           isVis(b) && /^(save|send|submit|next|continue)$/i.test(b.textContent.trim()));
       if (send && isVis(send)) { await humanClick(send, 'Sending answer…'); await sleep(rand(800, 1500)); return true; }
       return false;
@@ -1086,9 +1133,15 @@
 
       const drawer = this.chatbot();
       if (drawer) {
-        if (this.isApplied()) return 'done';
-        const advanced = await this.answerChat(drawer);
-        return advanced ? 'continue' : 'continue';
+        this._sawDrawer = true;
+        await this.answerChat(drawer);
+        return 'continue';
+      }
+
+      // Drawer was open and is now gone → the question flow completed
+      if (this._sawDrawer) {
+        await sleep(rand(800, 1400));
+        return this.isApplied() || !this.chatbot() ? 'done' : 'continue';
       }
 
       // No chatbot and no success yet – clicking Apply may apply instantly.
@@ -1100,6 +1153,7 @@
 
     // Run the full apply sequence on a job detail page
     async applyHere() {
+      this._sawDrawer = false;
       const r = await this.clickApply();
       if (r === 'external') { SPOT.status('Apply on company site – skipping', 'warning'); return 'skip'; }
       if (r === 'already')  { SPOT.status('Already applied – skipping', 'info');        return 'skip'; }
