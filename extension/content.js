@@ -163,6 +163,12 @@
             0%,100%{box-shadow:0 0 0 3px rgba(124,58,237,.45),0 0 14px rgba(124,58,237,.3)}
             50%{box-shadow:0 0 0 7px rgba(124,58,237,.65),0 0 32px rgba(124,58,237,.7)}}
           .jb-pulse{animation:jb-glow .75s ease-in-out 4!important;}
+          @keyframes jb-spot{
+            0%,100%{box-shadow:0 0 0 4px rgba(124,58,237,.55),0 0 18px rgba(124,58,237,.5),
+              0 0 0 9999px rgba(10,5,25,.30)}
+            50%{box-shadow:0 0 0 9px rgba(124,58,237,.85),0 0 40px rgba(167,139,250,.9),
+              0 0 0 9999px rgba(10,5,25,.38)}}
+          .jb-spot{animation:jb-spot .8s ease-in-out infinite!important;}
           .jb-tick{position:absolute;top:8px;right:42px;z-index:9999;width:22px;height:22px;
             border-radius:6px;border:2px solid #7c3aed;background:#fff;cursor:pointer;
             display:flex;align-items:center;justify-content:center;
@@ -170,8 +176,10 @@
           .jb-tick:hover{transform:scale(1.15);}
           .jb-tick.on{background:#7c3aed;color:#fff;box-shadow:0 0 8px rgba(124,58,237,.6);}
           @keyframes jb-glow-act{
-            0%,100%{box-shadow:0 0 0 3px rgba(217,119,6,.6),0 0 16px rgba(217,119,6,.5)}
-            50%{box-shadow:0 0 0 9px rgba(217,119,6,.85),0 0 40px rgba(245,158,11,.9)}}
+            0%,100%{box-shadow:0 0 0 3px rgba(217,119,6,.6),0 0 16px rgba(217,119,6,.5),
+              0 0 0 9999px rgba(10,5,25,.35)}
+            50%{box-shadow:0 0 0 9px rgba(217,119,6,.85),0 0 40px rgba(245,158,11,.9),
+              0 0 0 9999px rgba(10,5,25,.45)}}
           .jb-act{animation:jb-glow-act .7s ease-in-out infinite!important;border-color:#f59e0b!important;}
           #jb-bar.jb-bar-act{animation:jb-bl 1s ease-in-out infinite;}
         `;
@@ -211,22 +219,35 @@
         init();
         if (msg) this.status(msg, 'applying');
         if (!el) return;
-        // FIX: position:fixed uses viewport coords — no scroll offset needed
-        const r = el.getBoundingClientRect();
-        if (r.width === 0 || r.height === 0) return;
-        Object.assign(box.style, {
-          display: 'block',
-          top:    `${Math.max(0, r.top  - 5)}px`,
-          left:   `${Math.max(0, r.left - 5)}px`,
-          width:  `${r.width  + 10}px`,
-          height: `${r.height + 10}px`,
-          border: '3px solid #7c3aed',
-        });
-        box.classList.remove('jb-pulse');
-        void box.offsetWidth; // force reflow
-        box.classList.add('jb-pulse');
+
+        // Proper spotlight: lock onto the element, FOLLOW it (scroll/re-render),
+        // pulse continuously, and dim the rest of the page around it.
+        clearInterval(box._loop);
         clearTimeout(box._t);
-        box._t = setTimeout(() => { if (box) box.style.display = 'none'; }, 3500);
+        const place = () => {
+          if (!el.isConnected) return;
+          const r = el.getBoundingClientRect();
+          if (r.width === 0 && r.height === 0) return;
+          Object.assign(box.style, {
+            display: 'block',
+            top:    `${Math.max(0, r.top  - 5)}px`,
+            left:   `${Math.max(0, r.left - 5)}px`,
+            width:  `${r.width  + 10}px`,
+            height: `${r.height + 10}px`,
+            border: '3px solid #7c3aed',
+          });
+        };
+        place();
+        box.classList.remove('jb-act');
+        box.classList.remove('jb-spot');
+        void box.offsetWidth; // force reflow so the animation restarts
+        box.classList.add('jb-spot');
+        box._loop = setInterval(place, 150); // track the element while spotlit
+        box._t = setTimeout(() => {
+          clearInterval(box._loop);
+          box.classList.remove('jb-spot');
+          box.style.display = 'none';
+        }, 3500);
       },
       // Persistent attention spotlight for human-in-the-loop steps (e.g. captcha).
       // Stays locked on the element and keeps the status bar pulsing until cleared.
@@ -251,8 +272,9 @@
           });
           box.classList.add('jb-act');
         };
+        box.classList.remove('jb-spot');
         lock();
-        box._loop = setInterval(lock, 600); // follow the element if the page scrolls
+        box._loop = setInterval(lock, 300); // follow the element if the page scrolls
         try { // gentle audio nudge so the user notices even on another tab
           const ac = new (window.AudioContext || window.webkitAudioContext)();
           const o = ac.createOscillator(), g = ac.createGain();
@@ -261,12 +283,20 @@
         } catch {}
       },
       clearAttention() {
-        if (box) { clearInterval(box._loop); box.classList.remove('jb-act'); box.style.display = 'none'; }
+        if (box) {
+          clearInterval(box._loop);
+          box.classList.remove('jb-act'); box.classList.remove('jb-spot');
+          box.style.display = 'none';
+        }
         if (bar) bar.classList.remove('jb-bar-act');
       },
       hide() {
         if (bar) { bar.style.display = 'none'; bar.classList.remove('jb-bar-act'); }
-        if (box) { clearInterval(box._loop); box.style.display = 'none'; }
+        if (box) {
+          clearInterval(box._loop);
+          box.classList.remove('jb-act'); box.classList.remove('jb-spot');
+          box.style.display = 'none';
+        }
       },
     };
   })();
