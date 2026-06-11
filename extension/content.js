@@ -637,8 +637,8 @@
           progressed = false;
           for (const card of this.jobCards()) {
             const id = this.cardId(card);
-            if (id && appliedSet.has(id)) continue;
-            if (id) appliedSet.add(id);
+            if (id && (appliedSet.has(id) || attemptedSet.has(id))) continue;
+            if (id) attemptedSet.add(id);
 
             card.scrollIntoView({ block: 'center' });
             await sleep(rand(400, 800));
@@ -754,23 +754,36 @@
 
       // Click the resolved element AND its nearest interactive ancestor, in case
       // the visible label is a span inside the real button.
-      const clickTargets = [btn, btn.closest && btn.closest('button, a, [role="button"]')]
+      const targetsOf = b => [b, b.closest && b.closest('button, a, [role="button"]')]
         .filter((v, i, a) => v && a.indexOf(v) === i);
 
-      // Up to ~16s: Indeed's React button often ignores the first click(s) while
-      // it hydrates. Re-click every couple of seconds until the flow appears.
+      // Success = a STATE CHANGE after our click: the URL changed, or the apply
+      // UI appeared where there was none. Never judge by absolute state alone –
+      // that returned 'clicked' without clicking when a stray match existed.
+      const wasApplyState = this.isApplyPage();
+      const opened = () =>
+        location.href !== beforeUrl
+        || (!wasApplyState && this.isApplyPage())
+        || this.isDone()
+        || this.isAlreadyApplied();
+
+      // Up to ~16s: Indeed's React button often ignores the first click(s)
+      // while it hydrates. Always click FIRST, then re-click every ~2.4s.
       for (let i = 0; i < 20; i++) {
-        if (this.isApplyPage() || this.isDone() || location.href !== beforeUrl) return 'clicked';
-        if (i % 3 === 0 && btn.isConnected && isVis(btn)) {
-          const r = btn.getBoundingClientRect();
-          await moveTo(r.left + r.width / 2, r.top + r.height / 2);
-          await sleep(rand(80, 180));
-          for (const t of clickTargets) { try { realClick(t); } catch {} }
-          if (i > 0) SPOT.pulse(btn, '🟦 Retrying "Apply with Indeed"…');
+        if (i % 3 === 0) {
+          if (!btn.isConnected || !isVis(btn)) btn = this.findApplyButton(document) || btn;
+          if (btn.isConnected && isVis(btn)) {
+            const r = btn.getBoundingClientRect();
+            await moveTo(r.left + r.width / 2, r.top + r.height / 2);
+            await sleep(rand(80, 180));
+            for (const t of targetsOf(btn)) { try { realClick(t); } catch {} }
+            if (i > 0) SPOT.pulse(btn, '🟦 Retrying "Apply with Indeed"…');
+          }
         }
         await sleep(800);
+        if (opened()) return 'clicked';
       }
-      return (this.isApplyPage() || location.href !== beforeUrl) ? 'clicked' : 'none';
+      return opened() ? 'clicked' : 'none';
     }
 
     async fillStep() {
@@ -1040,14 +1053,17 @@
           progressed = false;
           for (const card of this.jobCards()) {
             const jk = this.cardId(card);
-            if (jk && appliedSet.has(jk)) continue;
-            if (jk) appliedSet.add(jk);
+            if (jk && (appliedSet.has(jk) || attemptedSet.has(jk))) continue;
+            if (jk) attemptedSet.add(jk); // session-only; permanent mark happens on confirmed apply
 
             card.scrollIntoView({ block: 'center' });
             await sleep(rand(300, 600));
             const res = await this.clickApply(card);
             if (res === 'clicked') await this.runApplication();
-            else { this.skipped++; reportSkip(); }
+            else {
+              if (res === 'already' && jk) appliedSet.add(jk); // Indeed says applied → permanent
+              this.skipped++; reportSkip();
+            }
 
             await sleep(rand(900, 1700));
             progressed = true;
@@ -1294,9 +1310,10 @@
       // Resumed on a job detail page after same-tab navigation – apply here,
       // then go back; auto-resume continues the run on the job list.
       if (/\/job-listings-/i.test(location.pathname) && !this.jobCards().length) {
-        appliedSet.add(normalizeJobId(location.href)); // remember this job either way
+        attemptedSet.add(normalizeJobId(location.href)); // no loops this session
         const out = await this.applyHere();
         if (out === 'done') {
+          appliedSet.add(normalizeJobId(location.href)); // confirmed → permanent
           this.applied++;
           report({ type: 'JOB_APPLIED', platform: 'naukri', title: document.title, url: location.href });
           SPOT.status(`✓ Applied on Naukri! (${this.applied} total)`, 'success');
@@ -1322,8 +1339,8 @@
           progressed = false;
           for (const card of this.jobCards()) {
             const jid = this.cardId(card);
-            if (jid && appliedSet.has(jid)) continue;
-            if (jid) appliedSet.add(jid);
+            if (jid && (appliedSet.has(jid) || attemptedSet.has(jid))) continue;
+            if (jid) attemptedSet.add(jid); // permanent mark happens on confirmed apply
 
             card.scrollIntoView({ block: 'center' });
             await sleep(rand(500, 1000));
@@ -1359,26 +1376,46 @@
   // cross-origin hops of the Indeed apply flow (www → smartapply), tab
   // navigations, and browser restarts, so a job is never applied to twice.
   // sessionStorage is kept as a synchronous fast path within the tab.
+  // Key is versioned (v2): the previous build wrongly stored mere ATTEMPTS in
+  // permanent memory, blocking re-tries forever. v2 holds confirmed
+  // applications only; the polluted v1 data is simply ignored.
   const appliedSet = (() => {
     let s = new Set();
-    try { s = new Set(JSON.parse(sessionStorage.getItem('jobbot_seen') || '[]')); } catch {}
+    try { s = new Set(JSON.parse(sessionStorage.getItem('jobbot_applied') || '[]')); } catch {}
     let resolveReady;
     const ready = new Promise(r => (resolveReady = r));
     try {
-      chrome.storage.local.get('jobbot_seen', d => {
-        (Array.isArray(d.jobbot_seen) ? d.jobbot_seen : []).forEach(id => s.add(id));
+      chrome.storage.local.get('jobbot_applied_v2', d => {
+        (Array.isArray(d.jobbot_applied_v2) ? d.jobbot_applied_v2 : []).forEach(id => s.add(id));
         resolveReady();
       });
     } catch { resolveReady(); }
     const persist = () => {
       const arr = [...s].slice(-3000);
-      try { sessionStorage.setItem('jobbot_seen', JSON.stringify(arr)); } catch {}
-      try { chrome.storage.local.set({ jobbot_seen: arr }); } catch {}
+      try { sessionStorage.setItem('jobbot_applied', JSON.stringify(arr)); } catch {}
+      try { chrome.storage.local.set({ jobbot_applied_v2: arr }); } catch {}
     };
     return {
       ready,
       has: id => s.has(id),
       add: id => { if (!id) return; s.add(id); persist(); },
+    };
+  })();
+
+  // Session-only memory of ATTEMPTED jobs (per tab). Prevents loops within a
+  // run, but unlike appliedSet it does not survive the session – a job whose
+  // apply failed today can be retried tomorrow. Only confirmed applications
+  // go into the permanent appliedSet.
+  const attemptedSet = (() => {
+    let s = new Set();
+    try { s = new Set(JSON.parse(sessionStorage.getItem('jobbot_attempted') || '[]')); } catch {}
+    return {
+      has: id => s.has(id),
+      add: id => {
+        if (!id) return;
+        s.add(id);
+        try { sessionStorage.setItem('jobbot_attempted', JSON.stringify([...s].slice(-2000))); } catch {}
+      },
     };
   })();
 
