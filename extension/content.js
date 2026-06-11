@@ -213,6 +213,9 @@
     };
 
     return {
+      // Inject the overlay stylesheet/nodes without showing anything – needed
+      // by the tick boxes and ▶ button, which render before any run starts.
+      ensure() { init(); },
       status(msg, type = 'info') {
         init();
         const [bg, fg] = CLR[type] || CLR.info;
@@ -1808,10 +1811,20 @@
         stopAgent();
         reply({ ok: true });
         break;
-      case 'GET_STATUS':
-        reply({ running: !!agent?.running, platform: PLATFORM,
-                applied: agent?.applied || 0, skipped: agent?.skipped || 0 });
+      case 'GET_STATUS': {
+        // "Running" means the RUN is alive (persisted flag), not merely that an
+        // agent object exists this instant – between watchdog scans / in
+        // monitor mode there is no agent, but the run has NOT stopped.
+        const base = { platform: PLATFORM, applied: agent?.applied || 0, skipped: agent?.skipped || 0 };
+        if (agent?.running) { reply({ running: true, ...base }); break; }
+        try {
+          chrome.storage.local.get('jobbot_running', d => {
+            void chrome.runtime.lastError;
+            reply({ running: flagMatchesThisTab(d?.jobbot_running), ...base });
+          });
+        } catch { reply({ running: false, ...base }); }
         break;
+      }
     }
     return true;
   });
@@ -1881,6 +1894,7 @@
     }
     const tickTimer = setInterval(() => {
       if (!contextAlive()) { clearInterval(tickTimer); return; }
+      SPOT.ensure(); // styles must exist before any run starts, or ticks render invisible
       let cards;
       try { cards = probe.jobCards(); } catch { return; }
       for (const card of cards) {
