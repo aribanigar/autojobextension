@@ -209,10 +209,11 @@
             background:#1a1230;border:2px solid #7c3aed;
             box-shadow:0 6px 20px rgba(124,58,237,.35);}
           #jobbotx-selall:hover{color:#fff;background:#241740;}
-          .jobbotx-tick{position:absolute;top:8px;right:42px;z-index:9999;width:22px;height:22px;
+          .jobbotx-tick{position:absolute;bottom:8px;left:8px;z-index:9999;width:22px;height:22px;
             border-radius:6px;border:2px solid #7c3aed;background:#fff;cursor:pointer;
             display:flex;align-items:center;justify-content:center;
-            font:700 13px/1 system-ui;color:#c4b5fd;transition:all .15s;}
+            font:700 13px/1 system-ui;color:#c4b5fd;transition:all .15s;
+            pointer-events:auto;}
           .jobbotx-tick:hover{transform:scale(1.15);}
           .jobbotx-tick.on{background:#7c3aed;color:#fff;box-shadow:0 0 8px rgba(124,58,237,.6);}
           @keyframes jobbotx-glow-act{
@@ -2293,7 +2294,7 @@
     }
     function paintTicks() {
       $$('.jobbotx-tick').forEach(t => {
-        const card = t.parentElement;
+        const card = t.closest('[data-jobbotx-tick]');
         if (!card) return;
         const id = probe.cardId(card);
         t.classList.toggle('on', !!id && selectedSet.has(id));
@@ -2348,35 +2349,60 @@
       // Cleanup: remove duplicated nested ticks and ticks whose host turned
       // out not to be a job card (nav items, icons, dropdowns).
       $$('.jobbotx-tick').forEach(t => {
-        const host = t.parentElement;
+        const wrap = t.parentElement;
+        const host = wrap?.parentElement;
         if (!host) { t.remove(); return; }
         if (!isJobCard(host) || host.parentElement?.closest('[data-jobbotx-tick]')) {
           t.remove();
+          if (wrap?.classList.contains('jobbotx-wrap') && !wrap.querySelector('.jobbotx-tick')) wrap.remove();
+          if (host.dataset.jobbotxWasStatic) { host.style.position = ''; delete host.dataset.jobbotxWasStatic; }
           host.removeAttribute('data-jobbotx-tick');
         }
       });
 
       for (const card of cards) {
-        if (card.querySelector(':scope > .jobbotx-tick')) { card.setAttribute('data-jobbotx-tick', '1'); continue; }
+        if (card.querySelector(':scope > .jobbotx-wrap .jobbotx-tick, :scope > .jobbotx-tick')) { card.setAttribute('data-jobbotx-tick', '1'); continue; }
         if (card.closest('[data-jobbotx-tick]') !== null && card.closest('[data-jobbotx-tick]') !== card) continue;
         const id = probe.cardId(card);
         if (!id) continue;
         card.setAttribute('data-jobbotx-tick', '1');
-        if (getComputedStyle(card).position === 'static') card.style.position = 'relative';
+
+        // Use a position:relative wrapper injected INSIDE the card so we never
+        // mutate the card's own CSS (other extensions depend on card layout).
+        // The tick sits at bottom-left – away from the top-right corner where
+        // lead-capture tools (LeadsLoft, etc.) put their action buttons.
+        let wrap = card.querySelector(':scope > .jobbotx-wrap');
+        if (!wrap) {
+          wrap = document.createElement('span');
+          wrap.className = 'jobbotx-wrap';
+          wrap.style.cssText = 'position:absolute;inset:0;pointer-events:none;z-index:9998;';
+          card.style.position = card.style.position || '';
+          // Only set relative if the card truly has no positioning context
+          if (getComputedStyle(card).position === 'static') {
+            card.dataset.jobbotxWasStatic = '1';
+            card.style.position = 'relative';
+          }
+          card.appendChild(wrap);
+        }
+
         const t = document.createElement('div');
         t.className = 'jobbotx-tick' + (selectedSet.has(id) ? ' on' : '');
         t.textContent = '✓';
-        t.title = 'JobBot: tick to queue this job, then press Start';
+        t.title = 'JobBot: tick to queue this job, then press ▶ Start';
+        // Bubble-phase listener only – never intercept events for other extensions.
+        // preventDefault stops the card link from navigating; we do NOT call
+        // stopPropagation so LeadsLoft / other handlers still see the click.
         t.addEventListener('click', e => {
-          e.preventDefault(); e.stopPropagation();
+          e.preventDefault();
+          e.stopImmediatePropagation(); // stop other listeners on THIS element only
           const on = selectedSet.toggle(id);
           t.classList.toggle('on', on);
           SPOT.status(selectedSet.size()
             ? `${selectedSet.size()} job(s) ticked – press ▶ to apply them in sequence`
             : 'No jobs ticked – Start applies all jobs', 'info');
           syncStartBtn(); syncSelAllBtn();
-        }, true);
-        card.appendChild(t);
+        });
+        wrap.appendChild(t);
       }
       syncStartBtn();
       syncSelAllBtn();
