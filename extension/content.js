@@ -94,7 +94,9 @@
       chrome.runtime.sendMessage(payload, () => void chrome.runtime.lastError);
     } catch { /* extension context invalidated – keep the agent running */ }
   }
-  function reportSkip() { report({ type: 'JOB_SKIPPED', platform: PLATFORM }); }
+  function reportSkip() {
+    report({ type: 'JOB_SKIPPED', platform: PLATFORM, title: document.title, url: location.href });
+  }
 
   // Job lists render late on slow pages – retry before declaring the page empty
   async function waitForCards(fn, tries = 6, delay = 1500) {
@@ -195,7 +197,39 @@
 
   // ─── Smart Form Filler ────────────────────────────────────────────────────
   class Filler {
-    constructor(p) { this.p = p || {}; }
+    constructor(p) {
+      this.p = p || {};
+      this._aiCache = new Map();
+    }
+
+    // AI fallback (Gemini via the user's backend) for questions map() can't answer
+    async aiAnswer(question, options = []) {
+      const prefs = this.p.preferences || {};
+      if (!prefs.aiEnabled || !prefs.crmUrl || !prefs.crmKey) return null;
+      const q = String(question).trim();
+      if (q.length < 3) return null;
+
+      const cacheKey = q + '|' + options.join(',');
+      if (this._aiCache.has(cacheKey)) return this._aiCache.get(cacheKey);
+
+      try {
+        SPOT.status(`AI answering: "${q.substring(0, 50)}…"`, 'applying');
+        const ctrl = new AbortController();
+        const t = setTimeout(() => ctrl.abort(), 15000);
+        const r = await fetch(`${prefs.crmUrl.replace(/\/+$/, '')}/api/ai`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'x-api-key': prefs.crmKey },
+          body: JSON.stringify({ kind: 'answer', question: q, options, profile: this.p }),
+          signal: ctrl.signal,
+        });
+        clearTimeout(t);
+        if (!r.ok) { this._aiCache.set(cacheKey, null); return null; }
+        const data = await r.json();
+        const ans = (data.answer || '').trim() || null;
+        this._aiCache.set(cacheKey, ans);
+        return ans;
+      } catch { return null; }
+    }
 
     map(q) {
       const t = String(q).toLowerCase().replace(/[*?()\[\]]/g, '').trim();
@@ -309,7 +343,14 @@
           return (lbl ? lbl.textContent : r.value || r.getAttribute('data-value') || '').trim();
         });
 
-        const chosen = this.bestOption(question, opts);
+        let chosen = this.bestOption(question, opts);
+        if (!chosen && question) {
+          // Profile can't answer – ask the AI to pick from the actual options
+          const ai = await this.aiAnswer(question, opts);
+          if (ai) chosen = opts.find(o => o.toLowerCase() === ai.toLowerCase())
+                        || opts.find(o => o.toLowerCase().includes(ai.toLowerCase())
+                                       || ai.toLowerCase().includes(o.toLowerCase()));
+        }
         const idx    = chosen ? opts.findIndex(o => o === chosen) : 0;
         const target = radios[idx] || radios[0];
 
@@ -330,7 +371,8 @@
       for (const inp of inputs) {
         if (inp.value?.trim()) continue;
         const label = this.labelFor(inp);
-        const ans   = this.map(label);
+        let ans     = this.map(label);
+        if (!ans) ans = await this.aiAnswer(label);   // AI fallback for unknown questions
         if (ans) {
           SPOT.pulse(inp, `Filling: "${label.substring(0, 48)}"`);
           await typeInto(inp, ans);
@@ -343,7 +385,11 @@
       for (const sel of $$('select', root).filter(isVis)) {
         if (sel.value && sel.value !== '' && sel.value !== '0' && sel.value !== '-1') continue;
         const label = this.labelFor(sel);
-        const ans   = this.map(label);
+        let ans     = this.map(label);
+        if (!ans) {
+          const optTexts = $$('option', sel).map(o => o.textContent.trim()).filter(t => t && !/^select/i.test(t));
+          ans = await this.aiAnswer(label, optTexts);  // AI picks from the real options
+        }
         if (!ans) continue;
         const opt = $$('option', sel).find(o => o.textContent.toLowerCase().includes(ans.toLowerCase()));
         if (opt) {
@@ -631,19 +677,20 @@
       if (cont && isVis(cont)) {
         SPOT.pulse(cont, '✨ Clicking CONTINUE…');
         await sleep(rand(600, 1000)); // visible spotlight pause
-        cont.click();
+        realClick(cont);
         await sleep(rand(1200, 2000));
         return 'continue';
       }
 
       const sub =
-        $('[data-testid="ia-submitButton"]') ||
-        $$('button[type="submit"]').find(b => isVis(b) && /submit|apply now/i.test(b.textContent));
+        $('[data-testid="ia-submitButton"], [data-testid="submit-button"]') ||
+        $$('button[type="submit"], button').find(b =>
+          isVis(b) && /submit (my |your )?application|^submit$|apply now/i.test(b.textContent.trim()));
 
       if (sub && isVis(sub)) {
-        SPOT.pulse(sub, '🎉 Submitting!');
-        await sleep(rand(600, 1000));
-        sub.click();
+        SPOT.pulse(sub, '🎉 Submitting my application!');
+        await sleep(rand(800, 1300)); // hold the spotlight so the submit click is visible
+        realClick(sub);
         await sleep(rand(1500, 2500));
         return 'submitted';
       }

@@ -225,6 +225,29 @@
     </div>
 
     <div class="section">
+      <div class="section-hd"><span>🛰️</span> CRM &amp; AI
+        <span class="badge-pill">syncs every application to your backend</span>
+      </div>
+      <div class="field">
+        <label>CRM Endpoint <small class="field-hint">your Vercel site URL</small></label>
+        <input id="p-crm-url" type="url" placeholder="https://autojobextension.vercel.app">
+      </div>
+      <div class="field">
+        <label>CRM API Key <small class="field-hint">the CRM_API_KEY you set in Vercel</small></label>
+        <input id="p-crm-key" type="password" placeholder="••••••••••">
+      </div>
+      <div class="toggle-group">
+        <div class="toggle-row">
+          <div class="toggle-text">
+            <span class="toggle-label">AI Smart Answers</span>
+            <span class="toggle-sub">Gemini answers questions the profile can't (via your backend)</span>
+          </div>
+          <label class="toggle"><input id="p-ai" type="checkbox"><span class="ttrack"></span></label>
+        </div>
+      </div>
+    </div>
+
+    <div class="section">
       <div class="section-hd"><span>⚡</span> How the Agent Works</div>
       <div class="info-list">
         <div class="info-item">

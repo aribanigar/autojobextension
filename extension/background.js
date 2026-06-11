@@ -36,6 +36,19 @@ function updateBadge() {
   chrome.action.setBadgeBackgroundColor({ color: '#7c3aed' });
 }
 
+// Real-time CRM sync – fire-and-forget POST to the user's backend, if configured
+function syncToCRM(row) {
+  chrome.storage.local.get('jobbot_profile', d => {
+    const prefs = d.jobbot_profile?.preferences || {};
+    if (!prefs.crmUrl || !prefs.crmKey) return;
+    fetch(`${prefs.crmUrl.replace(/\/+$/, '')}/api/jobs`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'x-api-key': prefs.crmKey },
+      body: JSON.stringify(row),
+    }).catch(() => { /* offline / misconfigured – local stats still work */ });
+  });
+}
+
 chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
   switch (msg.type) {
 
@@ -66,6 +79,7 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
         chrome.storage.local.set({ jobbot_history: h.slice(0, 500) });
       });
 
+      syncToCRM({ platform: plat, title: msg.title ?? '', url: msg.url ?? '', status: 'applied' });
       updateBadge();
       break;
     }
@@ -73,6 +87,9 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
     case 'JOB_SKIPPED':
       stats.skipped = (stats.skipped || 0) + 1;
       persistStats();
+      if (msg.title || msg.url) {
+        syncToCRM({ platform: msg.platform, title: msg.title ?? '', url: msg.url ?? '', status: 'skipped' });
+      }
       break;
 
     case 'GET_HISTORY':

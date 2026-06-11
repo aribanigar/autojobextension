@@ -1,0 +1,222 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>JobBot CRM – Application Tracker</title>
+  <style>
+    :root {
+      --violet: #7c3aed; --bg: #0f0a1f; --card: #1a1230; --text: #ece9f7;
+      --muted: #a89fc8; --border: rgba(124,58,237,.25); --green: #34d399;
+      --red: #f87171; --amber: #fbbf24; --blue: #60a5fa;
+    }
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: system-ui,-apple-system,"Segoe UI",sans-serif; background: var(--bg); color: var(--text); min-height: 100vh; }
+    .container { max-width: 1100px; margin: 0 auto; padding: 24px; }
+    header { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 8px 0 24px; flex-wrap: wrap; }
+    h1 { font-size: 24px; } h1 a { color: inherit; text-decoration: none; }
+    .live { display: inline-flex; align-items: center; gap: 7px; font-size: 13px; color: var(--green); }
+    .live .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--green); animation: bl 1.2s infinite; }
+    .live.err { color: var(--red); } .live.err .dot { background: var(--red); animation: none; }
+    @keyframes bl { 0%,100%{opacity:1} 50%{opacity:.25} }
+
+    .cards { display: grid; grid-template-columns: repeat(auto-fit,minmax(140px,1fr)); gap: 12px; margin-bottom: 20px; }
+    .card { background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 14px 18px; }
+    .card .n { font-size: 26px; font-weight: 800; } .card .l { font-size: 12px; color: var(--muted); }
+
+    .bar { display: flex; gap: 10px; margin-bottom: 14px; flex-wrap: wrap; }
+    input, select, button, textarea {
+      background: var(--card); border: 1px solid var(--border); color: var(--text);
+      border-radius: 9px; padding: 9px 12px; font-size: 14px; font-family: inherit;
+    }
+    input:focus, select:focus { outline: 1px solid var(--violet); }
+    button { cursor: pointer; }
+    .btn-v { background: var(--violet); border-color: var(--violet); font-weight: 600; }
+
+    table { width: 100%; border-collapse: collapse; background: var(--card); border-radius: 12px; overflow: hidden; }
+    th, td { padding: 11px 12px; text-align: left; font-size: 13px; border-bottom: 1px solid rgba(124,58,237,.12); vertical-align: top; }
+    th { color: var(--muted); font-weight: 600; font-size: 12px; text-transform: uppercase; letter-spacing: .04em; }
+    tr:last-child td { border-bottom: none; }
+    td a { color: #a78bfa; text-decoration: none; } td a:hover { text-decoration: underline; }
+    .plat { padding: 2px 9px; border-radius: 999px; font-size: 11px; font-weight: 700; text-transform: capitalize; }
+    .plat.linkedin { background: rgba(96,165,250,.15); color: var(--blue); }
+    .plat.indeed   { background: rgba(129,140,248,.15); color: #818cf8; }
+    .plat.naukri   { background: rgba(52,211,153,.15); color: var(--green); }
+    select.st { padding: 4px 8px; font-size: 12px; border-radius: 7px; }
+    select.st.applied   { color: var(--blue); }   select.st.interview { color: var(--amber); }
+    select.st.offer     { color: var(--green); }  select.st.rejected  { color: var(--red); }
+    select.st.skipped   { color: var(--muted); }
+    .fit { font-weight: 700; } .fit.hi { color: var(--green); } .fit.mid { color: var(--amber); } .fit.lo { color: var(--red); }
+    td input.notes { width: 100%; min-width: 140px; font-size: 12px; padding: 5px 8px; background: transparent; border-color: transparent; }
+    td input.notes:hover, td input.notes:focus { border-color: var(--border); background: var(--bg); }
+    .del { background: transparent; border: none; color: var(--muted); font-size: 15px; padding: 2px 6px; }
+    .del:hover { color: var(--red); }
+
+    .empty, .gate { text-align: center; padding: 56px 20px; color: var(--muted); background: var(--card); border-radius: 12px; border: 1px solid var(--border); }
+    .gate input { margin: 14px 6px 0; width: 280px; }
+    .err-msg { color: var(--red); font-size: 13px; margin-top: 10px; min-height: 16px; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <header>
+      <h1>📋 JobBot CRM <a href="/" style="font-size:13px;color:var(--muted)">← landing</a></h1>
+      <span id="live" class="live" style="display:none"><span class="dot"></span><span id="live-txt">live</span></span>
+    </header>
+
+    <!-- API-key gate -->
+    <div id="gate" class="gate">
+      <div style="font-size:34px">🔐</div>
+      <h2 style="margin:10px 0 4px">Connect to your CRM</h2>
+      <p>Enter the <code>CRM_API_KEY</code> you configured in Vercel.</p>
+      <div>
+        <input id="key-input" type="password" placeholder="CRM API key" />
+        <button class="btn-v" id="key-btn">Connect</button>
+      </div>
+      <div id="gate-err" class="err-msg"></div>
+    </div>
+
+    <div id="app" style="display:none">
+      <div class="cards">
+        <div class="card"><div class="n" id="c-total">–</div><div class="l">Total tracked</div></div>
+        <div class="card"><div class="n" id="c-applied">–</div><div class="l">Applied</div></div>
+        <div class="card"><div class="n" id="c-interview">–</div><div class="l">Interviews</div></div>
+        <div class="card"><div class="n" id="c-offer">–</div><div class="l">Offers</div></div>
+        <div class="card"><div class="n" id="c-week">–</div><div class="l">Last 7 days</div></div>
+      </div>
+
+      <div class="bar">
+        <input id="f-q" type="search" placeholder="Search title…" style="flex:1;min-width:180px" />
+        <select id="f-status">
+          <option value="">All statuses</option>
+          <option>applied</option><option>skipped</option><option>interview</option>
+          <option>offer</option><option>rejected</option>
+        </select>
+        <select id="f-platform">
+          <option value="">All platforms</option>
+          <option>linkedin</option><option>indeed</option><option>naukri</option>
+        </select>
+        <button id="btn-refresh">↻ Refresh</button>
+        <button id="btn-logout" title="Forget API key">Log out</button>
+      </div>
+
+      <div id="list"></div>
+    </div>
+  </div>
+
+  <script>
+    const $ = s => document.querySelector(s);
+    const KEY_STORE = 'jobbot_crm_key';
+    let key = localStorage.getItem(KEY_STORE) || '';
+    let rows = [];
+    let timer = null;
+
+    const api = (path, init = {}) =>
+      fetch(path, { ...init, headers: { 'Content-Type': 'application/json', 'x-api-key': key, ...init.headers } })
+        .then(async r => { const d = await r.json().catch(() => ({})); if (!r.ok) throw new Error(d.error || r.status); return d; });
+
+    function esc(s) { const d = document.createElement('div'); d.textContent = String(s ?? ''); return d.innerHTML; }
+
+    function setLive(ok, msg) {
+      const el = $('#live'); el.style.display = 'inline-flex';
+      el.classList.toggle('err', !ok);
+      $('#live-txt').textContent = msg;
+    }
+
+    function fitCls(v) { return v == null ? '' : v >= 70 ? 'hi' : v >= 40 ? 'mid' : 'lo'; }
+
+    function render() {
+      const total = rows.length;
+      const by = s => rows.filter(r => r.status === s).length;
+      const week = rows.filter(r => Date.now() - new Date(r.applied_at).getTime() < 7 * 864e5).length;
+      $('#c-total').textContent = total; $('#c-applied').textContent = by('applied');
+      $('#c-interview').textContent = by('interview'); $('#c-offer').textContent = by('offer');
+      $('#c-week').textContent = week;
+
+      if (!rows.length) {
+        $('#list').innerHTML = '<div class="empty">📭 No applications tracked yet.<br><small>Run the JobBot agent with CRM sync configured in the extension popup — every application lands here in real time.</small></div>';
+        return;
+      }
+      $('#list').innerHTML = `<table><thead><tr>
+        <th>Job</th><th>Platform</th><th>Status</th><th>Fit</th><th>Notes</th><th>When</th><th></th>
+      </tr></thead><tbody>${rows.map(r => `
+        <tr data-id="${r.id}">
+          <td>${r.url ? `<a href="${esc(r.url)}" target="_blank" rel="noopener">${esc(r.title || 'Untitled')}</a>` : esc(r.title || 'Untitled')}
+              ${r.company ? `<div style="color:var(--muted);font-size:12px">${esc(r.company)}</div>` : ''}</td>
+          <td><span class="plat ${esc(r.platform)}">${esc(r.platform)}</span></td>
+          <td><select class="st ${esc(r.status)}" data-act="status">
+            ${['applied','skipped','interview','offer','rejected'].map(s =>
+              `<option ${s === r.status ? 'selected' : ''}>${s}</option>`).join('')}
+          </select></td>
+          <td class="fit ${fitCls(r.fit_score)}">${r.fit_score ?? '–'}</td>
+          <td><input class="notes" data-act="notes" value="${esc(r.notes || '')}" placeholder="add note…" /></td>
+          <td style="white-space:nowrap;color:var(--muted)">${new Date(r.applied_at).toLocaleString()}</td>
+          <td><button class="del" data-act="del" title="Delete">✕</button></td>
+        </tr>`).join('')}</tbody></table>`;
+    }
+
+    async function load(showErr = true) {
+      const p = new URLSearchParams();
+      if ($('#f-q').value) p.set('q', $('#f-q').value);
+      if ($('#f-status').value) p.set('status', $('#f-status').value);
+      if ($('#f-platform').value) p.set('platform', $('#f-platform').value);
+      try {
+        rows = await api('/api/jobs?' + p);
+        setLive(true, 'live · ' + new Date().toLocaleTimeString());
+        render();
+      } catch (e) {
+        setLive(false, 'error: ' + e.message);
+        if (showErr && String(e.message).includes('api-key')) logout(e.message);
+      }
+    }
+
+    function start() {
+      $('#gate').style.display = 'none'; $('#app').style.display = '';
+      load();
+      clearInterval(timer);
+      timer = setInterval(() => load(false), 10000); // real-time: poll every 10s
+    }
+
+    function logout(msg) {
+      localStorage.removeItem(KEY_STORE); key = '';
+      clearInterval(timer);
+      $('#app').style.display = 'none'; $('#gate').style.display = '';
+      $('#gate-err').textContent = msg || '';
+    }
+
+    $('#key-btn').onclick = async () => {
+      key = $('#key-input').value.trim();
+      if (!key) return;
+      try {
+        await api('/api/jobs?limit=1');
+        localStorage.setItem(KEY_STORE, key);
+        start();
+      } catch (e) { $('#gate-err').textContent = e.message; }
+    };
+    $('#key-input').addEventListener('keydown', e => { if (e.key === 'Enter') $('#key-btn').click(); });
+
+    $('#btn-refresh').onclick = () => load();
+    $('#btn-logout').onclick = () => logout();
+    ['#f-q', '#f-status', '#f-platform'].forEach(s => $(s).addEventListener('input', () => load()));
+
+    $('#list').addEventListener('change', async e => {
+      const tr = e.target.closest('tr'); if (!tr) return;
+      const id = tr.dataset.id, act = e.target.dataset.act;
+      try {
+        if (act === 'status') await api('/api/jobs', { method: 'PATCH', body: JSON.stringify({ id, status: e.target.value }) });
+        if (act === 'notes')  await api('/api/jobs', { method: 'PATCH', body: JSON.stringify({ id, notes: e.target.value }) });
+        load(false);
+      } catch (err) { setLive(false, 'save failed: ' + err.message); }
+    });
+    $('#list').addEventListener('click', async e => {
+      if (e.target.dataset.act !== 'del') return;
+      const tr = e.target.closest('tr');
+      if (!confirm('Delete this entry?')) return;
+      try { await api('/api/jobs?id=' + tr.dataset.id, { method: 'DELETE' }); load(false); }
+      catch (err) { setLive(false, 'delete failed: ' + err.message); }
+    });
+
+    if (key) start();
+  </script>
+</body>
+</html>
