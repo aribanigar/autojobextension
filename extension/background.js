@@ -64,6 +64,12 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
       sendResponse({ tabId: _sender.tab?.id ?? null });
       break;
 
+    case 'CLOSE_TAB':
+      // A finished apply popup asks to close itself (page scripts can't close
+      // tabs they didn't open; the extension can).
+      if (_sender.tab?.id != null) chrome.tabs.remove(_sender.tab.id);
+      break;
+
     case 'GET_PROFILE':
       chrome.storage.local.get('jobbot_profile', d => {
         sendResponse({ profile: d.jobbot_profile || DEFAULT_PROFILE });

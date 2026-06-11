@@ -1918,7 +1918,25 @@
   chrome.storage.local.get(['jobbot_running', 'jobbot_profile'], async data => {
     if (!data.jobbot_running || !data.jobbot_profile) return;
     try { await tabReady; } catch {} // know our tab id before deciding
-    if (!flagMatchesThisTab(data.jobbot_running)) return; // run belongs to another tab
+    if (!flagMatchesThisTab(data.jobbot_running)) {
+      // The run lives in ANOTHER tab. If Indeed opened the apply flow in this
+      // new tab/popup, fill it here, then CLOSE this tab when the application
+      // finishes (owner request) – the original search tab carries on.
+      if (IS_TOP && window.opener && PLATFORM === 'indeed') {
+        const a = new IndeedAgent(new Filler(data.jobbot_profile));
+        if (a.isApplyPage()) {
+          a.returnToList = async () => { // close instead of navigating away
+            SPOT.status('Application finished – closing this tab…', 'success');
+            await sleep(rand(1200, 1800));
+            try { chrome.runtime.sendMessage({ type: 'CLOSE_TAB' }); } catch {}
+          };
+          a.running = true;
+          agent = a;
+          a.runApplication().catch(() => {}).finally(() => { agent = null; });
+        }
+      }
+      return;
+    }
 
     if (IS_TOP) {
       startAgent(data.jobbot_profile);
