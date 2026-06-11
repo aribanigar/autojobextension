@@ -678,38 +678,58 @@
                 'div[class*="jobCard"], li.eu4oa1w0').filter(isVis);
     }
 
+    // Resolve to the ACTUAL clickable "Apply with Indeed" element. Returns the
+    // real <button>/<a>, never a wrapper, and skips "Apply on company site"
+    // (external) and already-applied buttons.
     findApplyButton(scope = document) {
-      // Dedicated ids / test-ids first (most stable)
-      const direct = $(
-        '#indeedApplyButton, [data-testid="indeedApplyButton"], ' +
-        'button[id*="applyButton"]:not([disabled]), [data-testid="applyButton"], ' +
-        '.jobsearch-IndeedApplyButton-newDesign, .ia-IndeedApplyButton',
-        scope
-      );
-      if (direct && isVis(direct)) return direct;
+      const wanted = el =>
+        isVis(el)
+        && /apply now|apply with indeed|easily apply|^apply$/i.test((el.textContent || '').trim())
+        && !/applied|company site|on company|external/i.test(el.textContent);
 
-      // Fallback: text match – "Apply now", "Apply with Indeed", "Easily apply"
-      return $$('button, a[role="button"], a[href*="smartapply"], a[href*="indeedapply"]', scope)
-        .find(el => isVis(el)
-          && /apply now|apply with indeed|easily apply/i.test(el.textContent)
-          && !/applied/i.test(el.textContent)) || null;
+      // 1) Known ids / test-ids → resolve to the inner interactive element
+      const idSel = '#indeedApplyButton, [data-testid="indeedApplyButton"], ' +
+        'button[id*="applyButton"]:not([disabled]), [data-testid="applyButton"], ' +
+        '.jobsearch-IndeedApplyButton-newDesign, .ia-IndeedApplyButton, ' +
+        '.indeed-apply-button, .indeedApplyButton';
+      for (const host of $$(idSel, scope)) {
+        if (!isVis(host)) continue;
+        if (/applied|company site/i.test(host.textContent)) continue;
+        const click = host.matches('button,a,[role="button"]')
+          ? host : ($('button, a[role="button"], [role="button"]', host) || host);
+        return click;
+      }
+
+      // 2) Text match across buttons/links in the light DOM
+      const txt = $$('button, a[role="button"], [role="button"], ' +
+                     'a[href*="smartapply"], a[href*="indeedapply"]', scope).find(wanted);
+      if (txt) return txt;
+
+      // 3) Shadow DOM fallback – the apply widget is sometimes a web component
+      const pane = $('.jobsearch-RightPane, #jobsearch-ViewjobPaneWrapper, ' +
+                     '[data-testid="job-detail"], .fastviewjob', scope) || scope;
+      const hosts = [pane, ...$$('*', pane)].filter(e => e.shadowRoot);
+      for (const h of hosts) {
+        const b = $$('button, a[role="button"], [role="button"]', h.shadowRoot).find(wanted);
+        if (b) return b;
+      }
+      return null;
     }
 
     async clickApply(card) {
-      // First: try button already visible in card or panel
-      let btn = this.findApplyButton(card);
+      // First: try a button already visible in the card or the open detail panel
+      let btn = this.findApplyButton(card) || this.findApplyButton(document);
 
       if (!btn) {
-        // Click the job title/card to open the right-side detail panel
+        // Open the job's detail panel, then poll for the Apply button to render
         const title = $('h2 a[data-jk], a.jcs-JobTitle, h2 a, a[class*="JobTitle"], ' +
                         'a[id^="job_"], [class*="title"] a', card) || card;
         if (title) {
           SPOT.pulse(title, `Opening: ${(title.textContent || '').trim().substring(0, 55)}`);
           realClick(title);
-          await sleep(rand(1200, 2200));
+          await sleep(rand(1000, 1800));
         }
-        // Look in the right-side detail panel – give it a moment to render
-        for (let i = 0; i < 6 && !btn; i++) {
+        for (let i = 0; i < 10 && !btn; i++) {        // up to ~8s for the panel to load
           btn = this.findApplyButton(document);
           if (!btn) await sleep(800);
         }
@@ -718,31 +738,39 @@
       if (!btn || !isVis(btn)) return 'none';
       if (/applied/i.test(btn.textContent)) return 'already';
 
-      // If it's a link that opens a new tab, force same-tab so auto-resume works
+      // Force same-tab so the apply flow stays in this tab and auto-resume works
       if (btn.tagName === 'A') btn.setAttribute('target', '_self');
+      btn.removeAttribute && btn.removeAttribute('target');
 
-      // Keep the spotlight locked on "Apply with Indeed" through the whole
-      // click + retry sequence so it's obvious and reliably registers.
+      // Mark this navigation as an intended apply so, if the click triggers a
+      // full page load, the watchdog/auto-resume immediately knows to continue.
+      const beforeUrl = location.href;
+
+      // Lock the spotlight on "Apply with Indeed" through the whole click +
+      // retry sequence so it's obvious and reliably registers.
       SPOT.pulse(btn, '🟦 Clicking "Apply with Indeed"…');
       btn.scrollIntoView({ behavior: 'smooth', block: 'center' });
-      await sleep(rand(400, 700));
-      const r = btn.getBoundingClientRect();
-      await moveTo(r.left + r.width / 2, r.top + r.height / 2);
-      await sleep(rand(120, 260));
-      realClick(btn);
+      await sleep(rand(350, 600));
 
-      // Wait for the apply flow to actually appear (navigation or in-page form);
-      // re-click a few times if nothing happened – Indeed's button ignores
-      // the first click while its JS is still hydrating.
-      for (let i = 0; i < 10; i++) {
-        await sleep(800);
-        if (this.isApplyPage() || this.isDone()) return 'clicked';
-        if ((i === 2 || i === 5) && btn.isConnected && isVis(btn)) {
-          SPOT.pulse(btn, '🟦 Retrying "Apply with Indeed"…');
-          realClick(btn);
+      // Click the resolved element AND its nearest interactive ancestor, in case
+      // the visible label is a span inside the real button.
+      const clickTargets = [btn, btn.closest && btn.closest('button, a, [role="button"]')]
+        .filter((v, i, a) => v && a.indexOf(v) === i);
+
+      // Up to ~16s: Indeed's React button often ignores the first click(s) while
+      // it hydrates. Re-click every couple of seconds until the flow appears.
+      for (let i = 0; i < 20; i++) {
+        if (this.isApplyPage() || this.isDone() || location.href !== beforeUrl) return 'clicked';
+        if (i % 3 === 0 && btn.isConnected && isVis(btn)) {
+          const r = btn.getBoundingClientRect();
+          await moveTo(r.left + r.width / 2, r.top + r.height / 2);
+          await sleep(rand(80, 180));
+          for (const t of clickTargets) { try { realClick(t); } catch {} }
+          if (i > 0) SPOT.pulse(btn, '🟦 Retrying "Apply with Indeed"…');
         }
+        await sleep(800);
       }
-      return this.isApplyPage() ? 'clicked' : 'none';
+      return (this.isApplyPage() || location.href !== beforeUrl) ? 'clicked' : 'none';
     }
 
     async fillStep() {
@@ -848,14 +876,14 @@
         isVis(b) && /return to job search|back to (job )?results|see more jobs|view more jobs/i.test(b.textContent));
       if (back) {
         await humanClick(back, 'Returning to job list…');
-        await sleep(rand(2500, 3800));
+        await sleep(rand(1600, 2600));
         return;
       }
       history.back();
-      await sleep(rand(2500, 3500));
+      await sleep(rand(1800, 2600));
       if (/\/apply\b|apply\.indeed\.com|smartapply\.indeed\.com|post-apply/i.test(location.href)) {
         history.back();
-        await sleep(rand(2000, 3000));
+        await sleep(rand(1500, 2300));
       }
     }
 
@@ -871,8 +899,8 @@
         // The top-page agent must wait for it, not skip the job.
         if (this.applyFrame()) {
           SPOT.status('Apply form open – agent working inside it…', 'applying');
-          for (let w = 0; w < 60 && this.running; w++) {       // up to ~3 min
-            await sleep(3000);
+          for (let w = 0; w < 90 && this.running; w++) {       // up to ~3 min
+            await sleep(2000);
             if (!this.applyFrame() || this.isDone()) break;
           }
           await sleep(1500);
@@ -919,15 +947,13 @@
           }
         }
 
-        SPOT.status('Stuck on this form – skipping job', 'warning');
+        SPOT.status('Stuck on this form – returning to job list', 'warning');
         this.skipped++; reportSkip();
-        history.back();
-        await sleep(2000);
+        await this.returnToList();
         return false;
       }
 
-      history.back();
-      await sleep(2000);
+      await this.returnToList();
       return false;
     }
 
@@ -948,21 +974,37 @@
           || card.textContent.trim().slice(0, 80);
     }
 
+    // Are we on a Indeed search-results page (vs. a single job / transitional page)?
+    onResultsPage() {
+      return /[?&]q=|[?&]vjk=|\/jobs\b/i.test(location.href)
+          || !!$('#mosaic-provider-jobcards, .jobsearch-ResultsList, [data-testid="job-card"]')
+          || this.jobCards().length > 0;
+    }
+
     async run() {
       this.running = true;
 
       if (this.isApplyPage()) {
         // Resumed mid-application after navigation – the run continues on the
-        // job list after history.back(), so keep the running flag alive.
+        // job list after returnToList(), so keep the running flag alive.
         await this.runApplication();
         this.running = false;
         return 'nav';
       }
 
+      // Landed on a single job-detail / transitional page with no list (e.g. after
+      // an apply). Recover to the results instead of declaring the run finished.
+      if (!this.onResultsPage()) {
+        SPOT.status('Returning to job results…', 'info');
+        await this.returnToList();
+        this.running = false;
+        return 'nav'; // keep the run alive; auto-resume continues on the results page
+      }
+
       SPOT.status('Indeed – scanning jobs…', 'info');
 
       while (this.running) {
-        const cards = await waitForCards(() => this.jobCards());
+        const cards = await waitForCards(() => this.jobCards(), 8, 1500);
         SPOT.status(`${cards.length} jobs on page`, 'info');
         if (!cards.length) break;
 
@@ -978,12 +1020,12 @@
             if (jk) appliedSet.add(jk);
 
             card.scrollIntoView({ block: 'center' });
-            await sleep(rand(400, 800));
+            await sleep(rand(300, 600));
             const res = await this.clickApply(card);
             if (res === 'clicked') await this.runApplication();
             else { this.skipped++; reportSkip(); }
 
-            await sleep(rand(2000, 4000));
+            await sleep(rand(900, 1700));
             progressed = true;
             break; // re-query the list for the next job
           }
@@ -1378,5 +1420,22 @@
       }
     }
   });
+
+  // ─── Keep-alive watchdog ────────────────────────────────────────────────────
+  // The single guarantee that the agent "never stops" once started: while a run
+  // is active (jobbot_running true) but no agent is running on this top page,
+  // (re)start it. Covers any case where a run exits on a transitional page,
+  // a slow load, or an unhandled hiccup. A deliberate Stop clears the flag, so
+  // this never fights the user.
+  if (IS_TOP) {
+    setInterval(() => {
+      if (agent && agent.running) return;
+      chrome.storage.local.get(['jobbot_running', 'jobbot_profile'], d => {
+        if (d.jobbot_running && d.jobbot_profile && !(agent && agent.running)) {
+          startAgent(d.jobbot_profile);
+        }
+      });
+    }, 5000);
+  }
 
 })();
