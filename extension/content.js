@@ -175,6 +175,12 @@
             background:linear-gradient(135deg,#7c3aed,#6d28d9);
             box-shadow:0 8px 28px rgba(124,58,237,.5);}
           #jb-start:hover{transform:translateY(-2px);box-shadow:0 12px 34px rgba(124,58,237,.65);}
+          #jb-selall{position:fixed;bottom:78px;right:26px;z-index:2147483647;display:none;
+            padding:10px 18px;border-radius:999px;cursor:pointer;
+            font:600 13px/1 system-ui,-apple-system,sans-serif;color:#c4b5fd;
+            background:#1a1230;border:2px solid #7c3aed;
+            box-shadow:0 6px 20px rgba(124,58,237,.35);}
+          #jb-selall:hover{color:#fff;background:#241740;}
           .jb-tick{position:absolute;top:8px;right:42px;z-index:9999;width:22px;height:22px;
             border-radius:6px;border:2px solid #7c3aed;background:#fff;cursor:pointer;
             display:flex;align-items:center;justify-content:center;
@@ -1763,6 +1769,7 @@
       size: () => s.size,
       has: id => s.has(id),
       toggle(id) { s.has(id) ? s.delete(id) : s.add(id); persist(); return s.has(id); },
+      add(id) { if (id) { s.add(id); persist(); } },
       remove(id) { s.delete(id); persist(); },
     };
   })();
@@ -1948,6 +1955,45 @@
         startBtn.style.display = show ? 'block' : 'none';
       }
     }
+
+    // "Select all" pill: one click ticks every visible job card; flips to
+    // "Clear all" when everything visible is already ticked.
+    let selAllBtn = null;
+    function visibleIds() {
+      try { return probe.jobCards().map(c => probe.cardId(c)).filter(Boolean); } catch { return []; }
+    }
+    function paintTicks() {
+      $$('.jb-tick').forEach(t => {
+        const card = t.parentElement;
+        if (!card) return;
+        const id = probe.cardId(card);
+        t.classList.toggle('on', !!id && selectedSet.has(id));
+      });
+    }
+    function syncSelAllBtn() {
+      const ids = visibleIds();
+      const show = ids.length > 0 && !(agent && agent.running);
+      if (show && !selAllBtn && document.body) {
+        selAllBtn = document.createElement('button');
+        selAllBtn.id = 'jb-selall';
+        selAllBtn.addEventListener('click', () => {
+          const cur = visibleIds();
+          const allOn = cur.length && cur.every(id => selectedSet.has(id));
+          cur.forEach(id => allOn ? selectedSet.remove(id) : selectedSet.add(id));
+          paintTicks();
+          SPOT.status(selectedSet.size()
+            ? `${selectedSet.size()} job(s) ticked – press ▶ to apply them in sequence`
+            : 'Selection cleared', 'info');
+          syncStartBtn(); syncSelAllBtn();
+        });
+        document.body.appendChild(selAllBtn);
+      }
+      if (selAllBtn) {
+        const allOn = ids.length && ids.every(id => selectedSet.has(id));
+        selAllBtn.textContent = allOn ? '✗ Clear all' : `☑ Select all (${ids.length})`;
+        selAllBtn.style.display = show ? 'block' : 'none';
+      }
+    }
     const tickTimer = setInterval(() => {
       if (!contextAlive()) { clearInterval(tickTimer); return; }
       SPOT.ensure(); // styles must exist before any run starts, or ticks render invisible
@@ -1974,6 +2020,7 @@
         card.appendChild(t);
       }
       syncStartBtn();
+      syncSelAllBtn();
     }, 1500);
   }
 
