@@ -1883,7 +1883,8 @@
           const selMode = selectionMode();
           // When all ticked jobs are consumed, exit tick-mode and scan everything
           if (selMode && !selectedSet.size()) {
-            try { sessionStorage.removeItem('jobbot_selmode'); } catch {}
+            _setSelMode(false);
+            try { chrome.storage.local.remove('jobbot_selmode'); } catch {}
             SPOT.status('Ticked jobs done – continuing with all remaining jobs…', 'info');
             await sleep(rand(800, 1400));
             // Loop continues now without selMode restriction
@@ -1972,18 +1973,37 @@
   // run, but unlike appliedSet it does not survive the session – a job whose
   // apply failed today can be retried tomorrow. Only confirmed applications
   // go into the permanent appliedSet.
+  //
+  // IMPORTANT: sessionStorage is wiped on every cross-origin navigation (e.g.
+  // indeed.com → apply.indeed.com). We back this up into chrome.storage.local
+  // under a run-scoped key so it survives the hop and the agent never replays
+  // a job it already attempted in the current run.
   const attemptedSet = (() => {
     let s = new Set();
+    // Seed from both stores; chrome.storage.local read is async so we do a
+    // best-effort sync seed from sessionStorage first, then merge async.
     try { s = new Set(JSON.parse(sessionStorage.getItem('jobbot_attempted') || '[]')); } catch {}
+    const CKEY = 'jobbot_attempted_run';
+    try {
+      chrome.storage.local.get(CKEY, d => {
+        (Array.isArray(d[CKEY]) ? d[CKEY] : []).forEach(id => s.add(id));
+      });
+    } catch {}
     const persist = () => {
-      try { sessionStorage.setItem('jobbot_attempted', JSON.stringify([...s].slice(-2000))); } catch {}
+      const arr = [...s].slice(-2000);
+      try { sessionStorage.setItem('jobbot_attempted', JSON.stringify(arr)); } catch {}
+      try { chrome.storage.local.set({ [CKEY]: arr }); } catch {}
     };
     return {
       has: id => s.has(id),
       add: id => { if (!id) return; s.add(id); persist(); },
       // An explicit user Start = a fresh run: forget mere attempts so the list
       // is re-scanned (permanent appliedSet still prevents re-applying).
-      clear: () => { s = new Set(); persist(); },
+      clear: () => {
+        s = new Set();
+        try { sessionStorage.removeItem('jobbot_attempted'); } catch {}
+        try { chrome.storage.local.remove(CKEY); } catch {}
+      },
     };
   })();
 
@@ -1998,13 +2018,27 @@
     catch { return String(raw); }
   }
 
-  // Ticked jobs: the user queues specific jobs with the ✓ boxes injected on
-  // LinkedIn cards; Start then applies ONLY those, in list order. No ticks =
-  // apply everything (default). Per-tab, survives in-tab navigation.
+  // Ticked jobs: the user queues specific jobs with the ✓ boxes; Start then
+  // applies ONLY those in list order. No ticks = apply everything.
+  //
+  // Backed by chrome.storage.local so ticked jobs survive the cross-origin
+  // indeed.com → apply.indeed.com hop that wipes sessionStorage. The in-memory
+  // Set is the fast-path; chrome.storage is the durable source-of-truth.
   const selectedSet = (() => {
     let s = new Set();
+    // Sync seed from sessionStorage (instant) then merge from chrome.storage
     try { s = new Set(JSON.parse(sessionStorage.getItem('jobbot_selected') || '[]')); } catch {}
-    const persist = () => { try { sessionStorage.setItem('jobbot_selected', JSON.stringify([...s])); } catch {} };
+    const CKEY = 'jobbot_selected_run';
+    try {
+      chrome.storage.local.get(CKEY, d => {
+        (Array.isArray(d[CKEY]) ? d[CKEY] : []).forEach(id => s.add(id));
+      });
+    } catch {}
+    const persist = () => {
+      const arr = [...s];
+      try { sessionStorage.setItem('jobbot_selected', JSON.stringify(arr)); } catch {}
+      try { chrome.storage.local.set({ [CKEY]: arr }); } catch {}
+    };
     return {
       size: () => s.size,
       has: id => s.has(id),
@@ -2013,15 +2047,43 @@
       remove(id) { s.delete(id); persist(); },
     };
   })();
-  const selectionMode = () => { try { return sessionStorage.getItem('jobbot_selmode') === '1'; } catch { return false; } };
+
+  // selectionMode: also backed by chrome.storage.local so the flag survives
+  // cross-origin hops — reading from both stores, writing to both.
+  const selectionMode = () => {
+    try { return sessionStorage.getItem('jobbot_selmode') === '1'; } catch { return false; }
+  };
+  // Keep chrome.storage in sync with the sessionStorage flag on every write
+  const _setSelMode = (on) => {
+    try { sessionStorage.setItem('jobbot_selmode', on ? '1' : '0'); } catch {}
+    try { chrome.storage.local.set({ jobbot_selmode: on ? '1' : '0' }); } catch {}
+  };
+  // On load: re-seed sessionStorage from chrome.storage if it was cleared
+  try {
+    chrome.storage.local.get('jobbot_selmode', d => {
+      if (d.jobbot_selmode === '1') {
+        try { sessionStorage.setItem('jobbot_selmode', '1'); } catch {}
+      }
+    });
+  } catch {}
 
   // Consecutive result-pages with nothing new to apply to. Persisted in
-  // sessionStorage because Indeed pagination is a full navigation that would
-  // wipe an in-memory counter – this is what stops endless page-flipping.
+  // chrome.storage.local (survives cross-origin hops that wipe sessionStorage).
   const pageChurn = {
     get: () => { try { return parseInt(sessionStorage.getItem('jobbot_churn'), 10) || 0; } catch { return 0; } },
-    set: n => { try { sessionStorage.setItem('jobbot_churn', String(n)); } catch {} },
+    set: n => {
+      try { sessionStorage.setItem('jobbot_churn', String(n)); } catch {}
+      try { chrome.storage.local.set({ jobbot_churn: n }); } catch {}
+    },
   };
+  // Re-seed pageChurn from chrome.storage on cross-origin reload
+  try {
+    chrome.storage.local.get('jobbot_churn', d => {
+      if (d.jobbot_churn != null) {
+        try { sessionStorage.setItem('jobbot_churn', String(d.jobbot_churn)); } catch {}
+      }
+    });
+  } catch {}
 
   let agent = null;
   let lastDoneAt = 0; // when a full pass finished; throttles monitor-mode re-scans
@@ -2110,7 +2172,7 @@
         lastDoneAt = 0;       // and no monitor-mode cooldown
         pageChurn.set(0);     // fresh empty-page streak
         // Ticked jobs present → this run applies only those, in sequence
-        try { sessionStorage.setItem('jobbot_selmode', selectedSet.size() > 0 ? '1' : '0'); } catch {}
+        _setSelMode(selectedSet.size() > 0);
         startAgent(msg.profile || {});
         reply({ ok: true });
         break;
@@ -2203,7 +2265,7 @@
           attemptedSet.clear();
           lastDoneAt = 0;
           pageChurn.set(0);
-          try { sessionStorage.setItem('jobbot_selmode', '1'); } catch {}
+          _setSelMode(true);
           try {
             chrome.runtime.sendMessage({ type: 'GET_PROFILE' }, r => {
               void chrome.runtime.lastError;
