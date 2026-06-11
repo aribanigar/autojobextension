@@ -169,6 +169,12 @@
             50%{box-shadow:0 0 0 9px rgba(124,58,237,.85),0 0 40px rgba(167,139,250,.9),
               0 0 0 9999px rgba(10,5,25,.38)}}
           .jb-spot{animation:jb-spot .8s ease-in-out infinite!important;}
+          #jb-start{position:fixed;bottom:26px;right:26px;z-index:2147483647;display:none;
+            padding:13px 22px;border:none;border-radius:999px;cursor:pointer;
+            font:700 14px/1 system-ui,-apple-system,sans-serif;color:#fff;
+            background:linear-gradient(135deg,#7c3aed,#6d28d9);
+            box-shadow:0 8px 28px rgba(124,58,237,.5);}
+          #jb-start:hover{transform:translateY(-2px);box-shadow:0 12px 34px rgba(124,58,237,.65);}
           .jb-tick{position:absolute;top:8px;right:42px;z-index:9999;width:22px;height:22px;
             border-radius:6px;border:2px solid #7c3aed;background:#fff;cursor:pointer;
             display:flex;align-items:center;justify-content:center;
@@ -1225,9 +1231,20 @@
         let progressed = true;
         while (progressed && this.running) {
           progressed = false;
+          // Tick mode (owner-approved addition): apply only the queued jobs
+          const selMode = selectionMode();
+          if (selMode && !selectedSet.size()) {
+            SPOT.status('All ticked jobs done – tick more jobs, or ✕ to stop', 'success');
+            this.running = false;
+            return 'nav';
+          }
           for (const card of this.jobCards()) {
             const jk = this.cardId(card);
-            if (jk && (appliedSet.has(jk) || attemptedSet.has(jk))) continue;
+            if (selMode && (!jk || !selectedSet.has(jk))) continue;
+            if (jk && (appliedSet.has(jk) || attemptedSet.has(jk))) {
+              if (jk) selectedSet.remove(jk);
+              continue;
+            }
             if (jk) attemptedSet.add(jk); // session-only; permanent mark happens on confirmed apply
 
             card.scrollIntoView({ block: 'center' });
@@ -1288,8 +1305,15 @@
       SPOT.pulse(link, `Opening: ${link.textContent.trim().substring(0, 60)}`);
       if (link.tagName === 'A') link.setAttribute('target', '_self'); // same tab so the run can resume
       await sleep(rand(300, 700));
+      const before = location.href;
       realClick(link);
-      await sleep(rand(2800, 4200));
+      await sleep(rand(2000, 3000));
+      // Recommended-job tiles put the click handler on the card, not the
+      // <p class="title"> – if nothing happened, click the card itself.
+      if (location.href === before && link.tagName !== 'A') {
+        realClick(card);
+        await sleep(rand(1800, 2600));
+      }
       return true;
     }
 
@@ -1311,9 +1335,27 @@
       if (already) return 'already';
       if (external) return 'external';
       if (!btn) return false;
-      await humanClick(btn, 'Applying on Naukri…');
-      await sleep(rand(1200, 2000));
-      return true;
+
+      // Locked spotlight on APPLY through the click + verify + retry sequence
+      SPOT.pulse(btn, '🟦 Clicking APPLY…');
+      btn.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      await sleep(rand(400, 700));
+      const r = btn.getBoundingClientRect();
+      await moveTo(r.left + r.width / 2, r.top + r.height / 2);
+      await sleep(rand(100, 220));
+      realClick(btn);
+
+      // Success = the question drawer opens OR an instant-apply toast fires.
+      // Naukri's button can swallow early clicks while its JS hydrates.
+      for (let i = 0; i < 10; i++) {
+        await sleep(800);
+        if (this.chatbot() || this.isApplied()) return true;
+        if ((i === 3 || i === 6) && btn.isConnected && isVis(btn)) {
+          SPOT.pulse(btn, '🟦 Retrying APPLY…');
+          realClick(btn);
+        }
+      }
+      return !!(this.chatbot() || this.isApplied());
     }
 
     // The apply chatbot drawer that pops in after clicking Apply
@@ -1352,8 +1394,24 @@
     async answerChat(drawer) {
       const question = this.chatQuestion(drawer);
 
-      // Resolve which option the profile/AI would pick from a list of labels
+      // Notice-period buckets: profile stores free text ("30 days") but Naukri
+      // offers ranges - parse the days and pick the right bucket directly.
+      const noticeIdx = (labels) => {
+        if (!/notice/i.test(question)) return -1;
+        const days = parseInt((this.f.p.professional?.noticePeriod || '30').match(/\d+/)?.[0] || '30', 10);
+        const want = days <= 15 ? /15 days|immediate/i
+                   : days <= 31 ? /^1 month/i
+                   : days <= 62 ? /^2 month/i
+                   : days <= 93 ? /^3 month/i
+                   : /more than 3/i;
+        return labels.findIndex(l => want.test(l.trim()));
+      };
+
+      // Resolve which option to pick: deterministic mapping → profile → AI →
+      // "Skip this question" (never silently submit a wrong guess).
       const choose = async (labels) => {
+        let idx = noticeIdx(labels);
+        if (idx >= 0) return idx;
         let pick = this.f.bestOption(question, labels);
         if (!pick) {
           const ai = await this.f.aiAnswer(question, labels);
@@ -1361,21 +1419,30 @@
                       || labels.find(o => o.toLowerCase().includes(ai.toLowerCase())
                                        || ai.toLowerCase().includes(o.toLowerCase()));
         }
-        return pick ? labels.findIndex(o => o === pick) : 0;
+        if (pick) return labels.findIndex(o => o === pick);
+        const skip = labels.findIndex(l => /skip this question/i.test(l));
+        return skip >= 0 ? skip : 0;
       };
 
       // 1) Radio buttons – click the <input> itself, NOT the wrapper
       //    (clicking the container lands in padding and never registers)
-      const radioWraps = $$('div.ssrc__radio-btn-container, [class*="ssrc__radio"]', drawer)
+      let radioWraps = $$('div.ssrc__radio-btn-container, [class*="ssrc__radio"]', drawer)
         .map(w => ({ input: $('input[type="radio"], input.ssrc__radio', w) || (w.matches('input') ? w : null),
                      label: ($('.ssrc__label', w) || w).textContent.trim() }))
         .filter(r => r.input && r.label);
+      if (!radioWraps.length) {
+        // Generic fallback for restyled drawers (e.g. the pill-row layout)
+        radioWraps = $$('input[type="radio"]', drawer)
+          .map(input => ({ input, label: (input.closest('label') || input.parentElement)?.textContent.trim() || '' }))
+          .filter(r => r.label);
+      }
       if (radioWraps.length) {
         const idx = await choose(radioWraps.map(r => r.label));
         const r = radioWraps[idx] || radioWraps[0];
-        SPOT.pulse(r.input, `Selecting: "${r.label.slice(0, 40)}"`);
-        await sleep(rand(300, 700));
+        SPOT.pulse(r.input.closest('label') || r.input, `Selecting: "${r.label.slice(0, 40)}"`);
+        await sleep(rand(400, 800));
         realClick(r.input);
+        r.input.checked = true;
         r.input.dispatchEvent(new Event('change', { bubbles: true }));
         await sleep(rand(300, 600));
       } else {
@@ -1416,13 +1483,29 @@
         }
       }
 
-      // 5) Click Save/Send – it's a <div class="sendMsg">, not a <button>
-      const send =
+      // 5) Click Save – a <div class="sendMsg"> or <button>; DISABLED until the
+      //    answer registers, so wait for it to enable, then spotlight + click.
+      const findSave = () =>
         $('div.sendMsg, [class*="sendMsgbtn"] div.sendMsg, [id^="sendMsgbtn_container"] div, ' +
           '[class*="sendMsg"], [class*="send-btn"], [class*="saveBtn"]', drawer) ||
         $$('button, div[role="button"], div', drawer).find(b =>
           isVis(b) && /^(save|send|submit|next|continue)$/i.test(b.textContent.trim()));
-      if (send && isVis(send)) { await humanClick(send, 'Sending answer…'); await sleep(rand(800, 1500)); return true; }
+      const looksDisabled = el =>
+        el.disabled || el.getAttribute('aria-disabled') === 'true'
+        || /\bdisabled\b/i.test(el.className)
+        || parseFloat(getComputedStyle(el).opacity) < 0.55;
+
+      for (let i = 0; i < 8; i++) {
+        const send = findSave();
+        if (send && isVis(send) && !looksDisabled(send)) {
+          SPOT.pulse(send, '💾 Clicking SAVE…');
+          await sleep(rand(500, 900));
+          await humanClick(send, '💾 Saving answer…');
+          await sleep(rand(800, 1500));
+          return true;
+        }
+        await sleep(700); // Save enables once the selection registers
+      }
       return false;
     }
 
@@ -1513,9 +1596,19 @@
         let progressed = true;
         while (progressed && this.running) {
           progressed = false;
+          const selMode = selectionMode();
+          if (selMode && !selectedSet.size()) {
+            SPOT.status('All ticked jobs done – tick more jobs, or ✕ to stop', 'success');
+            this.running = false;
+            return 'nav'; // stay alive in monitor mode awaiting more ticks
+          }
           for (const card of this.jobCards()) {
             const jid = this.cardId(card);
-            if (jid && (appliedSet.has(jid) || attemptedSet.has(jid))) continue;
+            if (selMode && (!jid || !selectedSet.has(jid))) continue;
+            if (jid && (appliedSet.has(jid) || attemptedSet.has(jid))) {
+              if (jid) selectedSet.remove(jid);
+              continue;
+            }
             if (jid) attemptedSet.add(jid); // permanent mark happens on confirmed apply
 
             card.scrollIntoView({ block: 'center' });
@@ -1630,6 +1723,23 @@
   let lastDoneAt = 0; // when a full pass finished; throttles monitor-mode re-scans
   const IS_TOP = window === window.top;
 
+  // A run is bound to the ONE tab where the user pressed Start: the running
+  // flag stores that tab's id. Other tabs / freshly opened pages never
+  // auto-start; the running tab still resumes across its own navigations.
+  let MY_TAB = null;
+  const tabReady = new Promise(res => {
+    try {
+      chrome.runtime.sendMessage({ type: 'GET_TAB_ID' }, r => {
+        void chrome.runtime.lastError;
+        MY_TAB = r?.tabId ?? null;
+        res();
+      });
+    } catch { res(); }
+  });
+  // true/legacy boolean flags match any tab; numeric flags must match ours
+  const flagMatchesThisTab = flag =>
+    !!flag && (flag === true || MY_TAB === null || flag === MY_TAB);
+
   async function startAgent(profile) {
     if (agent?.running) return;
     const f = new Filler(profile);
@@ -1649,7 +1759,8 @@
     // invalidated") – never let that kill the page or the run loop.
     const setStore = obj => { try { chrome.storage.local.set(obj); } catch {} };
 
-    if (IS_TOP) setStore({ jobbot_running: true });
+    try { await tabReady; } catch {}
+    if (IS_TOP) setStore({ jobbot_running: MY_TAB ?? true });
     let outcome = 'done';
     try { outcome = await agent.run(); }
     catch (e) {
@@ -1709,8 +1820,10 @@
   // navigations that destroy the running agent. If a run is in progress,
   // restart the right agent on every page load so the run continues
   // seamlessly: job → apply → back to list → next job → next page.
-  chrome.storage.local.get(['jobbot_running', 'jobbot_profile'], data => {
+  chrome.storage.local.get(['jobbot_running', 'jobbot_profile'], async data => {
     if (!data.jobbot_running || !data.jobbot_profile) return;
+    try { await tabReady; } catch {} // know our tab id before deciding
+    if (!flagMatchesThisTab(data.jobbot_running)) return; // run belongs to another tab
 
     if (IS_TOP) {
       startAgent(data.jobbot_profile);
@@ -1729,11 +1842,43 @@
     }
   });
 
-  // ─── Tick boxes on LinkedIn job cards ───────────────────────────────────────
-  // Lets the user queue specific jobs: tick ✓ on cards, press Start, and the
-  // agent applies exactly those in sequence. LinkedIn only (Indeed is locked).
-  if (IS_TOP && PLATFORM === 'linkedin') {
-    const probe = new LinkedInAgent(new Filler({}));
+  // ─── Tick boxes on job cards (all platforms) ────────────────────────────────
+  // Lets the user queue specific jobs: tick ✓ on cards, then press the floating
+  // "Apply N ticked jobs" button (or popup Start) and the agent applies exactly
+  // those in sequence. (Indeed inclusion explicitly approved by the owner.)
+  if (IS_TOP && PLATFORM) {
+    const probe = PLATFORM === 'linkedin' ? new LinkedInAgent(new Filler({}))
+                : PLATFORM === 'naukri'   ? new NaukriAgent(new Filler({}))
+                : new IndeedAgent(new Filler({}));
+
+    // Floating command button: nothing runs until the user clicks this (or
+    // Start in the popup) – loading a page never initiates applications.
+    let startBtn = null;
+    function syncStartBtn() {
+      const n = selectedSet.size();
+      const show = n > 0 && !(agent && agent.running);
+      if (show && !startBtn && document.body) {
+        startBtn = document.createElement('button');
+        startBtn.id = 'jb-start';
+        startBtn.addEventListener('click', () => {
+          startBtn.style.display = 'none';
+          attemptedSet.clear();
+          lastDoneAt = 0;
+          try { sessionStorage.setItem('jobbot_selmode', '1'); } catch {}
+          try {
+            chrome.runtime.sendMessage({ type: 'GET_PROFILE' }, r => {
+              void chrome.runtime.lastError;
+              startAgent(r?.profile || {});
+            });
+          } catch {}
+        });
+        document.body.appendChild(startBtn);
+      }
+      if (startBtn) {
+        startBtn.textContent = `▶ Apply ${n} ticked job${n === 1 ? '' : 's'}`;
+        startBtn.style.display = show ? 'block' : 'none';
+      }
+    }
     const tickTimer = setInterval(() => {
       if (!contextAlive()) { clearInterval(tickTimer); return; }
       let cards;
@@ -1752,11 +1897,13 @@
           const on = selectedSet.toggle(id);
           t.classList.toggle('on', on);
           SPOT.status(selectedSet.size()
-            ? `${selectedSet.size()} job(s) ticked – press Start to apply them in sequence`
+            ? `${selectedSet.size()} job(s) ticked – press ▶ to apply them in sequence`
             : 'No jobs ticked – Start applies all jobs', 'info');
+          syncStartBtn();
         }, true);
         card.appendChild(t);
       }
+      syncStartBtn();
     }, 1500);
   }
 
@@ -1790,7 +1937,8 @@
       try {
         chrome.storage.local.get(['jobbot_running', 'jobbot_profile'], d => {
           if (chrome.runtime.lastError) return;
-          if (d.jobbot_running && d.jobbot_profile && !(agent && agent.running)) {
+          if (d.jobbot_running && flagMatchesThisTab(d.jobbot_running)
+              && d.jobbot_profile && !(agent && agent.running)) {
             startAgent(d.jobbot_profile);
           }
         });

@@ -58,6 +58,12 @@ function syncToCRM(row) {
 chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
   switch (msg.type) {
 
+    case 'GET_TAB_ID':
+      // Lets content scripts learn their own tab id, so a run can be bound to
+      // the one tab where the user pressed Start (no cross-tab auto-starts).
+      sendResponse({ tabId: _sender.tab?.id ?? null });
+      break;
+
     case 'GET_PROFILE':
       chrome.storage.local.get('jobbot_profile', d => {
         sendResponse({ profile: d.jobbot_profile || DEFAULT_PROFILE });
