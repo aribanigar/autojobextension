@@ -575,21 +575,35 @@
       await sleep(rand(350, 600));
 
       const submit = $('button[aria-label="Submit application"]', modal)
-                   || $$('button', modal).find(b => isVis(b) && /submit application/i.test(b.getAttribute('aria-label') || ''));
+                   || $$('button', modal).find(b => isVis(b) && /submit application/i.test(b.getAttribute('aria-label') || ''))
+                   || $$('button', modal).find(b => isVis(b) && /^submit application$/i.test(b.textContent.trim()));
       if (submit && isVis(submit)) {
-        await humanClick(submit, '🎉 Submitting!');
+        SPOT.pulse(submit, '🎉 Clicking SUBMIT APPLICATION…');
+        await sleep(rand(700, 1100)); // hold the spotlight so the click is visible
+        await humanClick(submit, '🎉 Submitting application!');
         await sleep(rand(2500, 3500));
         return 'done';
       }
 
       const review = $('button[aria-label="Review your application"]', modal)
-                   || $$('button', modal).find(b => isVis(b) && /review/i.test(b.getAttribute('aria-label') || ''));
-      if (review) { await humanClick(review, 'Review…'); return 'continue'; }
+                   || $$('button', modal).find(b => isVis(b) && /review/i.test(b.getAttribute('aria-label') || ''))
+                   || $$('button', modal).find(b => isVis(b) && /^review$/i.test(b.textContent.trim()));
+      if (review && isVis(review)) {
+        SPOT.pulse(review, '📋 Clicking REVIEW…');
+        await sleep(rand(600, 900));
+        await humanClick(review, '📋 Reviewing application…');
+        return 'continue';
+      }
 
       const next = $('button[aria-label="Continue to next step"]', modal)
                  || $('[data-easy-apply-next-button]', modal)
                  || $$('button', modal).find(b => isVis(b) && /^(continue|next)$/i.test(b.textContent.trim()));
-      if (next) { await humanClick(next, 'Next step…'); return 'continue'; }
+      if (next && isVis(next)) {
+        SPOT.pulse(next, '➡️ Clicking NEXT…');
+        await sleep(rand(600, 900));
+        await humanClick(next, '➡️ Next step…');
+        return 'continue';
+      }
 
       return 'stuck';
     }
@@ -612,7 +626,9 @@
       const btn = await this.findEasyApply();
       if (!btn) { SPOT.status('No Easy Apply – skipping', 'warning'); this.skipped++; reportSkip(); return; }
 
-      await humanClick(btn, 'Easy Apply clicked…');
+      SPOT.pulse(btn, '🟦 Clicking EASY APPLY…');
+      await sleep(rand(600, 1000));
+      await humanClick(btn, '🟦 Opening Easy Apply…');
       await sleep(rand(700, 1200));
       SPOT.status('Filling application…', 'applying');
 
@@ -660,11 +676,13 @@
         SPOT.status(`${cards.length} jobs on page`, 'info');
         if (!cards.length) break;
 
-        // LinkedIn virtualizes the list – cards detach from the DOM as you scroll.
-        // Re-query after every application and pick the first unseen card.
-        let progressed = true;
-        while (progressed && this.running) {
-          progressed = false;
+        // LinkedIn virtualizes the list – cards detach from the DOM as you
+        // scroll and more render in as you scroll down. Re-query after every
+        // application; when a pass finds nothing new, scroll the list to load
+        // more cards before moving to the next page.
+        let scrollTries = 0;
+        while (this.running) {
+          let progressed = false;
           for (const card of this.jobCards()) {
             const id = this.cardId(card);
             if (id && (appliedSet.has(id) || attemptedSet.has(id))) continue;
@@ -677,6 +695,18 @@
             progressed = true;
             break; // re-query the (possibly re-rendered) list
           }
+
+          if (progressed) { scrollTries = 0; continue; }
+          if (scrollTries >= 4) break; // genuinely nothing new on this page
+
+          // Nudge the virtualized list to render the next batch of cards
+          scrollTries++;
+          const lastCard = this.jobCards().pop();
+          const scroller = lastCard?.closest('ul')?.parentElement || document.scrollingElement;
+          SPOT.status('Loading more jobs…', 'info');
+          if (lastCard) lastCard.scrollIntoView({ behavior: 'smooth', block: 'end' });
+          if (scroller) scroller.scrollTop = scroller.scrollHeight;
+          await sleep(rand(1500, 2500));
         }
 
         if (!await this.nextPage()) break;
@@ -1446,13 +1476,15 @@
   const attemptedSet = (() => {
     let s = new Set();
     try { s = new Set(JSON.parse(sessionStorage.getItem('jobbot_attempted') || '[]')); } catch {}
+    const persist = () => {
+      try { sessionStorage.setItem('jobbot_attempted', JSON.stringify([...s].slice(-2000))); } catch {}
+    };
     return {
       has: id => s.has(id),
-      add: id => {
-        if (!id) return;
-        s.add(id);
-        try { sessionStorage.setItem('jobbot_attempted', JSON.stringify([...s].slice(-2000))); } catch {}
-      },
+      add: id => { if (!id) return; s.add(id); persist(); },
+      // An explicit user Start = a fresh run: forget mere attempts so the list
+      // is re-scanned (permanent appliedSet still prevents re-applying).
+      clear: () => { s = new Set(); persist(); },
     };
   })();
 
@@ -1515,6 +1547,7 @@
         reply({ ok: true, platform: PLATFORM });
         break;
       case 'START_AGENT':
+        attemptedSet.clear(); // explicit user start = fresh scan of the list
         startAgent(msg.profile || {});
         reply({ ok: true });
         break;
