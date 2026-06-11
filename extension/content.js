@@ -1372,7 +1372,22 @@
       return $$(
         '.srp-jobtuple-wrapper, [class*="jobTuple"], .cust-job-tuple, ' +
         'article[class*="jobTuple"], div[data-job-id]'
-      ).filter(isVis);
+      ).filter(c => isVis(c)
+        // Job-description pages render "Jobs you might be interested in" /
+        // "Similar jobs" tiles that match the card selectors; they are not
+        // part of the run and must never make a detail page look like a list.
+        && !c.closest('aside, [class*="similar"], [class*="interested"], ' +
+                      '[class*="sidebar"], [class*="right-section"], [class*="rightSection"]'));
+    }
+
+    // A job-description page is where the Apply action lives. Detect it by
+    // URL or by the apply bar itself — NOT by the absence of job cards
+    // (sidebar recommendation tiles used to defeat that check).
+    onDetailPage() {
+      if (/\/job-listings-/i.test(location.pathname)) return true;
+      const bar = $('#apply-button, #company-site-button, #already-applied, ' +
+                    'button[class*="apply-button"], [class*="jd-header"]');
+      return !!bar && !$('.srp-jobtuple-wrapper');
     }
 
     cardLink(card) {
@@ -1743,7 +1758,7 @@
 
       // Resumed on a job detail page after same-tab navigation – apply here,
       // then go back; auto-resume continues the run on the job list.
-      if (/\/job-listings-/i.test(location.pathname) && !this.jobCards().length) {
+      if (this.onDetailPage()) {
         attemptedSet.add(normalizeJobId(location.href)); // no loops this session
         const out = await this.applyHere();
         if (out === 'done') {
