@@ -659,7 +659,10 @@
     stop() { this.running = false; }
   }
 
-  // ─── Indeed Agent ─────────────────────────────────────────────────────────
+  // ═══ Indeed Agent — LOCKED ═══════════════════════════════════════════════
+  // Verified working end-to-end (apply click, multi-step forms, captcha
+  // hand-off, sequencing, dedupe). Do NOT modify this section without the
+  // owner's explicit approval — see CLAUDE.md "Locked integrations".
   class IndeedAgent {
     constructor(f) { this.f = f; this.applied = 0; this.skipped = 0; this.running = false; }
 
@@ -1080,6 +1083,8 @@
 
     stop() { this.running = false; }
   }
+
+  // ═══ End of Indeed Agent (LOCKED) ══════════════════════════════════════════
 
   // ─── Naukri Agent ─────────────────────────────────────────────────────────
   class NaukriAgent {

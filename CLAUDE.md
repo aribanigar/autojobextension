@@ -33,6 +33,10 @@ Three contexts communicate via `chrome.runtime.sendMessage` with `{ type: ... }`
   - `SPOT` renders the on-page overlay (status bar + pulsing highlight box) so the user can watch the agent and stop it.
   - Indeed applications navigate to `apply.indeed.com`, which reloads the content script; the auto-resume block at the bottom of the file restarts an `IndeedAgent` mid-application when `jobbot_running` is set in storage.
 
+## Locked integrations
+
+- **Indeed is LOCKED** (owner directive, June 2026). The `IndeedAgent` class in `extension/content.js` (marked with `═══ Indeed Agent — LOCKED ═══` banners) is verified working end-to-end: Apply-with-Indeed clicking, multi-step Continue/Submit flow, captcha human-hand-off, job sequencing, and the two-tier attempted/applied dedupe. Do **not** modify anything inside those banners — selectors, timings, or logic — unless the user explicitly asks for an Indeed change. Shared helpers it depends on (`realClick`, `moveTo`, `humanClick`, `SPOT`, `Filler`, `appliedSet`/`attemptedSet`, `waitForCards`, auto-resume, watchdog) must stay backward-compatible; if you change a shared helper, verify the Indeed flow is unaffected.
+
 ## Conventions and gotchas
 
 - Site selectors (job cards, apply buttons, modals) are the most fragile part — each agent keeps several fallback selectors per element because the sites change markup frequently. When fixing a broken flow, add to the selector lists rather than replacing them.
