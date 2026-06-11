@@ -854,6 +854,13 @@
         isVis(el) && /your application has been submitted|application (has been |was )?submitted|successfully applied/i.test(el.textContent));
     }
 
+    // Indeed's interstitial "You have already applied to this job" page – the
+    // job slipped past the seen-memory (e.g. applied before JobBot tracked it).
+    isAlreadyApplied() {
+      return $$('h1, h2, h3, [role="heading"], [class*="title"], [class*="heading"]').some(el =>
+        isVis(el) && /already applied to this job|you('ve| have) already applied/i.test(el.textContent));
+    }
+
     // Only a VISIBLE apply iframe counts – Indeed preloads a hidden one
     applyFrame() {
       const f = $('iframe[src*="indeedapply"], iframe[src*="smartapply"], iframe[src*="apply.indeed"]');
@@ -896,6 +903,16 @@
 
       while (steps < 60 && this.running) {
         if (this.isDone()) { await this.reportApplied(); return true; }
+
+        // "You have already applied to this job" – remember it permanently and
+        // move straight on to the next job instead of waiting for a form.
+        if (this.isAlreadyApplied()) {
+          appliedSet.add(normalizeJobId(location.href));
+          SPOT.status('Already applied – moving to next job…', 'info');
+          await sleep(rand(700, 1200));
+          await this.returnToList();
+          return false;
+        }
 
         // Apply form rendered inside Indeed's embedded iframe: our content
         // script injected in that frame runs its own agent (auto-resume).
@@ -972,8 +989,9 @@
 
     cardId(card) {
       const jk = $('a[data-jk]', card)?.getAttribute('data-jk')
-              || $('a', card)?.getAttribute('data-jk')
-              || card.getAttribute('data-jk');
+              || $('[data-jk]', card)?.getAttribute('data-jk')
+              || card.getAttribute('data-jk')
+              || card.closest('[data-jk]')?.getAttribute('data-jk');
       if (jk) return 'jk:' + jk.toLowerCase();
       const href = $('h2 a', card)?.href || $('a[href*="viewjob"], a[href*="/rc/clk"]', card)?.href;
       if (href) return normalizeJobId(href);
