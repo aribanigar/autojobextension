@@ -326,7 +326,22 @@
     // AI fallback (Gemini via the user's backend) for questions map() can't answer
     async aiAnswer(question, options = []) {
       const prefs = this.p.preferences || {};
-      if (!prefs.aiEnabled || !prefs.crmUrl || !prefs.crmKey) return null;
+      if (!prefs.aiEnabled || !prefs.crmUrl) return null;
+      // Authenticate as the user's CRM account; legacy shared key as fallback
+      const auth = {};
+      if (prefs.crmEmail && prefs.crmPassword) {
+        const token = await new Promise(res => {
+          try {
+            chrome.runtime.sendMessage({ type: 'GET_CRM_TOKEN' }, r => {
+              void chrome.runtime.lastError;
+              res(r?.token || null);
+            });
+          } catch { res(null); }
+        });
+        if (token) auth.Authorization = `Bearer ${token}`;
+      }
+      if (!auth.Authorization && prefs.crmKey) auth['x-api-key'] = prefs.crmKey;
+      if (!auth.Authorization && !auth['x-api-key']) return null;
       const q = String(question).trim();
       if (q.length < 3) return null;
 
@@ -339,7 +354,7 @@
         const t = setTimeout(() => ctrl.abort(), 15000);
         const r = await fetch(`${prefs.crmUrl.replace(/\/+$/, '')}/api/ai`, {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json', 'x-api-key': prefs.crmKey },
+          headers: { 'Content-Type': 'application/json', ...auth },
           body: JSON.stringify({ kind: 'answer', question: q, options, profile: this.p }),
           signal: ctrl.signal,
         });
@@ -970,7 +985,7 @@
       // Up to ~16s: Indeed's React button often ignores the first click(s)
       // while it hydrates. Always click FIRST, then re-click every ~2.4s.
       for (let i = 0; i < 20; i++) {
-        if (i % 3 === 0) {
+        if (i % 3 === 0 && !document.hidden) {
           if (!btn.isConnected || !isVis(btn)) btn = this.findApplyButton(document) || btn;
           if (btn.isConnected && isVis(btn)) {
             const r = btn.getBoundingClientRect();
@@ -981,9 +996,12 @@
           }
         }
         await sleep(800);
+        // The click opened the apply flow in a NEW tab (this page lost focus):
+        // stop re-clicking – every retry was spawning another tab.
+        if (document.hidden) return 'popup';
         if (opened()) return 'clicked';
       }
-      return opened() ? 'clicked' : 'none';
+      return opened() ? 'clicked' : (document.hidden ? 'popup' : 'none');
     }
 
     async fillStep() {
@@ -1289,6 +1307,17 @@
             pageChurn.set(0); // real work happened – reset the empty-page streak
             const res = await this.clickApply(card);
             if (res === 'clicked') await this.runApplication();
+            else if (res === 'popup') {
+              // The application runs in the tab Indeed opened; that tab's
+              // agent fills it and closes itself. Wait here until focus
+              // returns, then continue with the next job on THIS page.
+              SPOT.status('Applying in the opened tab – waiting for it to finish…', 'applying');
+              for (let w = 0; w < 100 && this.running; w++) { // up to ~5 min
+                await sleep(3000);
+                if (!document.hidden) break;
+              }
+              await sleep(rand(1200, 2000));
+            }
             else {
               if (res === 'already' && jk) appliedSet.add(jk); // Indeed says applied → permanent
               this.skipped++; reportSkip();
@@ -1920,9 +1949,9 @@
     try { await tabReady; } catch {} // know our tab id before deciding
     if (!flagMatchesThisTab(data.jobbot_running)) {
       // The run lives in ANOTHER tab. If Indeed opened the apply flow in this
-      // new tab/popup, fill it here, then CLOSE this tab when the application
-      // finishes (owner request) – the original search tab carries on.
-      if (IS_TOP && window.opener && PLATFORM === 'indeed') {
+      // new tab (it uses noopener, so window.opener is unreliable), fill it
+      // here, then CLOSE this tab – the original search tab carries on.
+      if (IS_TOP && PLATFORM === 'indeed') {
         const a = new IndeedAgent(new Filler(data.jobbot_profile));
         if (a.isApplyPage()) {
           a.returnToList = async () => { // close instead of navigating away

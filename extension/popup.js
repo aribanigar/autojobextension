@@ -71,9 +71,10 @@ document.addEventListener('DOMContentLoaded', async () => {
     c('p-relocate', p.preferences?.willingToRelocate);
     c('p-easyonly', p.preferences?.onlyEasyApply !== false);
     c('p-auth',     p.preferences?.workAuth !== false);
-    s('p-crm-url',  p.preferences?.crmUrl);
-    s('p-crm-key',  p.preferences?.crmKey);
-    c('p-ai',       p.preferences?.aiEnabled);
+    s('p-crm-url',   p.preferences?.crmUrl);
+    s('p-crm-email', p.preferences?.crmEmail);
+    s('p-crm-pass',  p.preferences?.crmPassword);
+    c('p-ai',        p.preferences?.aiEnabled);
   }
 
   function readForm() {
@@ -107,7 +108,8 @@ document.addEventListener('DOMContentLoaded', async () => {
         onlyEasyApply:     c('p-easyonly'),
         workAuth:          c('p-auth'),
         crmUrl:            v('p-crm-url').replace(/\/+$/, ''),
-        crmKey:            v('p-crm-key'),
+        crmEmail:          v('p-crm-email'),
+        crmPassword:       v('p-crm-pass'),
         aiEnabled:         c('p-ai'),
       },
     };

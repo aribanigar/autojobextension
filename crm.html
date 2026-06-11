@@ -64,14 +64,18 @@
       <span id="live" class="live" style="display:none"><span class="dot"></span><span id="live-txt">live</span></span>
     </header>
 
-    <!-- API-key gate -->
+    <!-- Email/password gate -->
     <div id="gate" class="gate">
       <div style="font-size:34px">🔐</div>
-      <h2 style="margin:10px 0 4px">Connect to your CRM</h2>
-      <p>Enter the <code>CRM_API_KEY</code> you configured in Vercel.</p>
-      <div>
-        <input id="key-input" type="password" placeholder="CRM API key" />
-        <button class="btn-v" id="key-btn">Connect</button>
+      <h2 style="margin:10px 0 4px">Log in to your CRM</h2>
+      <p>Your applications are saved to your account and stay there.</p>
+      <div style="display:flex;flex-direction:column;gap:10px;align-items:center;margin-top:14px">
+        <input id="email-input" type="email" placeholder="Email" autocomplete="email" style="width:280px" />
+        <input id="pass-input" type="password" placeholder="Password" autocomplete="current-password" style="width:280px" />
+        <div>
+          <button class="btn-v" id="login-btn">Log in</button>
+          <button id="signup-btn">Create account</button>
+        </div>
       </div>
       <div id="gate-err" class="err-msg"></div>
     </div>
@@ -106,13 +110,14 @@
 
   <script>
     const $ = s => document.querySelector(s);
-    const KEY_STORE = 'jobbot_crm_key';
-    let key = localStorage.getItem(KEY_STORE) || '';
+    const TOKEN_STORE = 'jobbot_crm_token';
+    const EMAIL_STORE = 'jobbot_crm_email';
+    let token = localStorage.getItem(TOKEN_STORE) || '';
     let rows = [];
     let timer = null;
 
     const api = (path, init = {}) =>
-      fetch(path, { ...init, headers: { 'Content-Type': 'application/json', 'x-api-key': key, ...init.headers } })
+      fetch(path, { ...init, headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + token, ...init.headers } })
         .then(async r => { const d = await r.json().catch(() => ({})); if (!r.ok) throw new Error(d.error || r.status); return d; });
 
     function esc(s) { const d = document.createElement('div'); d.textContent = String(s ?? ''); return d.innerHTML; }
@@ -162,11 +167,12 @@
       if ($('#f-platform').value) p.set('platform', $('#f-platform').value);
       try {
         rows = await api('/api/jobs?' + p);
-        setLive(true, 'live · ' + new Date().toLocaleTimeString());
+        const who = localStorage.getItem(EMAIL_STORE);
+        setLive(true, (who ? who + ' · ' : '') + 'live · ' + new Date().toLocaleTimeString());
         render();
       } catch (e) {
         setLive(false, 'error: ' + e.message);
-        if (showErr && String(e.message).includes('api-key')) logout(e.message);
+        if (showErr && /log in|session expired/i.test(String(e.message))) logout(e.message);
       }
     }
 
@@ -178,22 +184,36 @@
     }
 
     function logout(msg) {
-      localStorage.removeItem(KEY_STORE); key = '';
+      localStorage.removeItem(TOKEN_STORE);
+      localStorage.removeItem(EMAIL_STORE);
+      token = '';
       clearInterval(timer);
       $('#app').style.display = 'none'; $('#gate').style.display = '';
       $('#gate-err').textContent = msg || '';
     }
 
-    $('#key-btn').onclick = async () => {
-      key = $('#key-input').value.trim();
-      if (!key) return;
+    async function authenticate(action) {
+      const email = $('#email-input').value.trim();
+      const password = $('#pass-input').value;
+      if (!email || !password) { $('#gate-err').textContent = 'Enter email and password'; return; }
       try {
-        await api('/api/jobs?limit=1');
-        localStorage.setItem(KEY_STORE, key);
+        const r = await fetch('/api/auth', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action, email, password }),
+        });
+        const d = await r.json().catch(() => ({}));
+        if (!r.ok) throw new Error(d.error || r.status);
+        token = d.token;
+        localStorage.setItem(TOKEN_STORE, token);
+        localStorage.setItem(EMAIL_STORE, d.email);
+        $('#gate-err').textContent = '';
         start();
       } catch (e) { $('#gate-err').textContent = e.message; }
-    };
-    $('#key-input').addEventListener('keydown', e => { if (e.key === 'Enter') $('#key-btn').click(); });
+    }
+    $('#login-btn').onclick = () => authenticate('login');
+    $('#signup-btn').onclick = () => authenticate('signup');
+    $('#pass-input').addEventListener('keydown', e => { if (e.key === 'Enter') authenticate('login'); });
 
     $('#btn-refresh').onclick = () => load();
     $('#btn-logout').onclick = () => logout();

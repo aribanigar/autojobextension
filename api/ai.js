@@ -13,7 +13,20 @@ const MODEL = 'gemini-2.0-flash';
 function cors(res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'POST,OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, x-api-key');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, x-api-key, Authorization');
+}
+
+// Valid caller = a logged-in user's bearer token, or the legacy admin key
+async function authorized(req) {
+  const bearer = (req.headers.authorization || '').match(/^Bearer (.+)$/i);
+  if (bearer && process.env.SUPABASE_URL && process.env.SUPABASE_SERVICE_KEY) {
+    const r = await fetch(
+      `${process.env.SUPABASE_URL}/rest/v1/users?token=eq.${encodeURIComponent(bearer[1])}&select=email`,
+      { headers: { apikey: process.env.SUPABASE_SERVICE_KEY, Authorization: `Bearer ${process.env.SUPABASE_SERVICE_KEY}` } }
+    ).then(x => x.json()).catch(() => []);
+    return Array.isArray(r) && r.length > 0;
+  }
+  return !!process.env.CRM_API_KEY && (req.headers['x-api-key'] || '') === process.env.CRM_API_KEY;
 }
 
 function profileSummary(p = {}) {
@@ -65,8 +78,8 @@ export default async function handler(req, res) {
   if (!process.env.GEMINI_API_KEY) {
     return res.status(500).json({ error: 'AI not configured: set GEMINI_API_KEY in Vercel environment variables' });
   }
-  if (!process.env.CRM_API_KEY || (req.headers['x-api-key'] || '') !== process.env.CRM_API_KEY) {
-    return res.status(401).json({ error: 'Invalid or missing x-api-key' });
+  if (!await authorized(req)) {
+    return res.status(401).json({ error: 'Log in required' });
   }
 
   const { kind, question, options, job, profile } = req.body || {};

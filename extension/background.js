@@ -42,17 +42,55 @@ function updateBadge() {
   chrome.action.setBadgeBackgroundColor({ color: '#7c3aed' });
 }
 
-// Real-time CRM sync – fire-and-forget POST to the user's backend, if configured
-function syncToCRM(row) {
-  chrome.storage.local.get('jobbot_profile', d => {
-    const prefs = d.jobbot_profile?.preferences || {};
-    if (!prefs.crmUrl || !prefs.crmKey) return;
-    fetch(`${prefs.crmUrl.replace(/\/+$/, '')}/api/jobs`, {
+// ── CRM account session ──────────────────────────────────────────────────────
+// Logs in with the email/password from preferences and caches the bearer
+// token; rows synced with it are saved under that account and stay there.
+function getPrefs() {
+  return new Promise(res =>
+    chrome.storage.local.get('jobbot_profile', d => res(d.jobbot_profile?.preferences || {})));
+}
+
+async function getCrmToken(force = false) {
+  const prefs = await getPrefs();
+  if (!prefs.crmUrl || !prefs.crmEmail || !prefs.crmPassword) return null;
+  if (!force) {
+    const cached = await new Promise(res =>
+      chrome.storage.local.get('jobbot_crm_token', d => res(d.jobbot_crm_token || null)));
+    if (cached) return cached;
+  }
+  try {
+    const r = await fetch(`${prefs.crmUrl.replace(/\/+$/, '')}/api/auth`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'x-api-key': prefs.crmKey },
-      body: JSON.stringify(row),
-    }).catch(() => { /* offline / misconfigured – local stats still work */ });
-  });
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'login', email: prefs.crmEmail, password: prefs.crmPassword }),
+    });
+    if (!r.ok) return null;
+    const { token } = await r.json();
+    if (token) chrome.storage.local.set({ jobbot_crm_token: token });
+    return token || null;
+  } catch { return null; }
+}
+
+// Real-time CRM sync under the user's account; falls back to the legacy
+// shared key if no account is configured. Re-logs in once on 401.
+async function syncToCRM(row) {
+  const prefs = await getPrefs();
+  if (!prefs.crmUrl) return;
+  const url = `${prefs.crmUrl.replace(/\/+$/, '')}/api/jobs`;
+  const post = headers =>
+    fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json', ...headers }, body: JSON.stringify(row) });
+  try {
+    let token = await getCrmToken();
+    if (token) {
+      const r = await post({ Authorization: `Bearer ${token}` });
+      if (r.status === 401) {
+        token = await getCrmToken(true); // session expired → fresh login
+        if (token) await post({ Authorization: `Bearer ${token}` });
+      }
+    } else if (prefs.crmKey) {
+      await post({ 'x-api-key': prefs.crmKey });
+    }
+  } catch { /* offline / misconfigured – local stats still work */ }
 }
 
 chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
@@ -69,6 +107,11 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
       // tabs they didn't open; the extension can).
       if (_sender.tab?.id != null) chrome.tabs.remove(_sender.tab.id);
       break;
+
+    case 'GET_CRM_TOKEN':
+      // Content scripts use this for AI calls so requests run as the user
+      getCrmToken().then(token => sendResponse({ token }));
+      return true;
 
     case 'GET_PROFILE':
       chrome.storage.local.get('jobbot_profile', d => {

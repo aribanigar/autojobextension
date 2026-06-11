@@ -10,7 +10,7 @@ const TABLE = 'jobs';
 function cors(res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET,POST,PATCH,DELETE,OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, x-api-key');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, x-api-key, Authorization');
 }
 
 async function sb(path, init = {}) {
@@ -38,14 +38,23 @@ export default async function handler(req, res) {
       error: 'Backend not configured: set SUPABASE_URL and SUPABASE_SERVICE_KEY in Vercel environment variables',
     });
   }
-  if (!process.env.CRM_API_KEY || (req.headers['x-api-key'] || '') !== process.env.CRM_API_KEY) {
-    return res.status(401).json({ error: 'Invalid or missing x-api-key' });
+  // Who is calling? Bearer token → that account's data only.
+  // Legacy x-api-key (CRM_API_KEY) → admin, sees everything.
+  let user = null;
+  const bearer = (req.headers.authorization || '').match(/^Bearer (.+)$/i);
+  if (bearer) {
+    const rows = await sb(`users?token=eq.${encodeURIComponent(bearer[1])}&select=email`).catch(() => []);
+    if (!rows.length) return res.status(401).json({ error: 'Session expired – log in again' });
+    user = rows[0].email;
+  } else if (!process.env.CRM_API_KEY || (req.headers['x-api-key'] || '') !== process.env.CRM_API_KEY) {
+    return res.status(401).json({ error: 'Log in required' });
   }
+  const own = user ? `&user_email=eq.${encodeURIComponent(user)}` : '';
 
   try {
     if (req.method === 'GET') {
       const { status, platform, q, limit } = req.query;
-      let path = `${TABLE}?order=applied_at.desc&limit=${Math.min(parseInt(limit, 10) || 200, 500)}`;
+      let path = `${TABLE}?order=applied_at.desc&limit=${Math.min(parseInt(limit, 10) || 200, 500)}${own}`;
       if (status)   path += `&status=eq.${encodeURIComponent(status)}`;
       if (platform) path += `&platform=eq.${encodeURIComponent(platform)}`;
       if (q)        path += `&title=ilike.${encodeURIComponent('%' + q + '%')}`;
@@ -57,7 +66,7 @@ export default async function handler(req, res) {
       if (!platform) return res.status(400).json({ error: 'platform required' });
       const rows = await sb(TABLE, {
         method: 'POST',
-        body: JSON.stringify([{ platform, title, company, url, status, fit_score, notes }]),
+        body: JSON.stringify([{ platform, title, company, url, status, fit_score, notes, user_email: user }]),
       });
       return res.status(201).json(rows[0]);
     }
@@ -69,7 +78,7 @@ export default async function handler(req, res) {
       for (const k of ['status', 'notes', 'fit_score', 'company', 'title']) {
         if (k in fields) allowed[k] = fields[k];
       }
-      const rows = await sb(`${TABLE}?id=eq.${encodeURIComponent(id)}`, {
+      const rows = await sb(`${TABLE}?id=eq.${encodeURIComponent(id)}${own}`, {
         method: 'PATCH',
         body: JSON.stringify(allowed),
       });
@@ -79,7 +88,7 @@ export default async function handler(req, res) {
     if (req.method === 'DELETE') {
       const { id } = req.query;
       if (!id) return res.status(400).json({ error: 'id required' });
-      await sb(`${TABLE}?id=eq.${encodeURIComponent(id)}`, { method: 'DELETE' });
+      await sb(`${TABLE}?id=eq.${encodeURIComponent(id)}${own}`, { method: 'DELETE' });
       return res.status(200).json({ ok: true });
     }
 
