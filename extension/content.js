@@ -155,7 +155,9 @@
           #jb-bar .jx{margin-left:auto;cursor:pointer;opacity:.7;font-size:17px;
             background:none;border:none;color:inherit;line-height:1;padding:0;}
           #jb-box{position:fixed;z-index:2147483646;pointer-events:none;
-            border-radius:8px;display:none;}
+            border-radius:8px;display:none;
+            transition:top .28s cubic-bezier(.4,0,.2,1),left .28s cubic-bezier(.4,0,.2,1),
+              width .28s cubic-bezier(.4,0,.2,1),height .28s cubic-bezier(.4,0,.2,1);}
           @keyframes jb-bl{0%,100%{opacity:1}50%{opacity:.25}}
           @keyframes jb-glow{
             0%,100%{box-shadow:0 0 0 3px rgba(124,58,237,.45),0 0 14px rgba(124,58,237,.3)}
@@ -507,10 +509,22 @@
     constructor(f) { this.f = f; this.applied = 0; this.skipped = 0; this.running = false; }
 
     jobCards() {
-      return $$(
-        'li.jobs-search-results__list-item, li[data-occludable-job-id], ' +
+      const direct = $$(
+        'li.jobs-search-results__list-item, li[data-occludable-job-id], li[data-job-id], ' +
         'li.scaffold-layout__list-item, .job-card-container--clickable, div[data-job-id]'
       ).filter(isVis);
+      if (direct.length) return direct;
+
+      // Class names churn constantly; structure doesn't. Every job card
+      // contains an anchor to /jobs/view/ – use its containing <li> as the card.
+      const seen = new Set();
+      return $$('a[href*="/jobs/view/"]')
+        .map(a => a.closest('li') || a.closest('[data-job-id]') || a.closest('div[class*="job-card"]'))
+        .filter(el => {
+          if (!el || !isVis(el) || seen.has(el)) return false;
+          seen.add(el);
+          return true;
+        });
     }
 
     cardId(card) {
@@ -674,7 +688,10 @@
       while (this.running) {
         const cards = await waitForCards(() => this.jobCards());
         SPOT.status(`${cards.length} jobs on page`, 'info');
-        if (!cards.length) break;
+        if (!cards.length) {
+          SPOT.status('No job cards found – open a LinkedIn Jobs search page', 'warning');
+          break;
+        }
 
         // LinkedIn virtualizes the list – cards detach from the DOM as you
         // scroll and more render in as you scroll down. Re-query after every
