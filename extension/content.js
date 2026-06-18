@@ -948,7 +948,7 @@
       // Pre-qualification "Apply anyway" modal counts as an apply page so the
       // clickApply retry loop exits and runApplication handles it.
       if ($$('button, [role="button"]').some(b =>
-            isVis(b) && /^apply anyway$/i.test((b.textContent || '').trim()))) return true;
+            isVis(b) && /^apply any ?ways?$/i.test((b.textContent || '').trim()))) return true;
       return $$('[data-testid="ia-continueButton"], [data-testid="ia-submitButton"], ' +
                 '.ia-BasePage, [data-testid="ia-Questions-main"], .ia-Modal').some(isVis);
     }
@@ -1115,9 +1115,9 @@
       const els = $$('button, [role="button"], input[type="submit"], input[type="button"]', area);
       const cont =
         $('[data-testid="ia-continueButton"], [data-testid="continue-button"]') ||
-        els.find(b => isVis(b) && /^(continue|continue applying|next|save and continue)$/i.test(this.btnText(b))) ||
-        // "Apply anyway" / "Continue anyway" — Indeed's pre-qualification modal
-        els.find(b => isVis(b) && /^(apply anyway|continue anyway|yes,?\s*(continue|apply( anyway)?))$/i.test(this.btnText(b))) ||
+        els.find(b => isVis(b) && /^(continue|continue applying|next|save and continue|review(?: your application)?)$/i.test(this.btnText(b))) ||
+        // "Apply anyway/anyways" / "Continue anyway" — Indeed's pre-qualification modal
+        els.find(b => isVis(b) && /^(apply any ?ways?|continue any ?ways?|yes,?\s*(continue|apply( any ?ways?)?))$/i.test(this.btnText(b))) ||
         els.find(b => isVis(b) && /^continue\b/i.test(this.btnText(b)) && !/skip|without|reading|to site/i.test(this.btnText(b)));
       const sub =
         $('[data-testid="ia-submitButton"], [data-testid="submit-button"]') ||
@@ -1156,6 +1156,11 @@
       const isClickable = el =>
         isVis(el) && el.getAttribute('aria-disabled') !== 'true';
 
+      // Snapshot the form content BEFORE clicking so we can detect step advances
+      // even when React reuses the same DOM node for the Continue button.
+      const formArea = () =>
+        $('.ia-Questions-main, .ia-BasePage-main, [data-testid="ia-Questions-main"]') || document.body;
+
       // Up to 3 attempts; each attempt re-queries buttons in case React re-rendered.
       for (let attempt = 0; attempt < 3 && this.running; attempt++) {
         if (attempt > 0) await sleep(rand(1000, 1800));
@@ -1163,19 +1168,32 @@
         const { cont, sub } = this.findStepButtons();
 
         if (cont && isClickable(cont)) {
-          const isAnyway = /apply anyway|continue anyway/i.test(this.btnText(cont));
+          const isAnyway = /apply any ?ways?|continue any ?ways?/i.test(this.btnText(cont));
           const msg = isAnyway ? '✅ Clicking APPLY ANYWAY…' : '✨ Clicking CONTINUE…';
+
+          // Snapshot current form text before clicking (React may reuse the button
+          // DOM node on step advance, making !isConnected unreliable alone).
+          const fa = formArea();
+          const snapLen = fa ? fa.textContent.length : 0;
 
           // Primary click: smooth human cursor + full event sequence
           try { cont.focus(); } catch {}
           await humanClick(cont, msg);
-          await sleep(rand(700, 1200));
+          await sleep(rand(900, 1500)); // slightly longer wait for React to settle
 
-          // Verify step advanced — button removed from DOM = new step loaded
+          // Signal 1: React unmounted the element (clear-cut step advance)
           if (!cont.isConnected) return 'continue';
 
-          // Step didn't advance; try clicking the topmost element at button coords
-          // (handles invisible overlay layers above the button)
+          // Signal 2: form area content changed meaningfully (React re-rendered new step)
+          const newLen = fa ? fa.textContent.length : 0;
+          if (Math.abs(newLen - snapLen) > 80) return 'continue';
+
+          // Signal 3: re-querying returns a DIFFERENT DOM node for Continue
+          const { cont: cont2 } = this.findStepButtons();
+          if (!cont2 || cont2 !== cont) return 'continue';
+
+          // None of the signals fired — step didn't advance.
+          // Try clicking the topmost element at button coords (invisible overlay pattern)
           const r2 = cont.getBoundingClientRect();
           const cx2 = r2.left + r2.width / 2, cy2 = r2.top + r2.height / 2;
           const top = document.elementFromPoint(cx2, cy2);
@@ -1621,10 +1639,11 @@
     }
 
     async clickApply() {
-      // Wait up to 5s for the Apply button to hydrate after page load
+      // Wait up to 10s for the Apply button to hydrate after page load
+      SPOT.status('⏳ Looking for Apply button…', 'info');
       let { btn, external, already } = this.findApplyButton();
       if (!btn && !external && !already) {
-        for (let w = 0; w < 10; w++) {
+        for (let w = 0; w < 20; w++) {
           await sleep(500);
           ({ btn, external, already } = this.findApplyButton());
           if (btn || external || already) break;
@@ -2006,6 +2025,12 @@
       // ── Detail page (resumed via full-page navigation mid-run) ─────────────
       // Apply, go back, return 'nav' → watchdog restarts us on the list page.
       if (this.onDetailPage()) {
+        SPOT.status('⏳ Preparing to apply…', 'info');
+        // Wait for full page load + React hydration before trying to apply
+        for (let w = 0; w < 16 && document.readyState !== 'complete'; w++) {
+          await sleep(500);
+        }
+        await sleep(rand(800, 1500));
         attemptedSet.add(normalizeJobId(location.href));
         this._armJobTimer();
         const out = await this.applyHere();
