@@ -1408,7 +1408,19 @@
 
   // ─── Naukri Agent ─────────────────────────────────────────────────────────
   class NaukriAgent {
-    constructor(f) { this.f = f; this.applied = 0; this.skipped = 0; this.running = false; }
+    constructor(f) {
+      this.f = f; this.applied = 0; this.skipped = 0; this.running = false;
+      this._skipNow = false; this._jobTimer = null;
+    }
+    _armJobTimer(ms = 90000) {
+      clearTimeout(this._jobTimer);
+      this._skipNow = false;
+      this._jobTimer = setTimeout(() => {
+        this._skipNow = true;
+        SPOT.status('⏱ Job taking too long (90s) – skipping…', 'warning');
+      }, ms);
+    }
+    _disarmJobTimer() { clearTimeout(this._jobTimer); this._skipNow = false; }
 
     jobCards() {
       return $$(
@@ -1806,7 +1818,7 @@
       if (!r)               return 'skip';
 
       let steps = 0, misses = 0;
-      while (steps < 25 && this.running) {
+      while (steps < 25 && this.running && !this._skipNow) {
         const res = await this.handleForm();
         if (res === 'done') return 'done';
         if (res === 'stuck') { if (++misses >= 3) return 'skip'; }
@@ -1845,7 +1857,9 @@
       // Apply, go back, and return 'nav' so the watchdog restarts us on the list.
       if (this.onDetailPage()) {
         attemptedSet.add(normalizeJobId(location.href));
+        this._armJobTimer();
         const out = await this.applyHere();
+        this._disarmJobTimer();
         if (out === 'done') {
           appliedSet.add(normalizeJobId(location.href));
           this.applied++;
@@ -1908,7 +1922,9 @@
 
             // openJob navigated to a detail page – applyHere handles it,
             // but on same-page open (detail panel) handle inline too.
+            this._armJobTimer();
             const out = await this.applyHere();
+            this._disarmJobTimer();
             if (out === 'done') {
               this.applied++;
               if (jid) appliedSet.add(jid);
@@ -1942,7 +1958,19 @@
 
   // ─── Bayt Agent ───────────────────────────────────────────────────────────
   class BaytAgent {
-    constructor(f) { this.f = f; this.applied = 0; this.skipped = 0; this.running = false; }
+    constructor(f) {
+      this.f = f; this.applied = 0; this.skipped = 0; this.running = false;
+      this._skipNow = false; this._jobTimer = null;
+    }
+    _armJobTimer(ms = 90000) {
+      clearTimeout(this._jobTimer);
+      this._skipNow = false;
+      this._jobTimer = setTimeout(() => {
+        this._skipNow = true;
+        SPOT.status('⏱ Job taking too long (90s) – skipping…', 'warning');
+      }, ms);
+    }
+    _disarmJobTimer() { clearTimeout(this._jobTimer); this._skipNow = false; }
 
     // Detect Bayt job-listing search results pages
     jobCards() {
@@ -2066,7 +2094,7 @@
       SPOT.status('Processing Bayt application…', 'applying');
       let steps = 0, misses = 0;
 
-      while (steps < 35 && this.running) {
+      while (steps < 35 && this.running && !this._skipNow) {
         if (this.isApplied()) {
           this.applied++;
           appliedSet.add(normalizeJobId(location.href));
@@ -2099,16 +2127,16 @@
             await sleep(rand(2200, 3500));
             return true;
           }
-          steps++; continue; // form might have more steps
+          steps++; continue;
         }
 
         if (res === 'blocked') {
           misses++;
-          if (misses < 4) { SPOT.status('Required fields pending – refilling…', 'warning'); await sleep(2000); continue; }
+          if (misses < 3) { SPOT.status('Required fields pending – refilling…', 'warning'); await sleep(2000); continue; }
         } else {
           misses++;
           if (this.isApplied()) continue;
-          if (misses < 4) { SPOT.status('Waiting for form to load…', 'applying'); await sleep(rand(1500, 2500)); continue; }
+          if (misses < 3) { SPOT.status('Waiting for form to load…', 'applying'); await sleep(rand(1500, 2500)); continue; }
         }
 
         SPOT.status('Stuck on Bayt form – returning to job list', 'warning');
@@ -2210,7 +2238,6 @@
           SPOT.status('No Apply button – skipping', 'warning');
           this.skipped++; reportSkip();
         } else if (res === 'popup') {
-          // Apply opened a new tab – wait for focus to return then continue
           SPOT.status('Applying in the opened tab – waiting…', 'applying');
           for (let w = 0; w < 100 && this.running; w++) {
             await sleep(3000);
@@ -2218,7 +2245,9 @@
           }
           await sleep(rand(1000, 2000));
         } else {
+          this._armJobTimer();
           await this.runApplication();
+          this._disarmJobTimer();
         }
         history.back();
         await sleep(rand(2500, 3500));
@@ -2280,7 +2309,9 @@
               }
               await sleep(rand(1000, 2000));
             } else {
+              this._armJobTimer();
               await this.runApplication();
+              this._disarmJobTimer();
               if (jid) selectedSet.remove(jid);
             }
 
@@ -2688,7 +2719,9 @@
     }
     function syncSelAllBtn() {
       const ids = visibleIds();
-      const show = ids.length > 0 && !(agent && agent.running);
+      // Always show the Select All button whenever job cards are visible —
+      // the user should be able to bulk-select at any time, even mid-run.
+      const show = ids.length > 0;
       if (show && !selAllBtn && document.body) {
         selAllBtn = document.createElement('button');
         selAllBtn.id = 'jobbotx-selall';
@@ -2697,8 +2730,9 @@
           const allOn = cur.length && cur.every(id => selectedSet.has(id));
           cur.forEach(id => allOn ? selectedSet.remove(id) : selectedSet.add(id));
           paintTicks();
-          SPOT.status(selectedSet.size()
-            ? `${selectedSet.size()} job(s) ticked – press ▶ to apply them in sequence`
+          const n = selectedSet.size();
+          SPOT.status(n
+            ? `${n} job(s) selected – press ▶ to apply (or Start in the popup)`
             : 'Selection cleared', 'info');
           syncStartBtn(); syncSelAllBtn();
         });
@@ -2706,7 +2740,10 @@
       }
       if (selAllBtn) {
         const allOn = ids.length && ids.every(id => selectedSet.has(id));
-        selAllBtn.textContent = allOn ? '✗ Clear all' : `☑ Select all (${ids.length})`;
+        const n = selectedSet.size();
+        selAllBtn.textContent = allOn ? `✗ Deselect all (${ids.length})` : `☑ Select all (${ids.length})`;
+        // Bold badge shows how many are currently selected
+        selAllBtn.title = n > 0 ? `${n} job(s) selected` : 'Click to select all visible jobs';
         selAllBtn.style.display = show ? 'block' : 'none';
       }
     }
