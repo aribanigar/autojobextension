@@ -1121,7 +1121,10 @@
         els.find(b => isVis(b) && /^continue\b/i.test(this.btnText(b)) && !/skip|without|reading|to site/i.test(this.btnText(b)));
       const sub =
         $('[data-testid="ia-submitButton"], [data-testid="submit-button"]') ||
-        els.find(b => isVis(b) && /submit (my |your )?application|^submit$|apply now/i.test(this.btnText(b)));
+        // Search without isVis so a briefly-disabled submit button is still found
+        $$('button, [role="button"], input[type="submit"], input[type="button"]', area)
+          .find(b => /submit (my |your )?application|^submit$|apply now/i.test(this.btnText(b))
+                  && !b.closest('[aria-hidden="true"]'));
       return { cont, sub };
     }
 
@@ -1226,14 +1229,30 @@
           return 'submitted';
         }
 
-        // Submit is present but disabled while a captcha is unsolved → hand to human
-        if (sub && sub.disabled && this.hasCaptcha()) {
+        // Captcha is blocking the submit button → hand off to the user
+        if (sub && this.hasCaptcha()) {
           return await this.waitForCaptcha(sub);
         }
 
-        // Button exists but is disabled / aria-disabled → required fields still empty
-        if ((cont && (cont.disabled || cont.getAttribute('aria-disabled') === 'true')) ||
-            (sub  && (sub.disabled  || sub.getAttribute('aria-disabled')  === 'true'))) {
+        // Submit button exists but temporarily disabled (page still loading/validating)
+        // — wait up to 8s for Indeed to enable it before giving up.
+        if (sub) {
+          SPOT.status('⏳ Waiting for Submit button to activate…', 'info');
+          for (let w = 0; w < 16 && this.running; w++) {
+            await sleep(500);
+            const { sub: s2 } = this.findStepButtons();
+            if (s2 && isClickable(s2)) {
+              try { s2.focus(); } catch {}
+              await humanClick(s2, '🎉 Submitting my application!');
+              await sleep(rand(1500, 2500));
+              return 'submitted';
+            }
+          }
+          return 'blocked';
+        }
+
+        // Continue button disabled → required fields still empty
+        if (cont && (cont.disabled || cont.getAttribute('aria-disabled') === 'true')) {
           return 'blocked';
         }
 
