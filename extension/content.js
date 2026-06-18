@@ -966,9 +966,18 @@
     }
 
     jobCards() {
-      return $$('.job_seen_beacon, [data-testid="slider_item"], .resultContent, ' +
-                '[data-testid="job-card"], li[class*="result"] [class*="cardOutline"], ' +
-                'div[class*="jobCard"], li.eu4oa1w0').filter(isVis);
+      const raw = $$('.job_seen_beacon, [data-testid="slider_item"], .resultContent, ' +
+                    '[data-testid="job-card"], li[class*="result"] [class*="cardOutline"], ' +
+                    'div[class*="jobCard"], li.eu4oa1w0').filter(isVis);
+      // Broad class-name selectors above can match footer nav, "People also searched"
+      // pills, promo widgets and subscription forms on newer Indeed layouts.
+      // Require at least one genuine job-link/id signal so only actual job cards
+      // are returned — this fix propagates to run(), visibleIds(), and the tick timer.
+      return raw.filter(c =>
+        c.matches?.('[data-jk], [data-job-id], [data-occludable-job-id]') ||
+        !!$('a[data-jk], [data-jk], a[href*="viewjob?jk="], a[href*="vjk="], ' +
+             'a[href*="/rc/clk"], h2 a[href*="viewjob"]', c)
+      );
     }
 
     // Resolve to the ACTUAL clickable "Apply with Indeed" element. Returns the
