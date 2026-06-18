@@ -12,6 +12,7 @@
     if (h.includes('linkedin.com')) return 'linkedin';
     if (h.includes('indeed.com') || h.includes('apply.indeed.com')) return 'indeed';
     if (h.includes('naukri.com')) return 'naukri';
+    if (h.includes('bayt.com'))   return 'bayt';
     return null;
   })();
   if (!PLATFORM) return;
@@ -1939,6 +1940,371 @@
     stop() { this.running = false; }
   }
 
+  // ─── Bayt Agent ───────────────────────────────────────────────────────────
+  class BaytAgent {
+    constructor(f) { this.f = f; this.applied = 0; this.skipped = 0; this.running = false; }
+
+    // Detect Bayt job-listing search results pages
+    jobCards() {
+      return $$(
+        'li[data-job-id], li[class*="jb-job-item"], ' +
+        'li[data-automation-id="job"], ' +
+        '.jb-job-item, [class*="j-postings-results__listing"], ' +
+        '[class*="JobCard"], li.j-search-results__item'
+      ).filter(c => isVis(c)
+        && !c.closest('aside, [class*="similar"], [class*="related"], [class*="sidebar"], [class*="recommended"]'));
+    }
+
+    cardId(card) {
+      const id = card.getAttribute('data-job-id') || card.getAttribute('data-js-aid');
+      if (id) return 'bt:' + id;
+      const a = $('a[href*="/jobs/"]', card) || $('a[href*="bayt.com"]', card);
+      if (a?.href) return normalizeJobId(a.href);
+      return card.textContent.trim().slice(0, 80);
+    }
+
+    // Are we on a job detail / apply page (not the search list)?
+    onDetailPage() {
+      // URL has a slug ending in -\d+/ (Bayt job detail pattern)
+      if (/\/jobs\/[^/]+-\d+\//i.test(location.pathname)) return true;
+      // Or the dedicated apply URL
+      if (/\/apply\//i.test(location.pathname)) return true;
+      // Or an apply form / modal is visible
+      return !!$('#apply-btn-top, #apply-btn, .qa-apply-btn, ' +
+                 '[class*="apply-form-wrapper"], [class*="applyForm"], ' +
+                 '[data-automation-id="apply-form"]');
+    }
+
+    isApplyPage() {
+      return this.onDetailPage() || /\/apply\//i.test(location.href);
+    }
+
+    isApplied() {
+      // Success banner / confirmation page
+      if ($$('[class*="success"], [class*="confirmation"], [class*="applied-state"], ' +
+             '[class*="application-success"], [class*="apply-success"]')
+          .some(el => isVis(el) && el.textContent.trim().length > 5)) return true;
+      return $$('h1, h2, h3, p, [role="heading"], [class*="title"], [class*="header"]').some(el =>
+        isVis(el) && /application (has been |was )?sent|successfully applied|application received|you have applied|thank you for applying/i.test(el.textContent));
+    }
+
+    // Find the primary Apply button on a detail page; detect already-applied & external
+    findApplyButton() {
+      const already = $$('button, a, [class*="apply"], span').find(b =>
+        isVis(b) && /already applied|you('ve| have) applied|^applied$/i.test(b.textContent.trim()));
+      if (already) return { btn: null, already: true, external: false };
+
+      const ext = $$(
+        'a[href*="apply"][target="_blank"], a[class*="apply"][rel*="noopener"], ' +
+        '[class*="company-site"], [class*="companySite"]'
+      ).find(isVis);
+
+      const btn =
+        $('#apply-btn-top, #apply-btn, .qa-apply-btn, .btn-apply, ' +
+          '[data-automation-id="applyButton"], [data-js-aid="jobApplyBtn"], ' +
+          'a[href*="/apply/"], button[id*="apply"]') ||
+        $$('a, button, [role="button"]').find(b =>
+          isVis(b)
+          && /^(apply|quick apply|apply now|easy apply)$/i.test(b.textContent.trim())
+          && !/external|company\s*site|already applied|^applied$/i.test(b.textContent)
+          && !b.closest('aside, [class*="similar"], [class*="related"], [class*="sidebar"]')
+        );
+
+      if (btn && /already applied|^applied$/i.test(btn.textContent.trim()))
+        return { btn: null, already: true, external: false };
+      if (!btn && ext) return { btn: null, already: false, external: true };
+      return { btn: btn || null, already: false, external: false };
+    }
+
+    // Locate Continue / Next and Submit buttons on the active step
+    findStepButtons() {
+      const visible = $$('button, input[type="submit"], input[type="button"], [role="button"]').filter(isVis);
+      const text = el => (el.textContent || el.value || el.getAttribute('value') || '').trim();
+
+      const cont =
+        $('[data-automation-id="btn-next"], [data-qa="btn-next"], ' +
+          '[class*="next-step"], [class*="nextStep"]') ||
+        visible.find(b => /^(next|continue|proceed|save and continue|save & continue)$/i.test(text(b)) && !b.disabled);
+
+      const sub =
+        $('[data-automation-id="btn-submit"], [data-qa="btn-submit"], ' +
+          '[class*="submit-app"], [class*="submitApp"]') ||
+        visible.find(b => /submit (my |your )?application|send application|^(apply|apply now)$/i.test(text(b)) && !b.disabled);
+
+      return { cont, sub };
+    }
+
+    async fillStep() {
+      const form = $('form, [class*="apply-form"], [class*="application-form"], ' +
+                     '[class*="screening"], [class*="question-form"], ' +
+                     '[data-automation-id="apply-form"]') || document.body;
+      await this.f.all(form);
+      await sleep(rand(350, 600));
+    }
+
+    async clickContinue() {
+      const { cont, sub } = this.findStepButtons();
+
+      if (cont && isVis(cont) && !cont.disabled) {
+        await humanClick(cont, '✨ Clicking CONTINUE…');
+        await sleep(rand(900, 1600));
+        return 'continue';
+      }
+
+      if (sub && isVis(sub) && !sub.disabled) {
+        await humanClick(sub, '🎉 Submitting Bayt application!');
+        await sleep(rand(1500, 2500));
+        return 'submitted';
+      }
+
+      // Button present but disabled – required field still empty
+      if ((cont && cont.disabled) || (sub && sub.disabled)) return 'blocked';
+      return null;
+    }
+
+    async runApplication() {
+      SPOT.status('Processing Bayt application…', 'applying');
+      let steps = 0, misses = 0;
+
+      while (steps < 35 && this.running) {
+        if (this.isApplied()) {
+          this.applied++;
+          appliedSet.add(normalizeJobId(location.href));
+          report({ type: 'JOB_APPLIED', platform: 'bayt', title: document.title, url: location.href });
+          SPOT.status(`✓ Applied on Bayt! (${this.applied} total)`, 'success');
+          await sleep(rand(1500, 2500));
+          history.back();
+          await sleep(rand(2200, 3500));
+          return true;
+        }
+
+        await this.fillStep();
+        const res = await this.clickContinue();
+
+        if (res === 'continue') {
+          misses = 0; steps++;
+          await sleep(rand(700, 1400));
+          continue;
+        }
+
+        if (res === 'submitted') {
+          await sleep(rand(1500, 2500));
+          if (this.isApplied()) {
+            this.applied++;
+            appliedSet.add(normalizeJobId(location.href));
+            report({ type: 'JOB_APPLIED', platform: 'bayt', title: document.title, url: location.href });
+            SPOT.status(`✓ Applied on Bayt! (${this.applied} total)`, 'success');
+            await sleep(rand(1500, 2500));
+            history.back();
+            await sleep(rand(2200, 3500));
+            return true;
+          }
+          steps++; continue; // form might have more steps
+        }
+
+        if (res === 'blocked') {
+          misses++;
+          if (misses < 4) { SPOT.status('Required fields pending – refilling…', 'warning'); await sleep(2000); continue; }
+        } else {
+          misses++;
+          if (this.isApplied()) continue;
+          if (misses < 4) { SPOT.status('Waiting for form to load…', 'applying'); await sleep(rand(1500, 2500)); continue; }
+        }
+
+        SPOT.status('Stuck on Bayt form – returning to job list', 'warning');
+        this.skipped++; reportSkip();
+        history.back();
+        await sleep(rand(1500, 2500));
+        return false;
+      }
+
+      this.skipped++; reportSkip();
+      history.back();
+      await sleep(rand(1500, 2500));
+      return false;
+    }
+
+    async openJob(card) {
+      const link = $('a[href*="/jobs/"], h2 a, [class*="title"] a, [class*="job-title"] a', card)
+                || $('a', card);
+      if (!link) return false;
+      SPOT.pulse(link, `Opening: ${(link.textContent || '').trim().substring(0, 60)}`);
+      if (link.tagName === 'A') link.setAttribute('target', '_self');
+      await sleep(rand(300, 600));
+      const before = location.href;
+      realClick(link);
+      await sleep(rand(2200, 3500));
+      return location.href !== before || this.onDetailPage();
+    }
+
+    async clickApplyBtn() {
+      let { btn, already, external } = this.findApplyButton();
+      if (!btn && !already && !external) {
+        // Wait up to ~5s for the button to hydrate after navigation
+        for (let w = 0; w < 10; w++) {
+          await sleep(500);
+          ({ btn, already, external } = this.findApplyButton());
+          if (btn || already || external) break;
+        }
+      }
+      if (already) return 'already';
+      if (external) return 'external';
+      if (!btn) return false;
+
+      btn.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      await sleep(rand(600, 900));
+
+      // Remember URL before click so we can detect if a new tab opened
+      const beforeUrl = location.href;
+
+      SPOT.pulse(btn, '🎯 Clicking APPLY on Bayt…');
+      await sleep(rand(500, 800));
+
+      // Click + retry (Bayt uses React-hydrated buttons that may ignore first click)
+      for (let i = 0; i < 6; i++) {
+        realClick(btn);
+        await sleep(800);
+        if (document.hidden) return 'popup'; // opened a new tab
+        // Apply form appeared, or URL changed
+        if (this.findStepButtons().cont || this.findStepButtons().sub ||
+            this.isApplied() || location.href !== beforeUrl) return 'clicked';
+        if ((i === 2 || i === 4) && btn.isConnected && isVis(btn)) {
+          SPOT.pulse(btn, '🎯 Re-clicking APPLY on Bayt…');
+        }
+      }
+      return 'clicked'; // assume clicked even if form not yet detected
+    }
+
+    async nextPage() {
+      const btn =
+        $('a.pager-next, [class*="pagination"] a[rel="next"], ' +
+          'a[class*="pagination__next"], [class*="pager"] a.next, ' +
+          'li.next > a, li.next-page > a') ||
+        $$('a, button').find(el =>
+          isVis(el)
+          && /^(next( page)?|>|التالي|التالية)$/i.test(el.textContent.trim())
+          && !el.closest('[class*="job-detail"], [class*="apply"]')
+        );
+      if (!btn || btn.getAttribute('aria-disabled') === 'true') return false;
+      SPOT.status('Page finished – moving to the next page…', 'info');
+      await humanClick(btn, '➡️ Next page…');
+      await sleep(rand(2800, 4200));
+      return true;
+    }
+
+    async run() {
+      this.running = true;
+
+      // Resumed on a job detail page after navigation
+      if (this.onDetailPage()) {
+        attemptedSet.add(normalizeJobId(location.href));
+        const res = await this.clickApplyBtn();
+        if (res === 'already') {
+          appliedSet.add(normalizeJobId(location.href));
+          SPOT.status('Already applied – skipping', 'info');
+          this.skipped++;
+        } else if (res === 'external') {
+          SPOT.status('Apply on company site – skipping', 'warning');
+          this.skipped++; reportSkip();
+        } else if (!res) {
+          SPOT.status('No Apply button – skipping', 'warning');
+          this.skipped++; reportSkip();
+        } else if (res === 'popup') {
+          // Apply opened a new tab – wait for focus to return then continue
+          SPOT.status('Applying in the opened tab – waiting…', 'applying');
+          for (let w = 0; w < 100 && this.running; w++) {
+            await sleep(3000);
+            if (!document.hidden) break;
+          }
+          await sleep(rand(1000, 2000));
+        } else {
+          await this.runApplication();
+        }
+        history.back();
+        await sleep(rand(2500, 3500));
+        this.running = false;
+        return 'nav';
+      }
+
+      SPOT.status('Bayt – scanning jobs…', 'info');
+
+      while (this.running) {
+        const cards = await waitForCards(() => this.jobCards());
+        SPOT.status(`${cards.length} jobs on page`, 'info');
+        if (!cards.length) {
+          SPOT.status('No job cards found – open a Bayt Jobs search page', 'warning');
+          break;
+        }
+
+        let progressed = true;
+        while (progressed && this.running) {
+          progressed = false;
+          const selMode = selectionMode();
+          if (selMode && !selectedSet.size()) {
+            SPOT.status('All ticked jobs done – tick more or ✕ to stop', 'success');
+            this.running = false;
+            return 'nav';
+          }
+          for (const card of this.jobCards()) {
+            if (!this.running) break;
+            const jid = this.cardId(card);
+            if (selMode && (!jid || !selectedSet.has(jid))) continue;
+            if (jid && (appliedSet.has(jid) || attemptedSet.has(jid))) {
+              if (jid) selectedSet.remove(jid);
+              continue;
+            }
+            if (jid) attemptedSet.add(jid);
+
+            card.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            await sleep(rand(500, 900));
+
+            if (!await this.openJob(card)) { this.skipped++; reportSkip(); progressed = true; break; }
+
+            // Now on detail page – find and click apply
+            const res = await this.clickApplyBtn();
+            if (res === 'already') {
+              appliedSet.add(normalizeJobId(location.href));
+              SPOT.status('Already applied – moving to next job', 'info');
+            } else if (res === 'external') {
+              SPOT.status('External apply – skipping', 'warning');
+              this.skipped++; reportSkip();
+            } else if (!res) {
+              SPOT.status('No Apply button – skipping', 'warning');
+              this.skipped++; reportSkip();
+            } else if (res === 'popup') {
+              // Application opened in a new tab – wait for it to finish and close
+              SPOT.status('Applying in the opened tab – waiting for it to finish…', 'applying');
+              for (let w = 0; w < 100 && this.running; w++) {
+                await sleep(3000);
+                if (!document.hidden) break;
+              }
+              await sleep(rand(1000, 2000));
+            } else {
+              await this.runApplication();
+              if (jid) selectedSet.remove(jid);
+            }
+
+            await sleep(rand(1000, 2000));
+            // Return to list if still on detail page
+            if (this.onDetailPage()) {
+              history.back();
+              await sleep(rand(2500, 3500));
+            }
+            progressed = true;
+            break;
+          }
+        }
+
+        if (!await this.nextPage()) break;
+      }
+
+      SPOT.status(`Bayt – all visible jobs processed ✓ ${this.applied} applied`, 'info');
+      this.running = false;
+    }
+
+    stop() { this.running = false; }
+  }
+
   // ─── Controller ───────────────────────────────────────────────────────────
   // Memory of already-handled jobs. Durable: chrome.storage.local survives the
   // cross-origin hops of the Indeed apply flow (www → smartapply), tab
@@ -2113,6 +2479,7 @@
     if      (PLATFORM === 'linkedin') agent = new LinkedInAgent(f);
     else if (PLATFORM === 'indeed')   agent = new IndeedAgent(f);
     else if (PLATFORM === 'naukri')   agent = new NaukriAgent(f);
+    else if (PLATFORM === 'bayt')     agent = new BaytAgent(f);
     else { SPOT.status('Not a supported job site', 'error'); return; }
 
     // Only the top frame owns the running flag; 'nav' means the page is about
@@ -2148,7 +2515,8 @@
       // postings, pagination, or a search the user tweaks.
       if (IS_TOP && outcome !== 'nav') {
         lastDoneAt = Date.now();
-        SPOT.status('All visible jobs processed – monitoring for new ones… (✕ to stop)', 'info');
+        // Engine is continuous: agent will restart automatically in ~12 s
+        SPOT.status('Page complete – rescanning shortly… (✕ to stop)', 'info');
       }
       agent = null;
     }
@@ -2207,16 +2575,33 @@
     if (!data.jobbot_running || !data.jobbot_profile) return;
     try { await tabReady; } catch {} // know our tab id before deciding
     if (!flagMatchesThisTab(data.jobbot_running)) {
-      // The run lives in ANOTHER tab. If Indeed opened the apply flow in this
+      // The run lives in ANOTHER tab. If a job site opened the apply flow in this
       // new tab (it uses noopener, so window.opener is unreliable), fill it
       // here, then CLOSE this tab – the original search tab carries on.
       if (IS_TOP && PLATFORM === 'indeed') {
         const a = new IndeedAgent(new Filler(data.jobbot_profile));
         if (a.isApplyPage()) {
-          a.returnToList = async () => { // close instead of navigating away
+          a.returnToList = async () => {
             SPOT.status('Application finished – closing this tab…', 'success');
             await sleep(rand(1200, 1800));
             try { chrome.runtime.sendMessage({ type: 'CLOSE_TAB' }); } catch {}
+          };
+          a.running = true;
+          agent = a;
+          a.runApplication().catch(() => {}).finally(() => { agent = null; });
+        }
+      }
+      // Bayt sometimes opens the apply page in a new tab
+      if (IS_TOP && PLATFORM === 'bayt') {
+        const a = new BaytAgent(new Filler(data.jobbot_profile));
+        if (a.isApplyPage()) {
+          const origRun = a.runApplication.bind(a);
+          a.runApplication = async () => {
+            const ok = await origRun();
+            SPOT.status('Application finished – closing this tab…', 'success');
+            await sleep(rand(1200, 1800));
+            try { chrome.runtime.sendMessage({ type: 'CLOSE_TAB' }); } catch {}
+            return ok;
           };
           a.running = true;
           agent = a;
@@ -2250,6 +2635,7 @@
   if (IS_TOP && PLATFORM) {
     const probe = PLATFORM === 'linkedin' ? new LinkedInAgent(new Filler({}))
                 : PLATFORM === 'naukri'   ? new NaukriAgent(new Filler({}))
+                : PLATFORM === 'bayt'     ? new BaytAgent(new Filler({}))
                 : new IndeedAgent(new Filler({}));
 
     // Floating command button: nothing runs until the user clicks this (or
@@ -2328,7 +2714,8 @@
     // (Generic utility-class selectors can match header nav, icons, etc.)
     const isJobCard = card =>
       !!$('a[data-jk], [data-jk], [data-job-id], [data-occludable-job-id], ' +
-          'a[href*="viewjob"], a[href*="/jobs/view/"], a[href*="/rc/clk"], a[href*="job-listings"]', card)
+          'a[href*="viewjob"], a[href*="/jobs/view/"], a[href*="/rc/clk"], ' +
+          'a[href*="job-listings"], a[href*="bayt.com"][href*="/jobs/"]', card)
       || (card.matches && card.matches('[data-jk], [data-job-id], [data-occludable-job-id]'));
 
     const tickTimer = setInterval(() => {
@@ -2337,6 +2724,7 @@
 
       // No ticks on apply/transitional pages – only on job lists
       if (PLATFORM === 'indeed' && probe.isApplyPage()) return;
+      if (PLATFORM === 'bayt'   && probe.isApplyPage()) return;
 
       let cards;
       try { cards = probe.jobCards(); } catch { return; }
@@ -2433,9 +2821,10 @@
         return;
       }
       if (agent && agent.running) return;
-      // Monitor mode: after a full pass, re-scan every ~60s for new postings
-      // instead of hammering an exhausted list.
-      if (lastDoneAt && Date.now() - lastDoneAt < 60000) return;
+      // Continuous engine: re-scan after a short cooldown so the agent never
+      // idles for long. Once the user presses Start the run never stops until
+      // they explicitly press Stop (or click ✕ on the bar).
+      if (lastDoneAt && Date.now() - lastDoneAt < 12000) return;
       try {
         chrome.storage.local.get(['jobbot_running', 'jobbot_profile'], d => {
           if (chrome.runtime.lastError) return;
