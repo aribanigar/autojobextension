@@ -1338,20 +1338,27 @@
         SPOT.status(`${cards.length} jobs on page`, 'info');
         if (!cards.length) break;
 
+        // On every page (including after pagination), auto-add all unapplied
+        // cards to selectedSet so the engine continues without manual re-ticking.
+        // Already-applied / already-attempted cards are excluded.
+        if (selectionMode()) {
+          for (const card of cards) {
+            const jk = this.cardId(card);
+            if (jk && !appliedSet.has(jk) && !attemptedSet.has(jk))
+              selectedSet.add(jk);
+          }
+        }
+
         // Process jobs one by one, re-querying the list after each so the
         // sequence survives panel re-renders. Clicking Apply usually
         // navigates away; auto-resume brings the run back here afterwards.
-        let processedThisPage = false; // owner-approved stability addition
+        let processedThisPage = false;
         let progressed = true;
         while (progressed && this.running) {
           progressed = false;
-          // Tick mode (owner-approved addition): apply only the queued jobs
           const selMode = selectionMode();
-          if (selMode && !selectedSet.size()) {
-            SPOT.status('All ticked jobs done – tick more jobs, or ✕ to stop', 'success');
-            this.running = false;
-            return 'nav';
-          }
+          // If nothing queued on this page, exit inner loop and paginate.
+          if (selMode && !selectedSet.size()) break;
           for (const card of this.jobCards()) {
             const jk = this.cardId(card);
             if (selMode && (!jk || !selectedSet.has(jk))) continue;
@@ -1361,8 +1368,9 @@
             }
             if (jk) attemptedSet.add(jk); // session-only; permanent mark happens on confirmed apply
 
-            card.scrollIntoView({ block: 'center' });
-            await sleep(rand(300, 600));
+            // Smooth scroll into view — visible, human-like movement.
+            card.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            await sleep(rand(500, 900));
             processedThisPage = true;
             pageChurn.set(0); // real work happened – reset the empty-page streak
             const res = await this.clickApply(card);
