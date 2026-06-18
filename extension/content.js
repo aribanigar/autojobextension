@@ -1747,18 +1747,56 @@
       };
 
       // Free-text into Naukri's contenteditable <div class="textArea">:
-      // execCommand makes the drawer's JS see real keystrokes (textContent
-      // alone often leaves Save disabled), with a plain fallback after it.
+      // Type character-by-character via execCommand so the chatbot's input
+      // handler fires on every keystroke (enabling Save as text accumulates).
+      // A single bulk insertText often leaves Save disabled; direct textContent
+      // assignment bypasses Vue's reactivity entirely.
       const typeChat = async (input, ans) => {
+        if (!ans) return;
+        const str = String(ans).trim();
+        if (!str) return;
         input.focus();
-        await sleep(rand(150, 350));
+        await sleep(rand(100, 200));
         if (input.isContentEditable) {
-          try { document.getSelection()?.selectAllChildren(input); } catch {}
-          let ok = false;
-          try { ok = document.execCommand('insertText', false, ans); } catch {}
-          if (!ok || !input.textContent.trim()) input.textContent = ans;
-          input.dispatchEvent(new InputEvent('input', { bubbles: true, data: ans }));
-          input.dispatchEvent(new KeyboardEvent('keyup', { bubbles: true }));
+          // Clear any existing text first
+          try {
+            const sel = window.getSelection();
+            const range = document.createRange();
+            range.selectNodeContents(input);
+            sel.removeAllRanges();
+            sel.addRange(range);
+            document.execCommand('delete', false, null);
+          } catch {}
+          await sleep(rand(40, 80));
+          // Type char-by-char: each insertText fires the chatbot's input handler
+          let typed = 0;
+          for (const ch of str) {
+            try {
+              if (document.execCommand('insertText', false, ch)) typed++;
+              else break;
+            } catch { break; }
+            await sleep(rand(18, 45));
+          }
+          // Fallback when execCommand unavailable (very old/locked environments)
+          if (typed < str.length) {
+            input.textContent = str;
+            try {
+              const sel = window.getSelection();
+              const r = document.createRange();
+              r.selectNodeContents(input); r.collapse(false);
+              sel.removeAllRanges(); sel.addRange(r);
+            } catch {}
+          }
+          // Fire events so Vue/React detects the final value
+          input.dispatchEvent(new InputEvent('input', {
+            bubbles: true, cancelable: true, composed: true,
+            inputType: 'insertText', data: str,
+          }));
+          await sleep(rand(50, 100));
+          input.dispatchEvent(new Event('change', { bubbles: true }));
+          input.dispatchEvent(new KeyboardEvent('keyup', {
+            bubbles: true, cancelable: true, key: str.slice(-1) || 'a',
+          }));
         } else {
           await typeInto(input, ans);
         }
@@ -1803,8 +1841,12 @@
           await sleep(rand(300, 600));
         } else {
           // 4) Free text – Naukri uses a contenteditable <div class="textArea">
-          const input = $('div.textArea[contenteditable="true"], [contenteditable="true"], ' +
-                          'textarea, input[type="text"], input[type="number"], input:not([type])', drawer);
+          const input = $(
+            'div.textArea[contenteditable="true"], [class*="textArea"][contenteditable="true"], ' +
+            '[contenteditable="true"], textarea, ' +
+            'input[type="text"], input[type="number"], input[type="tel"], input[type="email"], ' +
+            'input:not([type="radio"]):not([type="checkbox"]):not([type="submit"]):not([type="button"])',
+            drawer);
           if (input && isVis(input)) {
             // On a retry the profile answer clearly didn't fit – ask the AI first
             let ans = attempt > 1
@@ -1961,8 +2003,8 @@
     async run() {
       this.running = true;
 
-      // Resumed on a job detail page mid-run (same-tab navigation landed here).
-      // Apply, go back, and return 'nav' so the watchdog restarts us on the list.
+      // ── Detail page (resumed via full-page navigation mid-run) ─────────────
+      // Apply, go back, return 'nav' → watchdog restarts us on the list page.
       if (this.onDetailPage()) {
         attemptedSet.add(normalizeJobId(location.href));
         this._armJobTimer();
@@ -1982,83 +2024,125 @@
         }
         history.back();
         await sleep(rand(2500, 3500));
-        // Do NOT clear running here – return 'nav' keeps the flag alive
-        // and the watchdog restarts us on the list page.
-        return 'nav';
+        return 'nav'; // keep the run flag alive
       }
 
       SPOT.status('Naukri – scanning jobs…', 'info');
 
-      while (this.running) {
-        const cards = await waitForCards(() => this.jobCards());
+      // ── Search-results loop ───────────────────────────────────────────────
+      // Labeled so inner code can `continue outer` to re-run waitForCards
+      // (critical after history.back() — the SPA may still be rendering the
+      // card list when execution returns from navigation).
+      outer: while (this.running) {
+        const cards = await waitForCards(() => this.jobCards(), 8, 1500);
+        SPOT.status(`${cards.length} jobs on page`, 'info');
+
         if (!cards.length) {
-          SPOT.status('No job cards found – waiting for page to load…', 'info');
-          await sleep(rand(2000, 3500));
-          if (!this.jobCards().length) break; // truly empty, go to monitor
+          const churn = pageChurn.get() + 1;
+          pageChurn.set(churn);
+          SPOT.status(`Nothing new on this page (${churn}/5) – looking further…`, 'info');
+          await sleep(rand(2500, 4000));
+          if (churn >= 5) {
+            SPOT.status('No new jobs in the last 5 pages – monitoring… (✕ to stop)', 'info');
+            this.running = false;
+            return 'nav';
+          }
+          if (!await this.nextPage()) break;
           continue;
         }
-        SPOT.status(`Found ${cards.length} jobs – scanning…`, 'info');
 
-        // One job at a time. After openJob() the page navigates away and the
-        // watchdog/auto-resume reloads the run here via 'nav' path above.
-        let progressed = true;
-        while (progressed && this.running) {
-          progressed = false;
+        // Auto-add all unapplied visible cards to selectedSet in tick mode
+        if (selectionMode()) {
+          for (const card of cards) {
+            const jid = this.cardId(card);
+            if (jid && !appliedSet.has(jid) && !attemptedSet.has(jid))
+              selectedSet.add(jid);
+          }
+        }
+
+        // Find the next unprocessed card and apply it.
+        // After each card we `continue outer` so waitForCards re-runs and the
+        // full list is re-queried fresh (handles SPA re-renders + history.back).
+        let processedThisPage = false;
+        for (const card of this.jobCards()) {
+          if (!this.running) break;
+          const jid = this.cardId(card);
           const selMode = selectionMode();
-          // When all ticked jobs are consumed, exit tick-mode and scan everything
+
+          // Exit tick-mode when the queue is drained
           if (selMode && !selectedSet.size()) {
             _setSelMode(false);
             try { chrome.storage.local.remove('jobbot_selmode'); } catch {}
             SPOT.status('Ticked jobs done – continuing with all remaining jobs…', 'info');
-            await sleep(rand(800, 1400));
-            // Loop continues now without selMode restriction
           }
-          for (const card of this.jobCards()) {
-            if (!this.running) break;
-            const jid = this.cardId(card);
-            const nowSelMode = selectionMode();
-            if (nowSelMode && (!jid || !selectedSet.has(jid))) continue;
-            if (jid && (appliedSet.has(jid) || attemptedSet.has(jid))) {
-              if (jid) selectedSet.remove(jid);
-              continue;
-            }
-            if (jid) attemptedSet.add(jid);
 
-            card.scrollIntoView({ behavior: 'smooth', block: 'center' });
-            await sleep(rand(600, 1100));
-            if (!await this.openJob(card)) { this.skipped++; reportSkip(); progressed = true; break; }
-
-            // openJob navigated to a detail page – applyHere handles it,
-            // but on same-page open (detail panel) handle inline too.
-            this._armJobTimer();
-            const out = await this.applyHere();
-            this._disarmJobTimer();
-            if (out === 'done') {
-              this.applied++;
-              if (jid) appliedSet.add(jid);
-              appliedSet.add(normalizeJobId(location.href));
-              report({ type: 'JOB_APPLIED', platform: 'naukri', title: document.title, url: location.href });
-              SPOT.status(`✓ Applied! (${this.applied} total) – next job…`, 'success');
-            } else { this.skipped++; reportSkip(); }
-
-            await sleep(rand(1500, 2500));
-            // Go back to the list and re-scan from top
-            if (this.onDetailPage()) {
-              history.back();
-              await sleep(rand(2800, 3800));
-            }
-            progressed = true;
-            break;
+          if (selectionMode() && (!jid || !selectedSet.has(jid))) continue;
+          if (jid && (appliedSet.has(jid) || attemptedSet.has(jid))) {
+            if (jid) selectedSet.remove(jid);
+            continue;
           }
+
+          // ── Found an unprocessed card ─────────────────────────────────────
+          if (jid) attemptedSet.add(jid);
+          card.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          await sleep(rand(600, 1100));
+          pageChurn.set(0);
+
+          if (!await this.openJob(card)) {
+            this.skipped++;
+            reportSkip();
+            processedThisPage = true;
+            continue outer; // re-query the list fresh after failed open
+          }
+
+          this._armJobTimer();
+          const out = await this.applyHere();
+          this._disarmJobTimer();
+
+          if (out === 'done') {
+            this.applied++;
+            if (jid) appliedSet.add(jid);
+            appliedSet.add(normalizeJobId(location.href));
+            report({ type: 'JOB_APPLIED', platform: 'naukri', title: document.title, url: location.href });
+            SPOT.status(`✓ Applied! (${this.applied} total) – next job…`, 'success');
+          } else {
+            this.skipped++;
+            reportSkip();
+          }
+
+          // If we ended up on a detail page (full navigation), go back to list.
+          // Brief pause then continue outer — waitForCards handles the rest.
+          if (this.onDetailPage()) {
+            await sleep(rand(1000, 1800));
+            history.back();
+            await sleep(rand(600, 1000));
+          } else {
+            await sleep(rand(1200, 2000));
+          }
+
+          processedThisPage = true;
+          continue outer; // always re-query via waitForCards after each card
         }
 
-        if (!this.running) break;
+        // All cards on this page were skipped (already applied/attempted)
+        if (!processedThisPage) {
+          const churn = pageChurn.get() + 1;
+          pageChurn.set(churn);
+          SPOT.status(`Nothing new on this page (${churn}/5) – looking further…`, 'info');
+          await sleep(rand(2500, 4000));
+          if (churn >= 5) {
+            SPOT.status('No new jobs in the last 5 pages – monitoring… (✕ to stop)', 'info');
+            this.running = false;
+            return 'nav';
+          }
+        } else {
+          pageChurn.set(0);
+        }
         if (!await this.nextPage()) break;
       }
 
-      // All visible pages exhausted – hand off to monitor mode (watchdog will
-      // re-scan after ~60 s). Do NOT clear the running flag; only Stop does that.
-      SPOT.status(`All jobs processed – monitoring for new ones… ✓ ${this.applied} applied`, 'info');
+      SPOT.status(`Done ✓ Applied: ${this.applied} | Skipped: ${this.skipped}`, 'success');
+      this.running = false;
     }
 
     stop() { this.running = false; }
@@ -2920,8 +3004,9 @@
       SPOT.ensure(); // styles must exist before any run starts, or ticks render invisible
 
       // No ticks on apply/transitional pages – only on job lists
-      if (PLATFORM === 'indeed' && probe.isApplyPage()) return;
-      if (PLATFORM === 'bayt'   && probe.isApplyPage()) return;
+      if (PLATFORM === 'indeed'  && probe.isApplyPage())  return;
+      if (PLATFORM === 'bayt'    && probe.isApplyPage())  return;
+      if (PLATFORM === 'naukri'  && probe.onDetailPage()) return;
 
       let cards;
       try { cards = probe.jobCards(); } catch { return; }
