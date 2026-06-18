@@ -991,23 +991,52 @@
     }
 
     async clickApply(card) {
-      // Step 1 — Always click the job title to open THIS card's detail panel.
-      // Skipping this step (e.g. finding a button directly inside the card element)
-      // leaves the panel showing the PREVIOUS job, so we'd click the wrong button.
-      const rawJk = ($('a[data-jk]', card) || $('[data-jk]', card))
-                      ?.getAttribute('data-jk') || '';
-      const title = $('h2 a[data-jk], a.jcs-JobTitle, h2 a, a[class*="JobTitle"], ' +
-                      'a[id^="job_"], [class*="title"] a', card) || card;
+      // Always click the card title to load THIS card's detail panel first.
+      // Never shortcut to the apply button without this step — the panel still
+      // shows the previous job until the SPA navigates.
+
+      // Prefer the jk from the card element itself; child a[data-jk] is a fallback
+      // because the first matching child might be a hidden/SEO anchor, not the title.
+      const rawJk = card.getAttribute?.('data-jk')
+                 || card.getAttribute?.('data-job-id')
+                 || ($('[data-jk]', card) || card).getAttribute?.('data-jk') || '';
+
+      // An element is only a valid click target if it is:
+      //   • in the LEFT panel (x < 60 % of viewport — never the detail panel)
+      //   • has non-zero dimensions (rules out hidden/collapsed SEO anchors)
+      //   • has visible text (rules out empty aria / tracking anchors whose
+      //     getBoundingClientRect falls at the Save / bookmark button position)
+      const isValidTitle = el => {
+        try {
+          const r = el.getBoundingClientRect();
+          return r.width > 0 && r.height > 0
+              && r.left < window.innerWidth * 0.6
+              && (el.textContent || '').trim().length > 0;
+        } catch { return false; }
+      };
+
+      // 1st choice: exact jk match (only this card's link)
+      let title = null;
+      if (rawJk) {
+        try { title = $$(`a[data-jk="${rawJk}"]`, card).find(isValidTitle); } catch {}
+      }
+      // 2nd choice: known Indeed title-link class
+      if (!title) title = $$('a.jcs-JobTitle', card).find(isValidTitle);
+      // 3rd choice: any visible h2 link in the card
+      if (!title) title = $$('h2 a', card).find(isValidTitle);
+      // Last resort: click the card container itself (always in the left panel)
+      if (!title) title = card;
+
       await humanClick(title, `Opening: ${(title.textContent || '').trim().substring(0, 55)}`);
 
-      // Step 2 — Wait for the SPA to navigate to this job (URL includes its jk).
+      // Wait for the SPA to navigate to this job (URL includes its jk).
       for (let w = 0; w < 10 && rawJk; w++) {
         if (location.href.toLowerCase().includes(rawJk.toLowerCase())) break;
         await sleep(rand(400, 700));
       }
       await sleep(rand(500, 900)); // let the detail panel fully render
 
-      // Step 3 — Find the "Apply with Indeed" button in the now-current panel.
+      // Find the "Apply with Indeed" button in the now-current detail panel.
       let btn = null;
       for (let i = 0; i < 10 && !btn; i++) {
         btn = this.findApplyButton(document);
@@ -1032,7 +1061,7 @@
       const targetsOf = b => [b, b.closest && b.closest('button, a, [role="button"]')]
         .filter((v, i, a) => v && a.indexOf(v) === i);
 
-      // Step 4 — Smooth first click: humanClick scrolls + curves cursor + fires realClick.
+      // Smooth first click: humanClick scrolls + curves cursor + fires realClick.
       await humanClick(btn, '🟦 Clicking "Apply with Indeed"…');
 
       // Give the React form time to hydrate (typically 1.8-2.8s) before any retry.
@@ -1040,7 +1069,7 @@
       if (document.hidden) return 'popup';
       if (opened()) return 'clicked';
 
-      // Step 5 — Retry loop (up to ~14s more) with cursor jitter each attempt.
+      // Retry loop (up to ~14s more) with cursor jitter each attempt.
       for (let i = 0; i < 10; i++) {
         if (!document.hidden) {
           if (!btn.isConnected || !isVis(btn)) btn = this.findApplyButton(document) || btn;
