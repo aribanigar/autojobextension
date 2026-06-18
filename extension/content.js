@@ -1150,114 +1150,49 @@
     }
 
     async clickContinue() {
-      const isClickable = el =>
-        isVis(el) && el.getAttribute('aria-disabled') !== 'true';
+      const isOk = el => isVis(el) && el.getAttribute('aria-disabled') !== 'true' && !el.disabled;
+      const { cont, sub } = this.findStepButtons();
 
-      // Snapshot the form content BEFORE clicking so we can detect step advances
-      // even when React reuses the same DOM node for the Continue button.
-      const formArea = () =>
-        $('.ia-Questions-main, .ia-BasePage-main, [data-testid="ia-Questions-main"]') || document.body;
-
-      // Up to 3 attempts; each attempt re-queries buttons in case React re-rendered.
-      for (let attempt = 0; attempt < 3 && this.running; attempt++) {
-        if (attempt > 0) await sleep(rand(1000, 1800));
-
-        const { cont, sub } = this.findStepButtons();
-
-        if (cont && isClickable(cont)) {
-          const isAnyway = /apply any ?ways?|continue any ?ways?/i.test(this.btnText(cont));
-          const isReview = /^review\b/i.test(this.btnText(cont));
-          const msg = isAnyway ? '✅ Clicking APPLY ANYWAY…'
-                    : isReview ? '📋 Clicking REVIEW…'
-                    : '✨ Clicking CONTINUE…';
-
-          // Snapshot current form text before clicking (React may reuse the button
-          // DOM node on step advance, making !isConnected unreliable alone).
-          const fa = formArea();
-          const snapLen = fa ? fa.textContent.length : 0;
-
-          // Primary click: smooth human cursor + full event sequence
-          try { cont.focus(); } catch {}
-          await humanClick(cont, msg);
-          await sleep(rand(900, 1500)); // slightly longer wait for React to settle
-
-          // Signal 1: React unmounted the element (clear-cut step advance)
-          if (!cont.isConnected) return 'continue';
-
-          // Signal 2: form area content changed meaningfully (React re-rendered new step)
-          const newLen = fa ? fa.textContent.length : 0;
-          if (Math.abs(newLen - snapLen) > 80) return 'continue';
-
-          // Signal 3: re-querying returns a DIFFERENT DOM node for Continue
-          const { cont: cont2 } = this.findStepButtons();
-          if (!cont2 || cont2 !== cont) return 'continue';
-
-          // None of the signals fired — step didn't advance.
-          // Try clicking the topmost element at button coords (invisible overlay pattern)
-          const r2 = cont.getBoundingClientRect();
-          const cx2 = r2.left + r2.width / 2, cy2 = r2.top + r2.height / 2;
-          const top = document.elementFromPoint(cx2, cy2);
-          if (top && top !== cont) {
-            realClick(top);
-            await sleep(rand(500, 900));
-            if (!cont.isConnected) return 'continue';
-          }
-
-          // Also click the nearest button/anchor ancestor (wrapper-element pattern)
-          const anc = cont.closest('button, a, [role="button"]');
-          if (anc && anc !== cont && isVis(anc)) {
-            realClick(anc);
-            await sleep(rand(400, 700));
-            if (!cont.isConnected) return 'continue';
-          }
-
-          // Re-fire directly on the button as last resort for this attempt
-          realClick(cont);
-          await sleep(rand(500, 900));
-          if (!cont.isConnected) return 'continue';
-
-          continue; // next attempt
-        }
-
-        if (sub && isClickable(sub)) {
-          try { sub.focus(); } catch {}
-          await humanClick(sub, '🎉 Submitting my application!');
-          await sleep(rand(1500, 2500));
-          return 'submitted';
-        }
-
-        // Captcha is blocking the submit button → hand off to the user
-        if (sub && this.hasCaptcha()) {
-          return await this.waitForCaptcha(sub);
-        }
-
-        // Submit button exists but temporarily disabled (page still loading/validating)
-        // — wait up to 8s for Indeed to enable it before giving up.
-        if (sub) {
-          SPOT.status('⏳ Waiting for Submit button to activate…', 'info');
-          for (let w = 0; w < 16 && this.running; w++) {
-            await sleep(500);
-            const { sub: s2 } = this.findStepButtons();
-            if (s2 && isClickable(s2)) {
-              try { s2.focus(); } catch {}
-              await humanClick(s2, '🎉 Submitting my application!');
-              await sleep(rand(1500, 2500));
-              return 'submitted';
-            }
-          }
-          return 'blocked';
-        }
-
-        // Continue button disabled → required fields still empty
-        if (cont && (cont.disabled || cont.getAttribute('aria-disabled') === 'true')) {
-          return 'blocked';
-        }
-
-        return null;
+      if (cont && isOk(cont)) {
+        const isAnyway = /apply any ?ways?|continue any ?ways?/i.test(this.btnText(cont));
+        const isReview = /^review\b/i.test(this.btnText(cont));
+        const msg = isAnyway ? '✅ Clicking APPLY ANYWAY…'
+                  : isReview ? '📋 Clicking REVIEW…'
+                  : '✨ Clicking CONTINUE…';
+        try { cont.focus(); } catch {}
+        await humanClick(cont, msg);
+        await sleep(rand(1200, 2000));
+        return 'continue';
       }
 
-      // Exhausted attempts — button was found but click never advanced the step
-      return 'blocked';
+      if (sub && isOk(sub)) {
+        try { sub.focus(); } catch {}
+        await humanClick(sub, '🎉 Submitting my application!');
+        await sleep(rand(1500, 2500));
+        return 'submitted';
+      }
+
+      if (sub && this.hasCaptcha()) return await this.waitForCaptcha(sub);
+
+      // Submit found but temporarily disabled — wait up to 8s for page to enable it
+      if (sub) {
+        SPOT.status('⏳ Waiting for Submit to activate…', 'info');
+        for (let w = 0; w < 16 && this.running; w++) {
+          await sleep(500);
+          const { sub: s2 } = this.findStepButtons();
+          if (s2 && isOk(s2)) {
+            try { s2.focus(); } catch {}
+            await humanClick(s2, '🎉 Submitting my application!');
+            await sleep(rand(1500, 2500));
+            return 'submitted';
+          }
+        }
+        return 'blocked';
+      }
+
+      if (cont) return 'blocked'; // found but disabled — required fields still empty
+
+      return null; // nothing found yet — runApplication loop will retry
     }
 
     isDone() {
