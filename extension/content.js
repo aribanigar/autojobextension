@@ -932,6 +932,10 @@
       // The form UI must be VISIBLE – Indeed preloads a hidden apply iframe on
       // its home/search pages, which previously faked an in-progress application.
       if (this.applyFrame()) return true;
+      // Pre-qualification "Apply anyway" modal counts as an apply page so the
+      // clickApply retry loop exits and runApplication handles it.
+      if ($$('button, [role="button"]').some(b =>
+            isVis(b) && /^apply anyway$/i.test((b.textContent || '').trim()))) return true;
       return $$('[data-testid="ia-continueButton"], [data-testid="ia-submitButton"], ' +
                 '.ia-BasePage, [data-testid="ia-Questions-main"], .ia-Modal').some(isVis);
     }
@@ -1073,6 +1077,8 @@
       const cont =
         $('[data-testid="ia-continueButton"], [data-testid="continue-button"]') ||
         els.find(b => /^(continue|continue applying|next|save and continue)$/i.test(this.btnText(b))) ||
+        // "Apply anyway" / "Continue anyway" — Indeed's pre-qualification modal
+        els.find(b => /^(apply anyway|continue anyway|yes,?\s*(continue|apply( anyway)?))$/i.test(this.btnText(b))) ||
         els.find(b => /continue/i.test(this.btnText(b)) && !/skip|without/i.test(this.btnText(b)));
       const sub =
         $('[data-testid="ia-submitButton"], [data-testid="submit-button"]') ||
@@ -1111,7 +1117,8 @@
       const { cont, sub } = this.findStepButtons();
 
       if (cont && isVis(cont) && !cont.disabled) {
-        await humanClick(cont, '✨ Clicking CONTINUE…');
+        const isAnyway = /apply anyway|continue anyway/i.test(this.btnText(cont));
+        await humanClick(cont, isAnyway ? '✅ Clicking APPLY ANYWAY…' : '✨ Clicking CONTINUE…');
         await sleep(rand(900, 1600));
         return 'continue';
       }
