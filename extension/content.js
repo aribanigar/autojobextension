@@ -2425,14 +2425,33 @@
   // Backed by chrome.storage.local so ticked jobs survive the cross-origin
   // indeed.com → apply.indeed.com hop that wipes sessionStorage. The in-memory
   // Set is the fast-path; chrome.storage is the durable source-of-truth.
+  //
+  // IMPORTANT: chrome.storage is ONLY restored when a run is active. If there
+  // is no active run on page load we wipe both stores immediately so the user
+  // never sees phantom checkmarks from a previous session.
   const selectedSet = (() => {
     let s = new Set();
-    // Sync seed from sessionStorage (instant) then merge from chrome.storage
+    // Sync seed from sessionStorage first (instant, within same origin/tab)
     try { s = new Set(JSON.parse(sessionStorage.getItem('jobbot_selected') || '[]')); } catch {}
     const CKEY = 'jobbot_selected_run';
     try {
-      chrome.storage.local.get(CKEY, d => {
-        (Array.isArray(d[CKEY]) ? d[CKEY] : []).forEach(id => s.add(id));
+      // Combine the run-state check and the tick/selmode restore in ONE read so
+      // there is no race between clearing stale data and re-seeding it.
+      chrome.storage.local.get(['jobbot_running', CKEY, 'jobbot_selmode'], d => {
+        if (d.jobbot_running) {
+          // Active run (cross-origin hop): restore ticks + selection mode flag
+          (Array.isArray(d[CKEY]) ? d[CKEY] : []).forEach(id => s.add(id));
+          if (d.jobbot_selmode === '1') {
+            try { sessionStorage.setItem('jobbot_selmode', '1'); } catch {}
+          }
+        } else {
+          // No active run: delete every trace of stale selections so the user
+          // always starts with a clean slate — no phantom checkmarks.
+          s = new Set();
+          try { sessionStorage.removeItem('jobbot_selected'); } catch {}
+          try { sessionStorage.setItem('jobbot_selmode', '0'); } catch {}
+          chrome.storage.local.remove([CKEY, 'jobbot_selmode']);
+        }
       });
     } catch {}
     const persist = () => {
@@ -2446,6 +2465,13 @@
       toggle(id) { s.has(id) ? s.delete(id) : s.add(id); persist(); return s.has(id); },
       add(id) { if (id) { s.add(id); persist(); } },
       remove(id) { s.delete(id); persist(); },
+      // Wipe all selections (called when the user explicitly clears or stops)
+      clear() {
+        s = new Set();
+        try { sessionStorage.removeItem('jobbot_selected'); } catch {}
+        try { sessionStorage.setItem('jobbot_selmode', '0'); } catch {}
+        chrome.storage.local.remove([CKEY, 'jobbot_selmode']);
+      },
     };
   })();
 
@@ -2459,14 +2485,8 @@
     try { sessionStorage.setItem('jobbot_selmode', on ? '1' : '0'); } catch {}
     try { chrome.storage.local.set({ jobbot_selmode: on ? '1' : '0' }); } catch {}
   };
-  // On load: re-seed sessionStorage from chrome.storage if it was cleared
-  try {
-    chrome.storage.local.get('jobbot_selmode', d => {
-      if (d.jobbot_selmode === '1') {
-        try { sessionStorage.setItem('jobbot_selmode', '1'); } catch {}
-      }
-    });
-  } catch {}
+  // NOTE: selmode re-seed from chrome.storage is handled inside the selectedSet
+  // IIFE above (combined with the run-state check) so there is no separate read.
 
   // Consecutive result-pages with nothing new to apply to. Persisted in
   // chrome.storage.local (survives cross-origin hops that wipe sessionStorage).
