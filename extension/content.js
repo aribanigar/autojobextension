@@ -1167,6 +1167,18 @@
       return { cont, sub };
     }
 
+    // Only a VISIBLE apply iframe counts – Indeed preloads a hidden one
+    applyFrame() {
+      // When we are already on the apply domain (smartapply.indeed.com) we ARE
+      // the apply form — any nested iframes are sub-frames of that form, not a
+      // separate embedded apply widget. Returning null here prevents a false
+      // positive that would trap runApplication() in a 3-minute wait loop and
+      // make the engine appear "stopped" at the resume-selection step.
+      if (/smartapply\.indeed\.com|apply\.indeed\.com/i.test(location.hostname)) return null;
+      const f = $('iframe[src*="indeedapply"], iframe[src*="smartapply"], iframe[src*="apply.indeed"]');
+      return f && isVis(f) ? f : null;
+    }
+
     // A reCAPTCHA the user must solve by hand. We never try to tick or solve it:
     // a scripted click can't satisfy reCAPTCHA and only raises bot suspicion.
     hasCaptcha() {
@@ -1253,12 +1265,6 @@
     isAlreadyApplied() {
       return $$('h1, h2, h3, [role="heading"], [class*="title"], [class*="heading"]').some(el =>
         isVis(el) && /already applied to this job|you('ve| have) already applied/i.test(el.textContent));
-    }
-
-    // Only a VISIBLE apply iframe counts – Indeed preloads a hidden one
-    applyFrame() {
-      const f = $('iframe[src*="indeedapply"], iframe[src*="smartapply"], iframe[src*="apply.indeed"]');
-      return f && isVis(f) ? f : null;
     }
 
     async reportApplied() {
@@ -1360,25 +1366,27 @@
 
         if (res === 'blocked') {
           // Continue is visible but disabled – a required field is still empty.
-          // Refill (AI fallback included) and try again before giving up.
+          // Refill (AI fallback included) and try again; 8 misses gives ~16s
+          // for slow React renders (e.g. resume-selection on smartapply.indeed.com).
           misses++;
-          if (misses < 4) {
+          if (misses < 8) {
             SPOT.status('Required fields pending – refilling…', 'warning');
             await sleep(2000);
             continue;
           }
         } else {
-          // Nothing found – the next step may simply still be loading
+          // Nothing found – the next step may still be loading (React hydration
+          // on smartapply.indeed.com can take several seconds on cold loads).
           misses++;
           if (this.isDone()) continue;
-          if (misses < 4) {
+          if (misses < 8) {
             SPOT.status('Waiting for next step…', 'applying');
             await sleep(2500);
             continue;
           }
         }
 
-        SPOT.status('Stuck on this form – returning to job list', 'warning');
+        SPOT.status('Stuck on this form – skipping job and continuing…', 'warning');
         this.skipped++; reportSkip();
         await this.returnToList();
         return false;
