@@ -1100,25 +1100,28 @@
     btnText(el) { return (el.textContent || el.value || '').trim(); }
 
     findStepButtons() {
-      // Scope to the apply-form area first so header/footer nav buttons are
-      // never mistaken for Continue/Submit. Fall back to body only if needed.
-      const area =
-        $('.ia-Questions-footer, .ia-BasePage-footer, [data-testid="ia-footer"]') ||
-        $('.ia-Questions, .ia-BasePage, [data-testid="ia-Questions"], [data-testid="ia-BasePage"]') ||
-        document.body;
-      const els = $$('button, [role="button"], input[type="submit"], input[type="button"]', area);
+      // Search the entire document — scoping to Indeed-specific containers was
+      // too brittle because the apply form uses different class names across
+      // job types and A/B tests. isVis() guards every lookup so hidden
+      // preloaded buttons never shadow the visible ones.
+      const all = $$('button, [role="button"], input[type="submit"], input[type="button"]');
+
       const cont =
-        $('[data-testid="ia-continueButton"], [data-testid="continue-button"]') ||
-        els.find(b => isVis(b) && /^(continue|continue applying|next|save and continue|review(?: your application)?)$/i.test(this.btnText(b))) ||
-        // "Apply anyway/anyways" / "Continue anyway" — Indeed's pre-qualification modal
-        els.find(b => isVis(b) && /^(apply any ?ways?|continue any ?ways?|yes,?\s*(continue|apply( any ?ways?)?))$/i.test(this.btnText(b))) ||
-        els.find(b => isVis(b) && /^continue\b/i.test(this.btnText(b)) && !/skip|without|reading|to site/i.test(this.btnText(b)));
+        // testid — must be visible (hidden preloads exist on some layouts)
+        all.find(b => isVis(b) && /^ia-continueButton$|^continue-button$/.test(b.getAttribute('data-testid') || '')) ||
+        // exact text match
+        all.find(b => isVis(b) && /^(continue|continue applying|next|save and continue|review(?: your application)?)$/i.test(this.btnText(b))) ||
+        // pre-qualification / "apply anyway" modal
+        all.find(b => isVis(b) && /^(apply any ?ways?|continue any ?ways?|yes,?\s*(continue|apply( any ?ways?)?))$/i.test(this.btnText(b))) ||
+        // starts-with-continue fallback (e.g. "Continue to next step")
+        all.find(b => isVis(b) && /^continue\b/i.test(this.btnText(b)) && !/skip|without|reading|to site/i.test(this.btnText(b)));
+
       const sub =
-        $('[data-testid="ia-submitButton"], [data-testid="submit-button"]') ||
-        // Search without isVis so a briefly-disabled submit button is still found
-        $$('button, [role="button"], input[type="submit"], input[type="button"]', area)
-          .find(b => /submit (my |your )?application|^submit$|apply now/i.test(this.btnText(b))
-                  && !b.closest('[aria-hidden="true"]'));
+        // testid visible first; disabled submit is caught by the wait-loop in clickContinue
+        all.find(b => /^ia-submitButton$|^submit-button$/.test(b.getAttribute('data-testid') || '')) ||
+        all.find(b => /submit (my |your )?application|^submit$|apply now/i.test(this.btnText(b))
+                   && !b.closest('[aria-hidden="true"]'));
+
       return { cont, sub };
     }
 
