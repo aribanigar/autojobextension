@@ -454,6 +454,24 @@
         return days <= 15 ? 'Yes' : 'No';
       }
       if (/\b(total|overall|relevant)\b.*\bexperience\b/i.test(t)) return pro.experience || '3';
+
+      // Age / eligibility confirmations
+      // "Are you between the ages of 18 and 45?" / "Are you above 18?" / "at least 18 years old?"
+      if (/\bage[sd]?\b.*\b(between|above|below|over|under|at\s+least|minimum|eligib)\b|\b(between|above|below|over|under|at\s+least|minimum)\b.*\bage[sd]?\b/i.test(t)) return 'Yes';
+      if (/\b(meet|satisfy)\b.*\b(age|requirement|criterion|criteria)\b|\bage\b.*\b(requirement|criterion|criteria|eligib)\b/i.test(t)) return 'Yes';
+
+      // Employment status
+      if (/currently\s+(employed|working)|employed\s+currently/i.test(t)) return pro.currentCompany ? 'Yes' : 'No';
+
+      // "Are you a graduate?" / "Are you a degree holder?"
+      if (/\b(graduate|degree\s+holder)\b/i.test(t) && !/post.?graduate/i.test(t)) return 'Yes';
+
+      // Generic legal / background consent ("Have you ever been convicted…?")
+      if (/\b(convicted|criminal\s+record|felony|background\s+check)\b/i.test(t)) return 'No';
+
+      // Disability / veteran self-identification (common US/IN EEOC questions)
+      if (/\b(disability|disabled|veteran|differently.?abled)\b/i.test(t)) return 'No';
+
       return null;
     }
 
@@ -1091,9 +1109,10 @@
     }
 
     async fillStep() {
-      // Scope to main form area to avoid filling page header/footer
-      const form = $('.ia-Questions-main, .ia-BasePage-main, [data-testid="ia-Questions-main"]') || document.body;
-      await this.f.all(form);
+      // Use document.body — Filler.all() already guards every fill with isVis()
+      // and skips inputs that already have values, so wider scope is safe and
+      // avoids the "container not found" miss that leaves fields empty.
+      await this.f.all(document.body);
       await sleep(rand(350, 600));
     }
 
