@@ -1083,12 +1083,20 @@
       if (btn.tagName === 'A') btn.setAttribute('target', '_self');
 
       const beforeUrl = location.href;
-      const wasApplyState = this.isApplyPage();
-      const opened = () =>
-        location.href !== beforeUrl
-        || (!wasApplyState && this.isApplyPage())
-        || this.isDone()
-        || this.isAlreadyApplied();
+      // Snapshot visible ia-* form element count BEFORE clicking so we can
+      // detect in-page form opening even when wasApplyState is already true
+      // (Indeed preloads hidden apply UI in the detail panel — isApplyPage()
+      // can return true before and after the click, making the old
+      // !wasApplyState guard useless for in-page forms).
+      const iaSel = '[data-testid="ia-continueButton"], [data-testid="ia-submitButton"], ' +
+                    '.ia-Modal, [data-testid="ia-Questions-main"], .ia-BasePage';
+      const iaCountBefore = $$(iaSel).filter(isVis).length;
+      const opened = () => {
+        if (location.href !== beforeUrl) return true;
+        if (this.isDone() || this.isAlreadyApplied()) return true;
+        if (this.isApplyPage() && $$(iaSel).filter(isVis).length > iaCountBefore) return true;
+        return false;
+      };
 
       const targetsOf = b => [b, b.closest && b.closest('button, a, [role="button"]')]
         .filter((v, i, a) => v && a.indexOf(v) === i);
@@ -1101,23 +1109,24 @@
       if (document.hidden) return 'popup';
       if (opened()) return 'clicked';
 
-      // Retry loop (up to ~14s more) with cursor jitter each attempt.
-      for (let i = 0; i < 10; i++) {
-        if (!document.hidden) {
-          if (!btn.isConnected || !isVis(btn)) btn = this.findApplyButton(document) || btn;
-          if (btn.isConnected && isVis(btn)) {
-            const r = btn.getBoundingClientRect();
-            const jx = (Math.random() - 0.5) * 14;
-            const jy = (Math.random() - 0.5) * 8;
-            await moveTo(r.left + r.width / 2 + jx, r.top + r.height / 2 + jy);
-            await sleep(rand(60, 160));
-            for (const t of targetsOf(btn)) { try { realClick(t); } catch {} }
-            SPOT.pulse(btn, '🟦 Apply with Indeed – opening form…');
-          }
-        }
-        await sleep(rand(800, 1400));
+      // Retry loop (up to ~8s more). Always check BEFORE re-clicking — never
+      // fire into an already-open form. If the Apply button has vanished the
+      // form captured the click; treat as success immediately.
+      for (let i = 0; i < 5; i++) {
+        // Button gone → form captured the click
+        if (!btn.isConnected || !isVis(btn)) return 'clicked';
+        const r = btn.getBoundingClientRect();
+        await moveTo(r.left + r.width / 2 + (Math.random() - 0.5) * 14,
+                     r.top  + r.height / 2 + (Math.random() - 0.5) * 8);
+        await sleep(rand(60, 160));
+        for (const t of targetsOf(btn)) { try { realClick(t); } catch {} }
+        SPOT.pulse(btn, '🟦 Apply with Indeed – opening form…');
+        await sleep(rand(1000, 1600));
         if (document.hidden) return 'popup';
         if (opened()) return 'clicked';
+        // Re-check button existence after waiting
+        if (!btn.isConnected || !isVis(btn)) return 'clicked';
+        btn = this.findApplyButton(document) || btn;
       }
       return opened() ? 'clicked' : (document.hidden ? 'popup' : 'none');
     }
@@ -2759,8 +2768,16 @@
     if (IS_TOP) setStore({ jobbot_running: MY_TAB ?? true });
     // Remember the exact search-results page (query + filters + page number)
     // so the apply flow can return to it and continue with the next job.
+    // Strip vjk= (the "highlighted job" param) so we always land at the
+    // top of the clean list rather than scrolled to the last-applied card.
     if (IS_TOP && PLATFORM === 'indeed' && agent.onResultsPage?.()) {
-      setStore({ jobbot_return_url: location.href });
+      try {
+        const u = new URL(location.href);
+        u.searchParams.delete('vjk');
+        setStore({ jobbot_return_url: u.toString() });
+      } catch {
+        setStore({ jobbot_return_url: location.href });
+      }
     }
     // After a completed application, pause ~4s on the list page before scanning the
     // next job — covers the navigation case where run() never gets its own sleep.
