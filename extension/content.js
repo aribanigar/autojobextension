@@ -991,53 +991,37 @@
     }
 
     async clickApply(card) {
-      // Only check the card element itself first — never the document-wide detail
-      // panel, because it still shows the PREVIOUS job until this card's title is
-      // clicked and the SPA navigates.
-      let btn = this.findApplyButton(card);
+      // Step 1 — Always click the job title to open THIS card's detail panel.
+      // Skipping this step (e.g. finding a button directly inside the card element)
+      // leaves the panel showing the PREVIOUS job, so we'd click the wrong button.
+      const rawJk = ($('a[data-jk]', card) || $('[data-jk]', card))
+                      ?.getAttribute('data-jk') || '';
+      const title = $('h2 a[data-jk], a.jcs-JobTitle, h2 a, a[class*="JobTitle"], ' +
+                      'a[id^="job_"], [class*="title"] a', card) || card;
+      await humanClick(title, `Opening: ${(title.textContent || '').trim().substring(0, 55)}`);
 
-      if (!btn) {
-        // Grab the raw jk so we can verify the SPA actually navigated to THIS job
-        // before calling findApplyButton(document) — without this guard the stale
-        // previous-job panel would hand us the wrong button every time.
-        const rawJk = ($('a[data-jk]', card) || $('[data-jk]', card))
-                        ?.getAttribute('data-jk') || '';
-        const title = $('h2 a[data-jk], a.jcs-JobTitle, h2 a, a[class*="JobTitle"], ' +
-                        'a[id^="job_"], [class*="title"] a', card) || card;
-        if (title) {
-          // humanClick = scrollIntoView + smooth cursor move + realClick.
-          // More reliable than bare realClick for React-Router SPA links.
-          await humanClick(title, `Opening: ${(title.textContent || '').trim().substring(0, 55)}`);
-          // Wait until the URL contains this card's jk (Indeed SPA updates ?vjk=)
-          // before searching for the Apply button — ensures we read the right panel.
-          for (let w = 0; w < 10 && rawJk; w++) {
-            if (location.href.toLowerCase().includes(rawJk.toLowerCase())) break;
-            await sleep(rand(400, 700));
-          }
-          await sleep(rand(350, 650));
-        }
-        for (let i = 0; i < 10 && !btn; i++) {
-          btn = this.findApplyButton(document);
-          if (!btn) await sleep(800);
-        }
+      // Step 2 — Wait for the SPA to navigate to this job (URL includes its jk).
+      for (let w = 0; w < 10 && rawJk; w++) {
+        if (location.href.toLowerCase().includes(rawJk.toLowerCase())) break;
+        await sleep(rand(400, 700));
+      }
+      await sleep(rand(500, 900)); // let the detail panel fully render
+
+      // Step 3 — Find the "Apply with Indeed" button in the now-current panel.
+      let btn = null;
+      for (let i = 0; i < 10 && !btn; i++) {
+        btn = this.findApplyButton(document);
+        if (!btn) await sleep(800);
       }
 
       if (!btn || !isVis(btn)) return 'none';
       if (/applied/i.test(btn.textContent)) return 'already';
 
-      // Force same-tab so the apply flow stays in this tab and auto-resume works
+      // Force same-tab so the apply flow stays here and auto-resume works.
       if (btn.tagName === 'A') btn.setAttribute('target', '_self');
       btn.removeAttribute && btn.removeAttribute('target');
 
       const beforeUrl = location.href;
-
-      SPOT.pulse(btn, '🟦 Clicking "Apply with Indeed"…');
-      btn.scrollIntoView({ behavior: 'smooth', block: 'center' });
-      await sleep(rand(350, 600));
-
-      const targetsOf = b => [b, b.closest && b.closest('button, a, [role="button"]')]
-        .filter((v, i, a) => v && a.indexOf(v) === i);
-
       const wasApplyState = this.isApplyPage();
       const opened = () =>
         location.href !== beforeUrl
@@ -1045,11 +1029,20 @@
         || this.isDone()
         || this.isAlreadyApplied();
 
-      // Up to ~18s total: click first, then give the React form time to hydrate
-      // before any re-click. First dwell is 1.8-2.8s (form render window);
-      // subsequent gaps are 800-1400ms. Cursor jitter on every click.
-      for (let i = 0; i < 12; i++) {
-        if (i % 2 === 0 && !document.hidden) {   // click at i = 0, 2, 4, 6, 8, 10
+      const targetsOf = b => [b, b.closest && b.closest('button, a, [role="button"]')]
+        .filter((v, i, a) => v && a.indexOf(v) === i);
+
+      // Step 4 — Smooth first click: humanClick scrolls + curves cursor + fires realClick.
+      await humanClick(btn, '🟦 Clicking "Apply with Indeed"…');
+
+      // Give the React form time to hydrate (typically 1.8-2.8s) before any retry.
+      await sleep(rand(1800, 2800));
+      if (document.hidden) return 'popup';
+      if (opened()) return 'clicked';
+
+      // Step 5 — Retry loop (up to ~14s more) with cursor jitter each attempt.
+      for (let i = 0; i < 10; i++) {
+        if (!document.hidden) {
           if (!btn.isConnected || !isVis(btn)) btn = this.findApplyButton(document) || btn;
           if (btn.isConnected && isVis(btn)) {
             const r = btn.getBoundingClientRect();
@@ -1058,11 +1051,10 @@
             await moveTo(r.left + r.width / 2 + jx, r.top + r.height / 2 + jy);
             await sleep(rand(60, 160));
             for (const t of targetsOf(btn)) { try { realClick(t); } catch {} }
-            if (i > 0) SPOT.pulse(btn, '🟦 Apply with Indeed – opening form…');
+            SPOT.pulse(btn, '🟦 Apply with Indeed – opening form…');
           }
         }
-        // First post-click window is longer to allow React hydration + form render.
-        await sleep(i === 0 ? rand(1800, 2800) : rand(800, 1400));
+        await sleep(rand(800, 1400));
         if (document.hidden) return 'popup';
         if (opened()) return 'clicked';
       }
