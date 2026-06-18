@@ -932,6 +932,10 @@
       // The form UI must be VISIBLE – Indeed preloads a hidden apply iframe on
       // its home/search pages, which previously faked an in-progress application.
       if (this.applyFrame()) return true;
+      // Pre-qualification "Apply anyway" modal counts as an apply page so the
+      // clickApply retry loop exits and runApplication handles it.
+      if ($$('button, [role="button"]').some(b =>
+            isVis(b) && /^apply anyway$/i.test((b.textContent || '').trim()))) return true;
       return $$('[data-testid="ia-continueButton"], [data-testid="ia-submitButton"], ' +
                 '.ia-BasePage, [data-testid="ia-Questions-main"], .ia-Modal').some(isVis);
     }
@@ -982,21 +986,31 @@
 
     async clickApply(card) {
       // Only check the card element itself first — never the document-wide detail
-      // panel at this point, because it still shows the PREVIOUS job until we
-      // click this card's title. Using findApplyButton(document) here is what
-      // caused the engine to re-apply the same job after returning from a popup tab.
+      // panel, because it still shows the PREVIOUS job until this card's title is
+      // clicked and the SPA navigates.
       let btn = this.findApplyButton(card);
 
       if (!btn) {
-        // Click this card's title to load its detail panel, THEN search document.
+        // Grab the raw jk so we can verify the SPA actually navigated to THIS job
+        // before calling findApplyButton(document) — without this guard the stale
+        // previous-job panel would hand us the wrong button every time.
+        const rawJk = ($('a[data-jk]', card) || $('[data-jk]', card))
+                        ?.getAttribute('data-jk') || '';
         const title = $('h2 a[data-jk], a.jcs-JobTitle, h2 a, a[class*="JobTitle"], ' +
                         'a[id^="job_"], [class*="title"] a', card) || card;
         if (title) {
-          SPOT.pulse(title, `Opening: ${(title.textContent || '').trim().substring(0, 55)}`);
-          realClick(title);
-          await sleep(rand(1000, 1800));
+          // humanClick = scrollIntoView + smooth cursor move + realClick.
+          // More reliable than bare realClick for React-Router SPA links.
+          await humanClick(title, `Opening: ${(title.textContent || '').trim().substring(0, 55)}`);
+          // Wait until the URL contains this card's jk (Indeed SPA updates ?vjk=)
+          // before searching for the Apply button — ensures we read the right panel.
+          for (let w = 0; w < 10 && rawJk; w++) {
+            if (location.href.toLowerCase().includes(rawJk.toLowerCase())) break;
+            await sleep(rand(400, 700));
+          }
+          await sleep(rand(350, 650));
         }
-        for (let i = 0; i < 10 && !btn; i++) {        // up to ~8s for the panel to load
+        for (let i = 0; i < 10 && !btn; i++) {
           btn = this.findApplyButton(document);
           if (!btn) await sleep(800);
         }
@@ -1009,24 +1023,15 @@
       if (btn.tagName === 'A') btn.setAttribute('target', '_self');
       btn.removeAttribute && btn.removeAttribute('target');
 
-      // Mark this navigation as an intended apply so, if the click triggers a
-      // full page load, the watchdog/auto-resume immediately knows to continue.
       const beforeUrl = location.href;
 
-      // Lock the spotlight on "Apply with Indeed" through the whole click +
-      // retry sequence so it's obvious and reliably registers.
       SPOT.pulse(btn, '🟦 Clicking "Apply with Indeed"…');
       btn.scrollIntoView({ behavior: 'smooth', block: 'center' });
       await sleep(rand(350, 600));
 
-      // Click the resolved element AND its nearest interactive ancestor, in case
-      // the visible label is a span inside the real button.
       const targetsOf = b => [b, b.closest && b.closest('button, a, [role="button"]')]
         .filter((v, i, a) => v && a.indexOf(v) === i);
 
-      // Success = a STATE CHANGE after our click: the URL changed, or the apply
-      // UI appeared where there was none. Never judge by absolute state alone –
-      // that returned 'clicked' without clicking when a stray match existed.
       const wasApplyState = this.isApplyPage();
       const opened = () =>
         location.href !== beforeUrl
@@ -1034,22 +1039,24 @@
         || this.isDone()
         || this.isAlreadyApplied();
 
-      // Up to ~16s: Indeed's React button often ignores the first click(s)
-      // while it hydrates. Always click FIRST, then re-click every ~2.4s.
-      for (let i = 0; i < 20; i++) {
-        if (i % 3 === 0 && !document.hidden) {
+      // Up to ~9s of retries (reduced from 16s) with variable human-like delays
+      // and per-attempt cursor jitter so the click pattern looks organic.
+      for (let i = 0; i < 9; i++) {
+        if (i % 2 === 0 && !document.hidden) {   // click at i = 0, 2, 4, 6, 8
           if (!btn.isConnected || !isVis(btn)) btn = this.findApplyButton(document) || btn;
           if (btn.isConnected && isVis(btn)) {
             const r = btn.getBoundingClientRect();
-            await moveTo(r.left + r.width / 2, r.top + r.height / 2);
-            await sleep(rand(80, 180));
+            // Small random jitter around button centre – looks human, avoids
+            // pixel-perfect repeated clicks that trigger bot detectors.
+            const jx = (Math.random() - 0.5) * 14;
+            const jy = (Math.random() - 0.5) * 8;
+            await moveTo(r.left + r.width / 2 + jx, r.top + r.height / 2 + jy);
+            await sleep(rand(60, 180));
             for (const t of targetsOf(btn)) { try { realClick(t); } catch {} }
             if (i > 0) SPOT.pulse(btn, '🟦 Retrying "Apply with Indeed"…');
           }
         }
-        await sleep(800);
-        // The click opened the apply flow in a NEW tab (this page lost focus):
-        // stop re-clicking – every retry was spawning another tab.
+        await sleep(rand(700, 1200)); // variable gap between attempts
         if (document.hidden) return 'popup';
         if (opened()) return 'clicked';
       }
@@ -1070,6 +1077,8 @@
       const cont =
         $('[data-testid="ia-continueButton"], [data-testid="continue-button"]') ||
         els.find(b => /^(continue|continue applying|next|save and continue)$/i.test(this.btnText(b))) ||
+        // "Apply anyway" / "Continue anyway" — Indeed's pre-qualification modal
+        els.find(b => /^(apply anyway|continue anyway|yes,?\s*(continue|apply( anyway)?))$/i.test(this.btnText(b))) ||
         els.find(b => /continue/i.test(this.btnText(b)) && !/skip|without/i.test(this.btnText(b)));
       const sub =
         $('[data-testid="ia-submitButton"], [data-testid="submit-button"]') ||
@@ -1108,7 +1117,8 @@
       const { cont, sub } = this.findStepButtons();
 
       if (cont && isVis(cont) && !cont.disabled) {
-        await humanClick(cont, '✨ Clicking CONTINUE…');
+        const isAnyway = /apply anyway|continue anyway/i.test(this.btnText(cont));
+        await humanClick(cont, isAnyway ? '✅ Clicking APPLY ANYWAY…' : '✨ Clicking CONTINUE…');
         await sleep(rand(900, 1600));
         return 'continue';
       }
