@@ -204,7 +204,13 @@
             background:linear-gradient(135deg,#7c3aed,#6d28d9);
             box-shadow:0 8px 28px rgba(124,58,237,.5);}
           #jobbotx-start:hover{transform:translateY(-2px);box-shadow:0 12px 34px rgba(124,58,237,.65);}
-          #jobbotx-selall{position:fixed;bottom:78px;right:26px;z-index:2147483647;display:none;
+          #jobbotx-applyall{position:fixed;bottom:78px;right:26px;z-index:2147483647;display:none;
+            padding:13px 22px;border:none;border-radius:999px;cursor:pointer;
+            font:700 14px/1 system-ui,-apple-system,sans-serif;color:#fff;
+            background:linear-gradient(135deg,#059669,#047857);
+            box-shadow:0 8px 28px rgba(5,150,105,.45);}
+          #jobbotx-applyall:hover{transform:translateY(-2px);box-shadow:0 12px 34px rgba(5,150,105,.6);}
+          #jobbotx-selall{position:fixed;bottom:130px;right:26px;z-index:2147483647;display:none;
             padding:10px 18px;border-radius:999px;cursor:pointer;
             font:600 13px/1 system-ui,-apple-system,sans-serif;color:#c4b5fd;
             background:#1a1230;border:2px solid #7c3aed;
@@ -1039,24 +1045,24 @@
         || this.isDone()
         || this.isAlreadyApplied();
 
-      // Up to ~9s of retries (reduced from 16s) with variable human-like delays
-      // and per-attempt cursor jitter so the click pattern looks organic.
-      for (let i = 0; i < 9; i++) {
-        if (i % 2 === 0 && !document.hidden) {   // click at i = 0, 2, 4, 6, 8
+      // Up to ~18s total: click first, then give the React form time to hydrate
+      // before any re-click. First dwell is 1.8-2.8s (form render window);
+      // subsequent gaps are 800-1400ms. Cursor jitter on every click.
+      for (let i = 0; i < 12; i++) {
+        if (i % 2 === 0 && !document.hidden) {   // click at i = 0, 2, 4, 6, 8, 10
           if (!btn.isConnected || !isVis(btn)) btn = this.findApplyButton(document) || btn;
           if (btn.isConnected && isVis(btn)) {
             const r = btn.getBoundingClientRect();
-            // Small random jitter around button centre – looks human, avoids
-            // pixel-perfect repeated clicks that trigger bot detectors.
             const jx = (Math.random() - 0.5) * 14;
             const jy = (Math.random() - 0.5) * 8;
             await moveTo(r.left + r.width / 2 + jx, r.top + r.height / 2 + jy);
-            await sleep(rand(60, 180));
+            await sleep(rand(60, 160));
             for (const t of targetsOf(btn)) { try { realClick(t); } catch {} }
-            if (i > 0) SPOT.pulse(btn, '🟦 Retrying "Apply with Indeed"…');
+            if (i > 0) SPOT.pulse(btn, '🟦 Apply with Indeed – opening form…');
           }
         }
-        await sleep(rand(700, 1200)); // variable gap between attempts
+        // First post-click window is longer to allow React hydration + form render.
+        await sleep(i === 0 ? rand(1800, 2800) : rand(800, 1400));
         if (document.hidden) return 'popup';
         if (opened()) return 'clicked';
       }
@@ -2702,8 +2708,7 @@
                 : PLATFORM === 'bayt'     ? new BaytAgent(new Filler({}))
                 : new IndeedAgent(new Filler({}));
 
-    // Floating command button: nothing runs until the user clicks this (or
-    // Start in the popup) – loading a page never initiates applications.
+    // "Apply N ticked jobs" button — appears when jobs are ticked and engine is idle.
     let startBtn = null;
     function syncStartBtn() {
       const n = selectedSet.size();
@@ -2713,6 +2718,7 @@
         startBtn.id = 'jobbotx-start';
         startBtn.addEventListener('click', () => {
           startBtn.style.display = 'none';
+          if (applyAllBtn) applyAllBtn.style.display = 'none';
           attemptedSet.clear();
           lastDoneAt = 0;
           pageChurn.set(0);
@@ -2729,6 +2735,38 @@
       if (startBtn) {
         startBtn.textContent = `▶ Apply ${n} ticked job${n === 1 ? '' : 's'}`;
         startBtn.style.display = show ? 'block' : 'none';
+      }
+    }
+
+    // "Apply All" button — always visible when engine is idle on a job list page,
+    // starts the engine in non-selection mode (applies every visible job).
+    let applyAllBtn = null;
+    function syncApplyAllBtn() {
+      const running = !!(agent && agent.running);
+      const show = !running;
+      if (show && !applyAllBtn && document.body) {
+        applyAllBtn = document.createElement('button');
+        applyAllBtn.id = 'jobbotx-applyall';
+        applyAllBtn.textContent = '▶ Apply All';
+        applyAllBtn.addEventListener('click', () => {
+          applyAllBtn.style.display = 'none';
+          if (startBtn) startBtn.style.display = 'none';
+          selectedSet.clear();
+          attemptedSet.clear();
+          lastDoneAt = 0;
+          pageChurn.set(0);
+          _setSelMode(false);
+          try {
+            chrome.runtime.sendMessage({ type: 'GET_PROFILE' }, r => {
+              void chrome.runtime.lastError;
+              startAgent(r?.profile || {});
+            });
+          } catch {}
+        });
+        document.body.appendChild(applyAllBtn);
+      }
+      if (applyAllBtn) {
+        applyAllBtn.style.display = show ? 'block' : 'none';
       }
     }
 
@@ -2767,7 +2805,7 @@
           SPOT.status(n
             ? `${n} job(s) selected – press ▶ to apply (or Start in the popup)`
             : 'Selection cleared', 'info');
-          syncStartBtn(); syncSelAllBtn();
+          syncStartBtn(); syncApplyAllBtn(); syncSelAllBtn();
         });
         document.body.appendChild(selAllBtn);
       }
@@ -2857,12 +2895,13 @@
           t.classList.toggle('on', on);
           SPOT.status(selectedSet.size()
             ? `${selectedSet.size()} job(s) ticked – press ▶ to apply them in sequence`
-            : 'No jobs ticked – Start applies all jobs', 'info');
-          syncStartBtn(); syncSelAllBtn();
+            : 'No jobs ticked – press Apply All to apply every visible job', 'info');
+          syncStartBtn(); syncApplyAllBtn(); syncSelAllBtn();
         });
         wrap.appendChild(t);
       }
       syncStartBtn();
+      syncApplyAllBtn();
       syncSelAllBtn();
     }, 1500);
   }
