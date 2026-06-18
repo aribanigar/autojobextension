@@ -205,19 +205,13 @@
             50%{box-shadow:0 0 0 9px rgba(124,58,237,.85),0 0 40px rgba(167,139,250,.9),
               0 0 0 9999px rgba(10,5,25,.38)}}
           .jobbotx-spot{animation:jobbotx-spot .8s ease-in-out infinite!important;}
-          #jobbotx-start{position:fixed;bottom:26px;right:26px;z-index:2147483647;display:none;
-            padding:13px 22px;border:none;border-radius:999px;cursor:pointer;
-            font:700 14px/1 system-ui,-apple-system,sans-serif;color:#fff;
-            background:linear-gradient(135deg,#7c3aed,#6d28d9);
-            box-shadow:0 8px 28px rgba(124,58,237,.5);}
-          #jobbotx-start:hover{transform:translateY(-2px);box-shadow:0 12px 34px rgba(124,58,237,.65);}
-          #jobbotx-applyall{position:fixed;bottom:78px;right:26px;z-index:2147483647;display:none;
+          #jobbotx-applyall{position:fixed;bottom:26px;right:26px;z-index:2147483647;display:none;
             padding:13px 22px;border:none;border-radius:999px;cursor:pointer;
             font:700 14px/1 system-ui,-apple-system,sans-serif;color:#fff;
             background:linear-gradient(135deg,#059669,#047857);
             box-shadow:0 8px 28px rgba(5,150,105,.45);}
           #jobbotx-applyall:hover{transform:translateY(-2px);box-shadow:0 12px 34px rgba(5,150,105,.6);}
-          #jobbotx-selall{position:fixed;bottom:130px;right:26px;z-index:2147483647;display:none;
+          #jobbotx-selall{position:fixed;bottom:78px;right:26px;z-index:2147483647;display:none;
             padding:10px 18px;border-radius:999px;cursor:pointer;
             font:600 13px/1 system-ui,-apple-system,sans-serif;color:#c4b5fd;
             background:#1a1230;border:2px solid #7c3aed;
@@ -885,7 +879,7 @@
           let progressed = false;
           const selMode = selectionMode();
           if (selMode && !selectedSet.size()) {
-            SPOT.status('All ticked jobs done – tick more jobs, or ✕ to stop', 'success');
+            SPOT.status('All selected jobs done – tick more to continue, or ✕ to stop', 'success');
             this.running = false;
             return 'nav'; // stay alive in monitor mode awaiting more ticks
           }
@@ -1172,7 +1166,10 @@
 
         if (cont && isClickable(cont)) {
           const isAnyway = /apply any ?ways?|continue any ?ways?/i.test(this.btnText(cont));
-          const msg = isAnyway ? '✅ Clicking APPLY ANYWAY…' : '✨ Clicking CONTINUE…';
+          const isReview = /^review\b/i.test(this.btnText(cont));
+          const msg = isAnyway ? '✅ Clicking APPLY ANYWAY…'
+                    : isReview ? '📋 Clicking REVIEW…'
+                    : '✨ Clicking CONTINUE…';
 
           // Snapshot current form text before clicking (React may reuse the button
           // DOM node on step advance, making !isConnected unreliable alone).
@@ -1292,6 +1289,8 @@
       report({ type: 'JOB_APPLIED', platform: 'indeed', title: document.title, url: location.href });
       SPOT.status(`✓ Applied on Indeed! (${this.applied} total) – returning to job list…`, 'success');
       await sleep(rand(1500, 2500));
+      // Stamp the time so startAgent knows to pause before the next job (navigation case)
+      try { chrome.storage.local.set({ jobbot_applied_at: Date.now() }); } catch {}
       await this.returnToList();
     }
 
@@ -1500,8 +1499,10 @@
             processedThisPage = true;
             pageChurn.set(0); // real work happened – reset the empty-page streak
             const res = await this.clickApply(card);
-            if (res === 'clicked') await this.runApplication();
-            else if (res === 'popup') {
+            if (res === 'clicked') {
+              await this.runApplication();
+              await sleep(rand(3500, 5000)); // natural 4s pause before next job
+            } else if (res === 'popup') {
               // The application runs in the tab Indeed opened; that tab's
               // agent fills it and closes itself. Wait here until focus
               // returns, then continue with the next job on THIS page.
@@ -1510,14 +1511,12 @@
                 await sleep(3000);
                 if (!document.hidden) break;
               }
-              await sleep(rand(1200, 2000));
-            }
-            else {
+              await sleep(rand(3500, 5000)); // natural 4s pause before next job
+            } else {
               if (res === 'already' && jk) appliedSet.add(jk); // Indeed says applied → permanent
               this.skipped++; reportSkip();
+              await sleep(rand(900, 1700));
             }
-
-            await sleep(rand(900, 1700));
             progressed = true;
             break; // re-query the list for the next job
           }
@@ -2506,7 +2505,7 @@
           progressed = false;
           const selMode = selectionMode();
           if (selMode && !selectedSet.size()) {
-            SPOT.status('All ticked jobs done – tick more or ✕ to stop', 'success');
+            SPOT.status('All selected jobs done – tick more or ✕ to stop', 'success');
             this.running = false;
             return 'nav';
           }
@@ -2787,6 +2786,18 @@
     if (IS_TOP && PLATFORM === 'indeed' && agent.onResultsPage?.()) {
       setStore({ jobbot_return_url: location.href });
     }
+    // After a completed application, pause ~4s on the list page before scanning the
+    // next job — covers the navigation case where run() never gets its own sleep.
+    if (IS_TOP && PLATFORM === 'indeed' && agent.onResultsPage?.()) {
+      const prev = await new Promise(res =>
+        chrome.storage.local.get('jobbot_applied_at', d => { void chrome.runtime.lastError; res(d?.jobbot_applied_at || 0); })
+      );
+      if (prev && Date.now() - prev < 60000) {
+        SPOT.status('⏳ Pausing before next job…', 'info');
+        await sleep(rand(3500, 5000));
+        try { chrome.storage.local.remove('jobbot_applied_at'); } catch {}
+      }
+    }
     let outcome = 'done';
     try { outcome = await agent.run(); }
     catch (e) {
@@ -2925,38 +2936,8 @@
                 : PLATFORM === 'bayt'     ? new BaytAgent(new Filler({}))
                 : new IndeedAgent(new Filler({}));
 
-    // "Apply N ticked jobs" button — appears when jobs are ticked and engine is idle.
-    let startBtn = null;
-    function syncStartBtn() {
-      const n = selectedSet.size();
-      const show = n > 0 && !(agent && agent.running);
-      if (show && !startBtn && document.body) {
-        startBtn = document.createElement('button');
-        startBtn.id = 'jobbotx-start';
-        startBtn.addEventListener('click', () => {
-          startBtn.style.display = 'none';
-          if (applyAllBtn) applyAllBtn.style.display = 'none';
-          attemptedSet.clear();
-          lastDoneAt = 0;
-          pageChurn.set(0);
-          _setSelMode(true);
-          try {
-            chrome.runtime.sendMessage({ type: 'GET_PROFILE' }, r => {
-              void chrome.runtime.lastError;
-              startAgent(r?.profile || {});
-            });
-          } catch {}
-        });
-        document.body.appendChild(startBtn);
-      }
-      if (startBtn) {
-        startBtn.textContent = `▶ Apply ${n} ticked job${n === 1 ? '' : 's'}`;
-        startBtn.style.display = show ? 'block' : 'none';
-      }
-    }
-
-    // "Apply All" button — always visible when engine is idle on a job list page,
-    // starts the engine in non-selection mode (applies every visible job).
+    // "Apply All" button — the single action button. If jobs are ticked it applies
+    // only those in order (selection mode); otherwise applies every visible job.
     let applyAllBtn = null;
     function syncApplyAllBtn() {
       const running = !!(agent && agent.running);
@@ -2964,15 +2945,18 @@
       if (show && !applyAllBtn && document.body) {
         applyAllBtn = document.createElement('button');
         applyAllBtn.id = 'jobbotx-applyall';
-        applyAllBtn.textContent = '▶ Apply All';
         applyAllBtn.addEventListener('click', () => {
           applyAllBtn.style.display = 'none';
-          if (startBtn) startBtn.style.display = 'none';
-          selectedSet.clear();
           attemptedSet.clear();
           lastDoneAt = 0;
           pageChurn.set(0);
-          _setSelMode(false);
+          const n = selectedSet.size();
+          if (n > 0) {
+            _setSelMode(true); // apply only ticked jobs in sequence
+          } else {
+            selectedSet.clear();
+            _setSelMode(false); // apply every visible job
+          }
           try {
             chrome.runtime.sendMessage({ type: 'GET_PROFILE' }, r => {
               void chrome.runtime.lastError;
@@ -2983,6 +2967,8 @@
         document.body.appendChild(applyAllBtn);
       }
       if (applyAllBtn) {
+        const n = selectedSet.size();
+        applyAllBtn.textContent = n > 0 ? `▶ Apply ${n} selected` : '▶ Apply All';
         applyAllBtn.style.display = show ? 'block' : 'none';
       }
     }
@@ -3020,9 +3006,9 @@
           paintTicks();
           const n = selectedSet.size();
           SPOT.status(n
-            ? `${n} job(s) selected – press ▶ to apply (or Start in the popup)`
+            ? `${n} job(s) selected – click ▶ Apply All to start`
             : 'Selection cleared', 'info');
-          syncStartBtn(); syncApplyAllBtn(); syncSelAllBtn();
+          syncApplyAllBtn(); syncSelAllBtn();
         });
         document.body.appendChild(selAllBtn);
       }
@@ -3112,13 +3098,12 @@
           const on = selectedSet.toggle(id);
           t.classList.toggle('on', on);
           SPOT.status(selectedSet.size()
-            ? `${selectedSet.size()} job(s) ticked – press ▶ to apply them in sequence`
-            : 'No jobs ticked – press Apply All to apply every visible job', 'info');
-          syncStartBtn(); syncApplyAllBtn(); syncSelAllBtn();
+            ? `${selectedSet.size()} job(s) selected – click ▶ Apply All to start`
+            : 'Selection cleared – click ▶ Apply All to apply all visible jobs', 'info');
+          syncApplyAllBtn(); syncSelAllBtn();
         });
         wrap.appendChild(t);
       }
-      syncStartBtn();
       syncApplyAllBtn();
       syncSelAllBtn();
     }, 1500);
