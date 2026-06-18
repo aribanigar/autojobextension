@@ -89,18 +89,25 @@
   }
 
   // Full pointer/mouse event sequence – React buttons (Indeed) often ignore bare .click()
+  // Sequence: establish hover state first, then press/release, then a coordinate-bearing
+  // click event. el.click() fires with clientX=0/clientY=0 which Indeed's anti-bot checks
+  // can detect; dispatchEvent(new MouseEvent('click', …)) carries real coordinates.
   function realClick(el) {
     const r = el.getBoundingClientRect();
-    // aim for a random point inside the element, not always the exact center
     const cx = r.left + r.width * (0.35 + Math.random() * 0.3);
     const cy = r.top + r.height * (0.35 + Math.random() * 0.3);
-    const opts = { bubbles: true, cancelable: true, view: window, clientX: cx, clientY: cy };
-    el.dispatchEvent(new MouseEvent('mousemove',  opts));
-    el.dispatchEvent(new PointerEvent('pointerdown', opts));
-    el.dispatchEvent(new MouseEvent('mousedown', opts));
-    el.dispatchEvent(new PointerEvent('pointerup', opts));
-    el.dispatchEvent(new MouseEvent('mouseup', opts));
-    el.click();
+    const base = { bubbles: true, cancelable: true, view: window, clientX: cx, clientY: cy };
+    const ptr  = { ...base, pointerId: 1, isPrimary: true, pointerType: 'mouse' };
+    // Establish hover state before the click sequence
+    el.dispatchEvent(new MouseEvent('mouseenter', { ...base, bubbles: false }));
+    el.dispatchEvent(new MouseEvent('mouseover',  base));
+    el.dispatchEvent(new MouseEvent('mousemove',  base));
+    el.dispatchEvent(new PointerEvent('pointerdown', ptr));
+    el.dispatchEvent(new MouseEvent('mousedown', base));
+    el.dispatchEvent(new PointerEvent('pointerup',   ptr));
+    el.dispatchEvent(new MouseEvent('mouseup',   base));
+    // Coordinate-bearing click so React / anti-bot checks see non-zero clientX/Y
+    el.dispatchEvent(new MouseEvent('click', base));
   }
 
   async function humanClick(el, msg = '') {
@@ -1048,7 +1055,6 @@
 
       // Force same-tab so the apply flow stays here and auto-resume works.
       if (btn.tagName === 'A') btn.setAttribute('target', '_self');
-      btn.removeAttribute && btn.removeAttribute('target');
 
       const beforeUrl = location.href;
       const wasApplyState = this.isApplyPage();
@@ -1100,16 +1106,22 @@
     btnText(el) { return (el.textContent || el.value || '').trim(); }
 
     findStepButtons() {
-      const els = $$('button, [role="button"], input[type="submit"], input[type="button"]');
+      // Scope to the apply-form area first so header/footer nav buttons are
+      // never mistaken for Continue/Submit. Fall back to body only if needed.
+      const area =
+        $('.ia-Questions-footer, .ia-BasePage-footer, [data-testid="ia-footer"]') ||
+        $('.ia-Questions, .ia-BasePage, [data-testid="ia-Questions"], [data-testid="ia-BasePage"]') ||
+        document.body;
+      const els = $$('button, [role="button"], input[type="submit"], input[type="button"]', area);
       const cont =
         $('[data-testid="ia-continueButton"], [data-testid="continue-button"]') ||
-        els.find(b => /^(continue|continue applying|next|save and continue)$/i.test(this.btnText(b))) ||
+        els.find(b => isVis(b) && /^(continue|continue applying|next|save and continue)$/i.test(this.btnText(b))) ||
         // "Apply anyway" / "Continue anyway" — Indeed's pre-qualification modal
-        els.find(b => /^(apply anyway|continue anyway|yes,?\s*(continue|apply( anyway)?))$/i.test(this.btnText(b))) ||
-        els.find(b => /continue/i.test(this.btnText(b)) && !/skip|without/i.test(this.btnText(b)));
+        els.find(b => isVis(b) && /^(apply anyway|continue anyway|yes,?\s*(continue|apply( anyway)?))$/i.test(this.btnText(b))) ||
+        els.find(b => isVis(b) && /^continue\b/i.test(this.btnText(b)) && !/skip|without|reading|to site/i.test(this.btnText(b)));
       const sub =
         $('[data-testid="ia-submitButton"], [data-testid="submit-button"]') ||
-        els.find(b => /submit (my |your )?application|^submit$|apply now/i.test(this.btnText(b)));
+        els.find(b => isVis(b) && /submit (my |your )?application|^submit$|apply now/i.test(this.btnText(b)));
       return { cont, sub };
     }
 
@@ -1141,29 +1153,77 @@
     }
 
     async clickContinue() {
-      const { cont, sub } = this.findStepButtons();
+      const isClickable = el =>
+        isVis(el) && el.getAttribute('aria-disabled') !== 'true';
 
-      if (cont && isVis(cont) && !cont.disabled) {
-        const isAnyway = /apply anyway|continue anyway/i.test(this.btnText(cont));
-        await humanClick(cont, isAnyway ? '✅ Clicking APPLY ANYWAY…' : '✨ Clicking CONTINUE…');
-        await sleep(rand(900, 1600));
-        return 'continue';
+      // Up to 3 attempts; each attempt re-queries buttons in case React re-rendered.
+      for (let attempt = 0; attempt < 3 && this.running; attempt++) {
+        if (attempt > 0) await sleep(rand(1000, 1800));
+
+        const { cont, sub } = this.findStepButtons();
+
+        if (cont && isClickable(cont)) {
+          const isAnyway = /apply anyway|continue anyway/i.test(this.btnText(cont));
+          const msg = isAnyway ? '✅ Clicking APPLY ANYWAY…' : '✨ Clicking CONTINUE…';
+
+          // Primary click: smooth human cursor + full event sequence
+          try { cont.focus(); } catch {}
+          await humanClick(cont, msg);
+          await sleep(rand(700, 1200));
+
+          // Verify step advanced — button removed from DOM = new step loaded
+          if (!cont.isConnected) return 'continue';
+
+          // Step didn't advance; try clicking the topmost element at button coords
+          // (handles invisible overlay layers above the button)
+          const r2 = cont.getBoundingClientRect();
+          const cx2 = r2.left + r2.width / 2, cy2 = r2.top + r2.height / 2;
+          const top = document.elementFromPoint(cx2, cy2);
+          if (top && top !== cont) {
+            realClick(top);
+            await sleep(rand(500, 900));
+            if (!cont.isConnected) return 'continue';
+          }
+
+          // Also click the nearest button/anchor ancestor (wrapper-element pattern)
+          const anc = cont.closest('button, a, [role="button"]');
+          if (anc && anc !== cont && isVis(anc)) {
+            realClick(anc);
+            await sleep(rand(400, 700));
+            if (!cont.isConnected) return 'continue';
+          }
+
+          // Re-fire directly on the button as last resort for this attempt
+          realClick(cont);
+          await sleep(rand(500, 900));
+          if (!cont.isConnected) return 'continue';
+
+          continue; // next attempt
+        }
+
+        if (sub && isClickable(sub)) {
+          try { sub.focus(); } catch {}
+          await humanClick(sub, '🎉 Submitting my application!');
+          await sleep(rand(1500, 2500));
+          return 'submitted';
+        }
+
+        // Submit is present but disabled while a captcha is unsolved → hand to human
+        if (sub && sub.disabled && this.hasCaptcha()) {
+          return await this.waitForCaptcha(sub);
+        }
+
+        // Button exists but is disabled / aria-disabled → required fields still empty
+        if ((cont && (cont.disabled || cont.getAttribute('aria-disabled') === 'true')) ||
+            (sub  && (sub.disabled  || sub.getAttribute('aria-disabled')  === 'true'))) {
+          return 'blocked';
+        }
+
+        return null;
       }
 
-      if (sub && isVis(sub) && !sub.disabled) {
-        await humanClick(sub, '🎉 Submitting my application!');
-        await sleep(rand(1500, 2500));
-        return 'submitted';
-      }
-
-      // Submit is present but disabled while a captcha is unsolved → hand to human
-      if (sub && sub.disabled && this.hasCaptcha()) {
-        return await this.waitForCaptcha(sub);
-      }
-
-      // Button exists but is disabled → required fields are still empty
-      if ((cont && cont.disabled) || (sub && sub.disabled)) return 'blocked';
-      return null;
+      // Exhausted attempts — button was found but click never advanced the step
+      return 'blocked';
     }
 
     isDone() {
