@@ -1062,16 +1062,21 @@
         if (location.href.toLowerCase().includes(rawJk.toLowerCase())) break;
         await sleep(rand(400, 700));
       }
-      await sleep(rand(500, 900)); // let the detail panel fully render
+      await sleep(rand(500, 900)); // let the detail panel begin rendering
 
-      // Find the "Apply with Indeed" button in the now-current detail panel.
+      // Wait up to 10 s for "Apply with Indeed" to appear — gives React time
+      // to hydrate and lazy-loaded job panels to fully render.
+      SPOT.status('⏳ Looking for Apply with Indeed button…', 'info');
       let btn = null;
-      for (let i = 0; i < 10 && !btn; i++) {
+      for (let i = 0; i < 20 && !btn; i++) {  // 20 × 500 ms = 10 s max
         btn = this.findApplyButton(document);
-        if (!btn) await sleep(800);
+        if (!btn) await sleep(500);
       }
 
-      if (!btn || !isVis(btn)) return 'none';
+      if (!btn || !isVis(btn)) {
+        SPOT.status('⏭ "Apply with Indeed" not found – moving to next job…', 'info');
+        return 'none';
+      }
       if (/applied/i.test(btn.textContent)) return 'already';
 
       // Force same-tab so the apply flow stays here and auto-resume works.
@@ -1478,6 +1483,11 @@
                 if (!document.hidden) break;
               }
               await sleep(rand(3500, 5000)); // natural 4s pause before next job
+            } else if (res === 'none') {
+              // No "Apply with Indeed" button — external-only job; skip immediately
+              // and let the loop pick the next card without a long pause.
+              this.skipped++; reportSkip();
+              await sleep(rand(600, 1000));
             } else {
               if (res === 'already' && jk) appliedSet.add(jk); // Indeed says applied → permanent
               this.skipped++; reportSkip();
