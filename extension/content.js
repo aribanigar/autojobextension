@@ -981,11 +981,14 @@
     }
 
     async clickApply(card) {
-      // First: try a button already visible in the card or the open detail panel
-      let btn = this.findApplyButton(card) || this.findApplyButton(document);
+      // Only check the card element itself first — never the document-wide detail
+      // panel at this point, because it still shows the PREVIOUS job until we
+      // click this card's title. Using findApplyButton(document) here is what
+      // caused the engine to re-apply the same job after returning from a popup tab.
+      let btn = this.findApplyButton(card);
 
       if (!btn) {
-        // Open the job's detail panel, then poll for the Apply button to render
+        // Click this card's title to load its detail panel, THEN search document.
         const title = $('h2 a[data-jk], a.jcs-JobTitle, h2 a, a[class*="JobTitle"], ' +
                         'a[id^="job_"], [class*="title"] a', card) || card;
         if (title) {
