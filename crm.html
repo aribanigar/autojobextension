@@ -172,11 +172,20 @@
         render();
       } catch (e) {
         setLive(false, 'error: ' + e.message);
+        if (/purchase required/i.test(String(e.message))) { location.href = '/checkout.html'; return; }
         if (showErr && /log in|session expired/i.test(String(e.message))) logout(e.message);
       }
     }
 
-    function start() {
+    async function start() {
+      // Paywall: only accounts with an active licence may open the dashboard.
+      try {
+        const r = await fetch('/api/license', { headers: { Authorization: 'Bearer ' + token } });
+        if (r.status === 401) return logout('Session expired — log in again');
+        const lic = await r.json();
+        if (!lic.active) { location.href = '/checkout.html'; return; }
+      } catch { /* if the check fails, /api/jobs still gates below */ }
+
       $('#gate').style.display = 'none'; $('#app').style.display = '';
       load();
       clearInterval(timer);
@@ -236,7 +245,7 @@
       catch (err) { setLive(false, 'delete failed: ' + err.message); }
     });
 
-    if (key) start();
+    if (token) start();
   </script>
 </body>
 </html>

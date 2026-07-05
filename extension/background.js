@@ -71,6 +71,37 @@ async function getCrmToken(force = false) {
   } catch { return null; }
 }
 
+// ── Licence check ────────────────────────────────────────────────────────────
+// The agent may only run for an account with an active paid licence. Result is
+// cached briefly so a run's restarts (watchdog / auto-resume) don't hammer the
+// endpoint. A definitive "not active" blocks immediately; a network error falls
+// back to the last known-good result for up to 24h so a transient outage never
+// locks out a paying user.
+let _licCache = null; // { active, is_admin, ts }
+async function getLicense(force = false) {
+  const prefs = await getPrefs();
+  if (!prefs.crmUrl) return { active: false, reason: 'no-crm' };
+  if (!force && _licCache && Date.now() - _licCache.ts < 5 * 60 * 1000) return _licCache;
+
+  let token = await getCrmToken();
+  if (!token) return { active: false, reason: 'no-login' };
+  const call = t => fetch(`${prefs.crmUrl.replace(/\/+$/, '')}/api/license`, { headers: { Authorization: `Bearer ${t}` } });
+  try {
+    let r = await call(token);
+    if (r.status === 401) {
+      token = await getCrmToken(true); // session replaced elsewhere → re-login
+      if (token) r = await call(token);
+    }
+    if (!r.ok) throw new Error('status ' + r.status);
+    const d = await r.json();
+    _licCache = { active: !!d.active, is_admin: !!d.is_admin, ts: Date.now() };
+    return _licCache;
+  } catch {
+    if (_licCache && _licCache.active && Date.now() - _licCache.ts < 24 * 3600 * 1000) return _licCache;
+    return { active: false, reason: 'offline' };
+  }
+}
+
 // Real-time CRM sync under the user's account; falls back to the legacy
 // shared key if no account is configured. Re-logs in once on 401.
 async function syncToCRM(row) {
@@ -111,6 +142,11 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
     case 'GET_CRM_TOKEN':
       // Content scripts use this for AI calls so requests run as the user
       getCrmToken().then(token => sendResponse({ token }));
+      return true;
+
+    case 'GET_LICENSE':
+      // Content script asks before starting the agent — no licence, no run.
+      getLicense(msg.force).then(lic => sendResponse(lic));
       return true;
 
     case 'GET_PROFILE':

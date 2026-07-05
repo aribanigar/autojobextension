@@ -40,12 +40,24 @@ export default async function handler(req, res) {
   }
   // Who is calling? Bearer token → that account's data only.
   // Legacy x-api-key (CRM_API_KEY) → admin, sees everything.
-  let user = null;
+  let user = null, isAdmin = false;
   const bearer = (req.headers.authorization || '').match(/^Bearer (.+)$/i);
   if (bearer) {
-    const rows = await sb(`users?token=eq.${encodeURIComponent(bearer[1])}&select=email`).catch(() => []);
+    const rows = await sb(`users?token=eq.${encodeURIComponent(bearer[1])}&select=email,is_admin`).catch(() => []);
     if (!rows.length) return res.status(401).json({ error: 'Session expired – log in again' });
     user = rows[0].email;
+    const adminEmail = (process.env.ADMIN_EMAIL || '').trim().toLowerCase();
+    isAdmin = !!rows[0].is_admin || (!!adminEmail && user.toLowerCase() === adminEmail);
+
+    // Paywall: only accounts with an active licence (or admins) may use the CRM.
+    if (!isAdmin) {
+      const nowIso = new Date().toISOString();
+      const lic = await sb(
+        `purchases?user_email=eq.${encodeURIComponent(user)}&status=in.(paid,active)` +
+        `&or=(expires_at.is.null,expires_at.gte.${encodeURIComponent(nowIso)})&select=id&limit=1`
+      ).catch(() => []);
+      if (!lic.length) return res.status(402).json({ error: 'Purchase required — buy a plan to use JobBot' });
+    }
   } else if (!process.env.CRM_API_KEY || (req.headers['x-api-key'] || '') !== process.env.CRM_API_KEY) {
     return res.status(401).json({ error: 'Log in required' });
   }

@@ -55,24 +55,27 @@ export default async function handler(req, res) {
   if (!password || String(password).length < 6)  return res.status(400).json({ error: 'Password must be at least 6 characters' });
 
   try {
-    const existing = await sb(`users?email=eq.${encodeURIComponent(email)}&select=id,email,password_hash`);
+    const existing = await sb(`users?email=eq.${encodeURIComponent(email)}&select=id,email,password_hash,is_admin`);
     const token = randomBytes(32).toString('hex');
+    const adminEmail = (process.env.ADMIN_EMAIL || '').trim().toLowerCase();
+    const admin = row => !!(row?.is_admin) || (!!adminEmail && email === adminEmail);
 
     if (action === 'signup') {
       if (existing.length) return res.status(409).json({ error: 'An account with this email already exists – log in instead' });
-      await sb('users', {
+      const created = await sb('users', {
         method: 'POST',
         body: JSON.stringify([{ email, password_hash: hashPassword(String(password)), token }]),
       });
-      return res.status(201).json({ token, email });
+      return res.status(201).json({ token, email, is_admin: admin(created?.[0]) });
     }
 
     if (action === 'login') {
       if (!existing.length || !verifyPassword(String(password), existing[0].password_hash)) {
         return res.status(401).json({ error: 'Wrong email or password' });
       }
+      // Overwriting the token here is what logs out any other active session.
       await sb(`users?id=eq.${existing[0].id}`, { method: 'PATCH', body: JSON.stringify({ token }) });
-      return res.status(200).json({ token, email });
+      return res.status(200).json({ token, email, is_admin: admin(existing[0]) });
     }
 
     return res.status(400).json({ error: "action must be 'signup' or 'login'" });

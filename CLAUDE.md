@@ -10,7 +10,17 @@ JobBot — a Chrome/Edge Manifest V3 browser extension that automates job applic
 - `crm.html` — CRM dashboard (job tracker with statuses/notes/fit scores; polls `/api/jobs` every 10s, gated by an API key stored in localStorage).
 - `api/jobs.js` — CRUD over a Supabase `jobs` table (schema in `schema.sql`) via the Supabase REST API. Auth is a shared-secret `x-api-key` header.
 - `api/ai.js` — Gemini (`gemini-2.0-flash`) endpoint with three kinds: `answer` (application questions), `fit` (job-fit score), `cover` (cover letter).
-- Required Vercel env vars: `SUPABASE_URL`, `SUPABASE_SERVICE_KEY`, `GEMINI_API_KEY`, `CRM_API_KEY`.
+- `api/auth.js` — email/password accounts (scrypt), returns a bearer token + `is_admin`.
+- `api/_lib.js` — shared backend helpers (`sb`, `cors`, `getUserByToken`, `activeLicense`, `rzp`, `verifyHmac`, `readRawBody`). Underscore prefix = not routed as an endpoint.
+- **Payments/licensing (Razorpay):**
+  - `api/plans.js` — public `GET` active plans; admin `GET ?all=1`/`POST`/`PATCH`/`DELETE` to manage plans (creates a Razorpay plan object for `monthly` plans).
+  - `api/checkout.js` — `POST { plan_id }` creates a Razorpay order (one-time) or subscription (monthly) + a `purchases` row; `POST ?verify=1` verifies the payment signature and activates the licence.
+  - `api/razorpay-webhook.js` — server-to-server events (source of truth for renewals/cancels). Verifies `X-Razorpay-Signature` over the RAW body (`bodyParser` disabled). Subscribe it to `order.paid`, `payment.captured`, `subscription.charged/activated/halted/cancelled/completed`.
+  - `api/license.js` — `GET` (bearer) → `{ active, is_admin, … }`. The extension calls this on Start; CRM/checkout call it after login. A 401 = stale session token (logged in elsewhere).
+  - `api/admin.js` — admin-only: list users + licence status, list purchases, manually `grant`/`revoke` a licence, `set_admin`.
+  - `checkout.html` — plan picker + Razorpay checkout widget + redirect to `/crm.html` on success. `admin.html` — admin panel.
+- **Access model:** the agent AND the CRM require an **active paid licence**. `api/jobs.js`/`api/ai.js` return `402` for a logged-in but unlicensed account; `extension/background.js` `getLicense()` gates `startAgent()` in `content.js`. The `ADMIN_EMAIL` account (or `users.is_admin=true`) always has access. **One active session per account**: `api/auth.js` overwrites `users.token` on every login, so an older session's token stops matching immediately.
+- Required Vercel env vars: `SUPABASE_URL`, `SUPABASE_SERVICE_KEY`, `GEMINI_API_KEY`, `CRM_API_KEY` (legacy admin key), `ADMIN_EMAIL`, `RAZORPAY_KEY_ID`, `RAZORPAY_KEY_SECRET`, `RAZORPAY_WEBHOOK_SECRET`.
 
 There is no build system, package.json, linter, or test suite. All code is vanilla JS/HTML/CSS and zero-dependency serverless functions — edit files directly.
 

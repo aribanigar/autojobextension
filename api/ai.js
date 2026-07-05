@@ -16,17 +16,29 @@ function cors(res) {
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type, x-api-key, Authorization');
 }
 
-// Valid caller = a logged-in user's bearer token, or the legacy admin key
-async function authorized(req) {
+// Valid caller = a logged-in user WITH an active licence (or admin), or the
+// legacy admin key. Returns 'ok' | 'unauth' | 'unpaid'.
+async function authorize(req) {
   const bearer = (req.headers.authorization || '').match(/^Bearer (.+)$/i);
   if (bearer && process.env.SUPABASE_URL && process.env.SUPABASE_SERVICE_KEY) {
-    const r = await fetch(
-      `${process.env.SUPABASE_URL}/rest/v1/users?token=eq.${encodeURIComponent(bearer[1])}&select=email`,
-      { headers: { apikey: process.env.SUPABASE_SERVICE_KEY, Authorization: `Bearer ${process.env.SUPABASE_SERVICE_KEY}` } }
+    const base = process.env.SUPABASE_URL + '/rest/v1/';
+    const h = { apikey: process.env.SUPABASE_SERVICE_KEY, Authorization: `Bearer ${process.env.SUPABASE_SERVICE_KEY}` };
+    const users = await fetch(
+      `${base}users?token=eq.${encodeURIComponent(bearer[1])}&select=email,is_admin`, { headers: h }
     ).then(x => x.json()).catch(() => []);
-    return Array.isArray(r) && r.length > 0;
+    if (!Array.isArray(users) || !users.length) return 'unauth';
+    const email = users[0].email;
+    const adminEmail = (process.env.ADMIN_EMAIL || '').trim().toLowerCase();
+    if (users[0].is_admin || (adminEmail && email.toLowerCase() === adminEmail)) return 'ok';
+    const nowIso = new Date().toISOString();
+    const lic = await fetch(
+      `${base}purchases?user_email=eq.${encodeURIComponent(email)}&status=in.(paid,active)` +
+      `&or=(expires_at.is.null,expires_at.gte.${encodeURIComponent(nowIso)})&select=id&limit=1`, { headers: h }
+    ).then(x => x.json()).catch(() => []);
+    return (Array.isArray(lic) && lic.length) ? 'ok' : 'unpaid';
   }
-  return !!process.env.CRM_API_KEY && (req.headers['x-api-key'] || '') === process.env.CRM_API_KEY;
+  const keyOk = !!process.env.CRM_API_KEY && (req.headers['x-api-key'] || '') === process.env.CRM_API_KEY;
+  return keyOk ? 'ok' : 'unauth';
 }
 
 function profileSummary(p = {}) {
@@ -78,9 +90,9 @@ export default async function handler(req, res) {
   if (!process.env.GEMINI_API_KEY) {
     return res.status(500).json({ error: 'AI not configured: set GEMINI_API_KEY in Vercel environment variables' });
   }
-  if (!await authorized(req)) {
-    return res.status(401).json({ error: 'Log in required' });
-  }
+  const authz = await authorize(req);
+  if (authz === 'unauth') return res.status(401).json({ error: 'Log in required' });
+  if (authz === 'unpaid') return res.status(402).json({ error: 'Purchase required — buy a plan to use JobBot' });
 
   const { kind, question, options, job, profile } = req.body || {};
 

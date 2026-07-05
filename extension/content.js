@@ -2109,6 +2109,28 @@
 
   async function startAgent(profile) {
     if (agent?.running) return;
+    if (PLATFORM !== 'linkedin' && PLATFORM !== 'indeed' && PLATFORM !== 'naukri') {
+      SPOT.status('Not a supported job site', 'error'); return;
+    }
+
+    // Paywall: the agent runs only for an account with an active paid licence.
+    // Ask the background worker (it holds the CRM token + a cached result).
+    const lic = await new Promise(res => {
+      try {
+        chrome.runtime.sendMessage({ type: 'GET_LICENSE' }, r => { void chrome.runtime.lastError; res(r || {}); });
+      } catch { res({}); }
+    });
+    if (!lic.active) {
+      const msg = lic.reason === 'no-crm'   ? '🔒 Add your CRM site URL in Prefs, then buy a plan to start'
+                : lic.reason === 'no-login' ? '🔒 Enter your CRM email & password in Prefs (create an account & buy a plan)'
+                : lic.reason === 'offline'  ? '🔒 Could not verify your plan (offline). Check your connection.'
+                : '🔒 Purchase required — buy a plan on the dashboard to use JobBot';
+      SPOT.status(msg, 'error');
+      try { chrome.storage.local.set({ jobbot_running: false }); } catch {} // stop watchdog retries
+      agent = null;
+      return;
+    }
+
     const f = new Filler(profile);
     if      (PLATFORM === 'linkedin') agent = new LinkedInAgent(f);
     else if (PLATFORM === 'indeed')   agent = new IndeedAgent(f);

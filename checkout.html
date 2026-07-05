@@ -1,0 +1,168 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>JobBot – Choose a Plan</title>
+  <script src="https://checkout.razorpay.com/v1/checkout.js"></script>
+  <style>
+    :root {
+      --violet:#7c3aed; --bg:#0f0a1f; --card:#1a1230; --text:#ece9f7;
+      --muted:#a89fc8; --border:rgba(124,58,237,.25); --green:#34d399; --red:#f87171;
+    }
+    *{margin:0;padding:0;box-sizing:border-box}
+    body{font-family:system-ui,-apple-system,"Segoe UI",sans-serif;background:var(--bg);color:var(--text);min-height:100vh}
+    .container{max-width:960px;margin:0 auto;padding:24px}
+    header{display:flex;align-items:center;justify-content:space-between;gap:16px;padding:8px 0 24px;flex-wrap:wrap}
+    h1{font-size:24px}h1 a{color:var(--muted);font-size:13px;text-decoration:none}
+    .who{font-size:13px;color:var(--muted)}
+    .lead{color:var(--muted);margin-bottom:22px}
+    .plans{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:16px}
+    .plan{background:var(--card);border:1px solid var(--border);border-radius:16px;padding:22px;display:flex;flex-direction:column;gap:10px}
+    .plan h3{font-size:18px}
+    .price{font-size:32px;font-weight:800}
+    .price small{font-size:14px;color:var(--muted);font-weight:500}
+    .plan p{color:var(--muted);font-size:14px;flex:1}
+    .feat{list-style:none;display:flex;flex-direction:column;gap:6px;font-size:13px;color:var(--text)}
+    .feat li::before{content:"✓ ";color:var(--green);font-weight:700}
+    button{cursor:pointer;font-family:inherit}
+    .buy{background:linear-gradient(135deg,#7c3aed,#6d28d9);color:#fff;border:none;border-radius:10px;padding:12px;font-size:15px;font-weight:700;margin-top:6px}
+    .buy:hover{filter:brightness(1.1)}
+    .gate{max-width:340px;margin:40px auto;background:var(--card);border:1px solid var(--border);border-radius:16px;padding:28px;text-align:center}
+    .gate input{width:100%;margin:8px 0;background:var(--bg);border:1px solid var(--border);color:var(--text);border-radius:9px;padding:11px 12px;font-size:14px}
+    .gate .buy{width:100%}
+    .row{display:flex;gap:8px}.row .buy{flex:1}
+    .msg{margin-top:12px;font-size:13px;min-height:16px}.msg.err{color:var(--red)}.msg.ok{color:var(--green)}
+    .note{margin-top:26px;font-size:12px;color:var(--muted);text-align:center}
+  </style>
+</head>
+<body>
+  <div class="container">
+    <header>
+      <h1>🚀 JobBot Plans <a href="/">← home</a></h1>
+      <span id="who" class="who"></span>
+    </header>
+
+    <!-- login gate -->
+    <div id="gate" class="gate">
+      <div style="font-size:32px">🔐</div>
+      <h2 style="margin:8px 0">Log in to continue</h2>
+      <input id="email" type="email" placeholder="Email" autocomplete="email" />
+      <input id="pass" type="password" placeholder="Password" autocomplete="current-password" />
+      <div class="row">
+        <button class="buy" id="login">Log in</button>
+        <button class="buy" id="signup" style="background:#241740">Create account</button>
+      </div>
+      <div id="gate-msg" class="msg"></div>
+    </div>
+
+    <!-- plans -->
+    <div id="app" style="display:none">
+      <p class="lead">Pick a plan to unlock the JobBot extension and CRM. Payments are processed securely by Razorpay.</p>
+      <div id="plans" class="plans"></div>
+      <div id="msg" class="msg"></div>
+      <div class="note">Already purchased? <a href="/crm.html" style="color:#a78bfa">Open your dashboard →</a></div>
+    </div>
+  </div>
+
+  <script>
+    const $ = s => document.querySelector(s);
+    const TOKEN = 'jobbot_crm_token', EMAIL = 'jobbot_crm_email';
+    let token = localStorage.getItem(TOKEN) || '';
+
+    function showApp() {
+      $('#gate').style.display = 'none'; $('#app').style.display = '';
+      $('#who').textContent = localStorage.getItem(EMAIL) || '';
+      loadPlans();
+    }
+    function showGate(m) { $('#gate').style.display = ''; $('#app').style.display = 'none'; if (m) $('#gate-msg').textContent = m; }
+
+    async function auth(action) {
+      const email = $('#email').value.trim(), password = $('#pass').value;
+      if (!email || !password) { $('#gate-msg').className = 'msg err'; $('#gate-msg').textContent = 'Enter email and password'; return; }
+      try {
+        const r = await fetch('/api/auth', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({action,email,password}) });
+        const d = await r.json(); if (!r.ok) throw new Error(d.error || r.status);
+        token = d.token; localStorage.setItem(TOKEN, token); localStorage.setItem(EMAIL, d.email);
+        // If they already have access, skip straight to the dashboard.
+        const lic = await fetch('/api/license', { headers:{ Authorization:'Bearer '+token } }).then(x=>x.json()).catch(()=>({}));
+        if (lic.active) { location.href = '/crm.html'; return; }
+        showApp();
+      } catch (e) { $('#gate-msg').className='msg err'; $('#gate-msg').textContent = e.message; }
+    }
+    $('#login').onclick = () => auth('login');
+    $('#signup').onclick = () => auth('signup');
+    $('#pass').addEventListener('keydown', e => { if (e.key === 'Enter') auth('login'); });
+
+    async function loadPlans() {
+      try {
+        const plans = await fetch('/api/plans').then(r => r.json());
+        if (!Array.isArray(plans) || !plans.length) {
+          $('#plans').innerHTML = '<div class="plan"><p>No plans available yet. Please check back soon.</p></div>';
+          return;
+        }
+        $('#plans').innerHTML = plans.map(p => {
+          const feats = p.features && typeof p.features === 'object' ? Object.entries(p.features).filter(([,v])=>v).map(([k])=>k) : [];
+          return `<div class="plan">
+            <h3>${esc(p.name)}</h3>
+            <div class="price">₹${(p.price_paise/100).toLocaleString('en-IN')}<small>${p.interval==='monthly'?' / month':' one-time'}</small></div>
+            <p>${esc(p.description||'')}</p>
+            ${feats.length?`<ul class="feat">${feats.map(f=>`<li>${esc(f)}</li>`).join('')}</ul>`:''}
+            <button class="buy" data-id="${p.id}" data-name="${esc(p.name)}">Buy now</button>
+          </div>`;
+        }).join('');
+        document.querySelectorAll('.buy[data-id]').forEach(b => b.onclick = () => buy(b.dataset.id, b.dataset.name));
+      } catch (e) { $('#msg').className='msg err'; $('#msg').textContent = e.message; }
+    }
+
+    async function buy(plan_id, name) {
+      $('#msg').className='msg'; $('#msg').textContent = 'Starting secure checkout…';
+      try {
+        const r = await fetch('/api/checkout', { method:'POST', headers:{'Content-Type':'application/json',Authorization:'Bearer '+token}, body:JSON.stringify({plan_id}) });
+        const d = await r.json();
+        if (r.status === 401) return showGate('Session expired — log in again');
+        if (!r.ok) throw new Error(d.error || r.status);
+
+        const opts = {
+          key: d.key_id, name: 'JobBot', description: name,
+          prefill: { email: d.email }, theme: { color: '#7c3aed' },
+          handler: async (resp) => {
+            $('#msg').textContent = 'Verifying payment…';
+            const v = await fetch('/api/checkout?verify=1', {
+              method:'POST', headers:{'Content-Type':'application/json',Authorization:'Bearer '+token},
+              body: JSON.stringify({
+                purchase_id: d.purchase_id,
+                razorpay_payment_id: resp.razorpay_payment_id,
+                razorpay_order_id: resp.razorpay_order_id,
+                razorpay_subscription_id: resp.razorpay_subscription_id,
+                razorpay_signature: resp.razorpay_signature,
+              }),
+            }).then(x => x.json()).catch(() => ({}));
+            if (v.ok) { $('#msg').className='msg ok'; $('#msg').textContent='Payment successful! Redirecting…'; setTimeout(()=>location.href='/crm.html', 1200); }
+            else { $('#msg').className='msg err'; $('#msg').textContent='Payment verification failed. Contact support if you were charged.'; }
+          },
+          modal: { ondismiss: () => { $('#msg').textContent = 'Checkout cancelled.'; } },
+        };
+        if (d.order_id) opts.order_id = d.order_id;
+        if (d.subscription_id) opts.subscription_id = d.subscription_id;
+        opts.amount = d.amount;
+        new Razorpay(opts).open();
+      } catch (e) { $('#msg').className='msg err'; $('#msg').textContent = e.message; }
+    }
+
+    function esc(s){const d=document.createElement('div');d.textContent=String(s??'');return d.innerHTML;}
+
+    // Boot: if a token exists and is already licensed, go to dashboard.
+    (async () => {
+      if (!token) return showGate();
+      try {
+        const lic = await fetch('/api/license', { headers:{ Authorization:'Bearer '+token } });
+        if (lic.status === 401) return showGate();
+        const d = await lic.json();
+        if (d.active) { location.href = '/crm.html'; return; }
+        showApp();
+      } catch { showGate(); }
+    })();
+  </script>
+</body>
+</html>

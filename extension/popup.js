@@ -75,7 +75,17 @@ document.addEventListener('DOMContentLoaded', async () => {
     s('p-crm-email', p.preferences?.crmEmail);
     s('p-crm-pass',  p.preferences?.crmPassword);
     c('p-ai',        p.preferences?.aiEnabled);
+    updateBuyLink(p.preferences?.crmUrl);
   }
+
+  // Point the "Buy / manage plan" button at the user's checkout page.
+  function updateBuyLink(url) {
+    const a = document.getElementById('p-buy');
+    if (!a) return;
+    const base = (url || '').trim().replace(/\/+$/, '');
+    a.href = base ? `${base}/checkout.html` : '#';
+  }
+  document.getElementById('p-crm-url')?.addEventListener('input', e => updateBuyLink(e.target.value));
 
   function readForm() {
     const v = id => document.getElementById(id)?.value?.trim() || '';
