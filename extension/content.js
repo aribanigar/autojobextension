@@ -12,6 +12,7 @@
     if (h.includes('linkedin.com')) return 'linkedin';
     if (h.includes('indeed.com') || h.includes('apply.indeed.com')) return 'indeed';
     if (h.includes('naukri.com')) return 'naukri';
+    if (h.includes('bayt.com'))   return 'bayt';
     return null;
   })();
   if (!PLATFORM) return;
@@ -88,18 +89,25 @@
   }
 
   // Full pointer/mouse event sequence – React buttons (Indeed) often ignore bare .click()
+  // Sequence: establish hover state first, then press/release, then a coordinate-bearing
+  // click event. el.click() fires with clientX=0/clientY=0 which Indeed's anti-bot checks
+  // can detect; dispatchEvent(new MouseEvent('click', …)) carries real coordinates.
   function realClick(el) {
     const r = el.getBoundingClientRect();
-    // aim for a random point inside the element, not always the exact center
     const cx = r.left + r.width * (0.35 + Math.random() * 0.3);
     const cy = r.top + r.height * (0.35 + Math.random() * 0.3);
-    const opts = { bubbles: true, cancelable: true, view: window, clientX: cx, clientY: cy };
-    el.dispatchEvent(new MouseEvent('mousemove',  opts));
-    el.dispatchEvent(new PointerEvent('pointerdown', opts));
-    el.dispatchEvent(new MouseEvent('mousedown', opts));
-    el.dispatchEvent(new PointerEvent('pointerup', opts));
-    el.dispatchEvent(new MouseEvent('mouseup', opts));
-    el.click();
+    const base = { bubbles: true, cancelable: true, view: window, clientX: cx, clientY: cy };
+    const ptr  = { ...base, pointerId: 1, isPrimary: true, pointerType: 'mouse' };
+    // Establish hover state before the click sequence
+    el.dispatchEvent(new MouseEvent('mouseenter', { ...base, bubbles: false }));
+    el.dispatchEvent(new MouseEvent('mouseover',  base));
+    el.dispatchEvent(new MouseEvent('mousemove',  base));
+    el.dispatchEvent(new PointerEvent('pointerdown', ptr));
+    el.dispatchEvent(new MouseEvent('mousedown', base));
+    el.dispatchEvent(new PointerEvent('pointerup',   ptr));
+    el.dispatchEvent(new MouseEvent('mouseup',   base));
+    // Coordinate-bearing click so React / anti-bot checks see non-zero clientX/Y
+    el.dispatchEvent(new MouseEvent('click', base));
   }
 
   async function humanClick(el, msg = '') {
@@ -197,12 +205,12 @@
             50%{box-shadow:0 0 0 9px rgba(124,58,237,.85),0 0 40px rgba(167,139,250,.9),
               0 0 0 9999px rgba(10,5,25,.38)}}
           .jobbotx-spot{animation:jobbotx-spot .8s ease-in-out infinite!important;}
-          #jobbotx-start{position:fixed;bottom:26px;right:26px;z-index:2147483647;display:none;
+          #jobbotx-applyall{position:fixed;bottom:26px;right:26px;z-index:2147483647;display:none;
             padding:13px 22px;border:none;border-radius:999px;cursor:pointer;
             font:700 14px/1 system-ui,-apple-system,sans-serif;color:#fff;
-            background:linear-gradient(135deg,#7c3aed,#6d28d9);
-            box-shadow:0 8px 28px rgba(124,58,237,.5);}
-          #jobbotx-start:hover{transform:translateY(-2px);box-shadow:0 12px 34px rgba(124,58,237,.65);}
+            background:linear-gradient(135deg,#059669,#047857);
+            box-shadow:0 8px 28px rgba(5,150,105,.45);}
+          #jobbotx-applyall:hover{transform:translateY(-2px);box-shadow:0 12px 34px rgba(5,150,105,.6);}
           #jobbotx-selall{position:fixed;bottom:78px;right:26px;z-index:2147483647;display:none;
             padding:10px 18px;border-radius:999px;cursor:pointer;
             font:600 13px/1 system-ui,-apple-system,sans-serif;color:#c4b5fd;
@@ -446,6 +454,24 @@
         return days <= 15 ? 'Yes' : 'No';
       }
       if (/\b(total|overall|relevant)\b.*\bexperience\b/i.test(t)) return pro.experience || '3';
+
+      // Age / eligibility confirmations
+      // "Are you between the ages of 18 and 45?" / "Are you above 18?" / "at least 18 years old?"
+      if (/\bage[sd]?\b.*\b(between|above|below|over|under|at\s+least|minimum|eligib)\b|\b(between|above|below|over|under|at\s+least|minimum)\b.*\bage[sd]?\b/i.test(t)) return 'Yes';
+      if (/\b(meet|satisfy)\b.*\b(age|requirement|criterion|criteria)\b|\bage\b.*\b(requirement|criterion|criteria|eligib)\b/i.test(t)) return 'Yes';
+
+      // Employment status
+      if (/currently\s+(employed|working)|employed\s+currently/i.test(t)) return pro.currentCompany ? 'Yes' : 'No';
+
+      // "Are you a graduate?" / "Are you a degree holder?"
+      if (/\b(graduate|degree\s+holder)\b/i.test(t) && !/post.?graduate/i.test(t)) return 'Yes';
+
+      // Generic legal / background consent ("Have you ever been convicted…?")
+      if (/\b(convicted|criminal\s+record|felony|background\s+check)\b/i.test(t)) return 'No';
+
+      // Disability / veteran self-identification (common US/IN EEOC questions)
+      if (/\b(disability|disabled|veteran|differently.?abled)\b/i.test(t)) return 'No';
+
       return null;
     }
 
@@ -871,7 +897,7 @@
           let progressed = false;
           const selMode = selectionMode();
           if (selMode && !selectedSet.size()) {
-            SPOT.status('All ticked jobs done – tick more jobs, or ✕ to stop', 'success');
+            SPOT.status('All selected jobs done – tick more to continue, or ✕ to stop', 'success');
             this.running = false;
             return 'nav'; // stay alive in monitor mode awaiting more ticks
           }
@@ -931,14 +957,27 @@
       // The form UI must be VISIBLE – Indeed preloads a hidden apply iframe on
       // its home/search pages, which previously faked an in-progress application.
       if (this.applyFrame()) return true;
+      // Pre-qualification "Apply anyway" modal counts as an apply page so the
+      // clickApply retry loop exits and runApplication handles it.
+      if ($$('button, [role="button"]').some(b =>
+            isVis(b) && /^apply any ?ways?$/i.test((b.textContent || '').trim()))) return true;
       return $$('[data-testid="ia-continueButton"], [data-testid="ia-submitButton"], ' +
                 '.ia-BasePage, [data-testid="ia-Questions-main"], .ia-Modal').some(isVis);
     }
 
     jobCards() {
-      return $$('.job_seen_beacon, [data-testid="slider_item"], .resultContent, ' +
-                '[data-testid="job-card"], li[class*="result"] [class*="cardOutline"], ' +
-                'div[class*="jobCard"], li.eu4oa1w0').filter(isVis);
+      const raw = $$('.job_seen_beacon, [data-testid="slider_item"], .resultContent, ' +
+                    '[data-testid="job-card"], li[class*="result"] [class*="cardOutline"], ' +
+                    'div[class*="jobCard"], li.eu4oa1w0').filter(isVis);
+      // Broad class-name selectors above can match footer nav, "People also searched"
+      // pills, promo widgets and subscription forms on newer Indeed layouts.
+      // Require at least one genuine job-link/id signal so only actual job cards
+      // are returned — this fix propagates to run(), visibleIds(), and the tick timer.
+      return raw.filter(c =>
+        c.matches?.('[data-jk], [data-job-id], [data-occludable-job-id]') ||
+        !!$('a[data-jk], [data-jk], a[href*="viewjob?jk="], a[href*="vjk="], ' +
+             'a[href*="/rc/clk"], h2 a[href*="viewjob"]', c)
+      );
     }
 
     // Resolve to the ACTUAL clickable "Apply with Indeed" element. Returns the
@@ -980,96 +1019,151 @@
     }
 
     async clickApply(card) {
-      // First: try a button already visible in the card or the open detail panel
-      let btn = this.findApplyButton(card) || this.findApplyButton(document);
+      // Always click the card title to load THIS card's detail panel first.
+      // Never shortcut to the apply button without this step — the panel still
+      // shows the previous job until the SPA navigates.
 
-      if (!btn) {
-        // Open the job's detail panel, then poll for the Apply button to render
-        const title = $('h2 a[data-jk], a.jcs-JobTitle, h2 a, a[class*="JobTitle"], ' +
-                        'a[id^="job_"], [class*="title"] a', card) || card;
-        if (title) {
-          SPOT.pulse(title, `Opening: ${(title.textContent || '').trim().substring(0, 55)}`);
-          realClick(title);
-          await sleep(rand(1000, 1800));
-        }
-        for (let i = 0; i < 10 && !btn; i++) {        // up to ~8s for the panel to load
-          btn = this.findApplyButton(document);
-          if (!btn) await sleep(800);
-        }
+      // Prefer the jk from the card element itself; child a[data-jk] is a fallback
+      // because the first matching child might be a hidden/SEO anchor, not the title.
+      const rawJk = card.getAttribute?.('data-jk')
+                 || card.getAttribute?.('data-job-id')
+                 || ($('[data-jk]', card) || card).getAttribute?.('data-jk') || '';
+
+      // An element is only a valid click target if it is:
+      //   • in the LEFT panel (x < 60 % of viewport — never the detail panel)
+      //   • has non-zero dimensions (rules out hidden/collapsed SEO anchors)
+      //   • has visible text (rules out empty aria / tracking anchors whose
+      //     getBoundingClientRect falls at the Save / bookmark button position)
+      const isValidTitle = el => {
+        try {
+          const r = el.getBoundingClientRect();
+          return r.width > 0 && r.height > 0
+              && r.left < window.innerWidth * 0.6
+              && (el.textContent || '').trim().length > 0;
+        } catch { return false; }
+      };
+
+      // 1st choice: exact jk match (only this card's link)
+      let title = null;
+      if (rawJk) {
+        try { title = $$(`a[data-jk="${rawJk}"]`, card).find(isValidTitle); } catch {}
+      }
+      // 2nd choice: known Indeed title-link class
+      if (!title) title = $$('a.jcs-JobTitle', card).find(isValidTitle);
+      // 3rd choice: any visible h2 link in the card
+      if (!title) title = $$('h2 a', card).find(isValidTitle);
+      // Last resort: click the card container itself (always in the left panel)
+      if (!title) title = card;
+
+      await humanClick(title, `Opening: ${(title.textContent || '').trim().substring(0, 55)}`);
+
+      // Wait for the SPA to navigate to this job (URL includes its jk).
+      for (let w = 0; w < 10 && rawJk; w++) {
+        if (location.href.toLowerCase().includes(rawJk.toLowerCase())) break;
+        await sleep(rand(400, 700));
+      }
+      await sleep(rand(500, 900)); // let the detail panel begin rendering
+
+      // Wait up to 10 s for "Apply with Indeed" to appear — gives React time
+      // to hydrate and lazy-loaded job panels to fully render.
+      SPOT.status('⏳ Looking for Apply with Indeed button…', 'info');
+      let btn = null;
+      for (let i = 0; i < 20 && !btn; i++) {  // 20 × 500 ms = 10 s max
+        btn = this.findApplyButton(document);
+        if (!btn) await sleep(500);
       }
 
-      if (!btn || !isVis(btn)) return 'none';
+      if (!btn || !isVis(btn)) {
+        SPOT.status('⏭ "Apply with Indeed" not found – moving to next job…', 'info');
+        return 'none';
+      }
       if (/applied/i.test(btn.textContent)) return 'already';
 
-      // Force same-tab so the apply flow stays in this tab and auto-resume works
+      // Force same-tab so the apply flow stays here and auto-resume works.
       if (btn.tagName === 'A') btn.setAttribute('target', '_self');
-      btn.removeAttribute && btn.removeAttribute('target');
 
-      // Mark this navigation as an intended apply so, if the click triggers a
-      // full page load, the watchdog/auto-resume immediately knows to continue.
       const beforeUrl = location.href;
+      // Snapshot visible ia-* form element count BEFORE clicking so we can
+      // detect in-page form opening even when wasApplyState is already true
+      // (Indeed preloads hidden apply UI in the detail panel — isApplyPage()
+      // can return true before and after the click, making the old
+      // !wasApplyState guard useless for in-page forms).
+      const iaSel = '[data-testid="ia-continueButton"], [data-testid="ia-submitButton"], ' +
+                    '.ia-Modal, [data-testid="ia-Questions-main"], .ia-BasePage';
+      const iaCountBefore = $$(iaSel).filter(isVis).length;
+      const opened = () => {
+        if (location.href !== beforeUrl) return true;
+        if (this.isDone() || this.isAlreadyApplied()) return true;
+        if (this.isApplyPage() && $$(iaSel).filter(isVis).length > iaCountBefore) return true;
+        return false;
+      };
 
-      // Lock the spotlight on "Apply with Indeed" through the whole click +
-      // retry sequence so it's obvious and reliably registers.
-      SPOT.pulse(btn, '🟦 Clicking "Apply with Indeed"…');
-      btn.scrollIntoView({ behavior: 'smooth', block: 'center' });
-      await sleep(rand(350, 600));
-
-      // Click the resolved element AND its nearest interactive ancestor, in case
-      // the visible label is a span inside the real button.
       const targetsOf = b => [b, b.closest && b.closest('button, a, [role="button"]')]
         .filter((v, i, a) => v && a.indexOf(v) === i);
 
-      // Success = a STATE CHANGE after our click: the URL changed, or the apply
-      // UI appeared where there was none. Never judge by absolute state alone –
-      // that returned 'clicked' without clicking when a stray match existed.
-      const wasApplyState = this.isApplyPage();
-      const opened = () =>
-        location.href !== beforeUrl
-        || (!wasApplyState && this.isApplyPage())
-        || this.isDone()
-        || this.isAlreadyApplied();
+      // Smooth first click: humanClick scrolls + curves cursor + fires realClick.
+      await humanClick(btn, '🟦 Clicking "Apply with Indeed"…');
 
-      // Up to ~16s: Indeed's React button often ignores the first click(s)
-      // while it hydrates. Always click FIRST, then re-click every ~2.4s.
-      for (let i = 0; i < 20; i++) {
-        if (i % 3 === 0 && !document.hidden) {
-          if (!btn.isConnected || !isVis(btn)) btn = this.findApplyButton(document) || btn;
-          if (btn.isConnected && isVis(btn)) {
-            const r = btn.getBoundingClientRect();
-            await moveTo(r.left + r.width / 2, r.top + r.height / 2);
-            await sleep(rand(80, 180));
-            for (const t of targetsOf(btn)) { try { realClick(t); } catch {} }
-            if (i > 0) SPOT.pulse(btn, '🟦 Retrying "Apply with Indeed"…');
-          }
-        }
-        await sleep(800);
-        // The click opened the apply flow in a NEW tab (this page lost focus):
-        // stop re-clicking – every retry was spawning another tab.
+      // Give the React form time to hydrate (typically 1.8-2.8s) before any retry.
+      await sleep(rand(1800, 2800));
+      if (document.hidden) return 'popup';
+      if (opened()) return 'clicked';
+
+      // Retry loop (up to ~8s more). Always check BEFORE re-clicking — never
+      // fire into an already-open form. If the Apply button has vanished the
+      // form captured the click; treat as success immediately.
+      for (let i = 0; i < 5; i++) {
+        // Button gone → form captured the click
+        if (!btn.isConnected || !isVis(btn)) return 'clicked';
+        const r = btn.getBoundingClientRect();
+        await moveTo(r.left + r.width / 2 + (Math.random() - 0.5) * 14,
+                     r.top  + r.height / 2 + (Math.random() - 0.5) * 8);
+        await sleep(rand(60, 160));
+        for (const t of targetsOf(btn)) { try { realClick(t); } catch {} }
+        SPOT.pulse(btn, '🟦 Apply with Indeed – opening form…');
+        await sleep(rand(1000, 1600));
         if (document.hidden) return 'popup';
         if (opened()) return 'clicked';
+        // Re-check button existence after waiting
+        if (!btn.isConnected || !isVis(btn)) return 'clicked';
+        btn = this.findApplyButton(document) || btn;
       }
       return opened() ? 'clicked' : (document.hidden ? 'popup' : 'none');
     }
 
     async fillStep() {
-      // Scope to main form area to avoid filling page header/footer
-      const form = $('.ia-Questions-main, .ia-BasePage-main, [data-testid="ia-Questions-main"]') || document.body;
-      await this.f.all(form);
+      // Use document.body — Filler.all() already guards every fill with isVis()
+      // and skips inputs that already have values, so wider scope is safe and
+      // avoids the "container not found" miss that leaves fields empty.
+      await this.f.all(document.body);
       await sleep(rand(350, 600));
     }
 
     btnText(el) { return (el.textContent || el.value || '').trim(); }
 
     findStepButtons() {
-      const els = $$('button, [role="button"], input[type="submit"], input[type="button"]');
+      // Search the entire document — scoping to Indeed-specific containers was
+      // too brittle because the apply form uses different class names across
+      // job types and A/B tests. isVis() guards every lookup so hidden
+      // preloaded buttons never shadow the visible ones.
+      const all = $$('button, [role="button"], input[type="submit"], input[type="button"]');
+
       const cont =
-        $('[data-testid="ia-continueButton"], [data-testid="continue-button"]') ||
-        els.find(b => /^(continue|continue applying|next|save and continue)$/i.test(this.btnText(b))) ||
-        els.find(b => /continue/i.test(this.btnText(b)) && !/skip|without/i.test(this.btnText(b)));
+        // testid — must be visible (hidden preloads exist on some layouts)
+        all.find(b => isVis(b) && /^ia-continueButton$|^continue-button$/.test(b.getAttribute('data-testid') || '')) ||
+        // exact text match
+        all.find(b => isVis(b) && /^(continue|continue applying|next|save and continue|review(?: your application)?)$/i.test(this.btnText(b))) ||
+        // pre-qualification / "apply anyway" modal
+        all.find(b => isVis(b) && /^(apply any ?ways?|continue any ?ways?|yes,?\s*(continue|apply( any ?ways?)?))$/i.test(this.btnText(b))) ||
+        // starts-with-continue fallback (e.g. "Continue to next step")
+        all.find(b => isVis(b) && /^continue\b/i.test(this.btnText(b)) && !/skip|without|reading|to site/i.test(this.btnText(b)));
+
       const sub =
-        $('[data-testid="ia-submitButton"], [data-testid="submit-button"]') ||
-        els.find(b => /submit (my |your )?application|^submit$|apply now/i.test(this.btnText(b)));
+        // testid visible first; disabled submit is caught by the wait-loop in clickContinue
+        all.find(b => /^ia-submitButton$|^submit-button$/.test(b.getAttribute('data-testid') || '')) ||
+        all.find(b => /submit (my |your )?application|^submit$|apply now/i.test(this.btnText(b))
+                   && !b.closest('[aria-hidden="true"]'));
+
       return { cont, sub };
     }
 
@@ -1101,28 +1195,49 @@
     }
 
     async clickContinue() {
+      const isOk = el => isVis(el) && el.getAttribute('aria-disabled') !== 'true' && !el.disabled;
       const { cont, sub } = this.findStepButtons();
 
-      if (cont && isVis(cont) && !cont.disabled) {
-        await humanClick(cont, '✨ Clicking CONTINUE…');
-        await sleep(rand(900, 1600));
+      if (cont && isOk(cont)) {
+        const isAnyway = /apply any ?ways?|continue any ?ways?/i.test(this.btnText(cont));
+        const isReview = /^review\b/i.test(this.btnText(cont));
+        const msg = isAnyway ? '✅ Clicking APPLY ANYWAY…'
+                  : isReview ? '📋 Clicking REVIEW…'
+                  : '✨ Clicking CONTINUE…';
+        try { cont.focus(); } catch {}
+        await humanClick(cont, msg);
+        await sleep(rand(1200, 2000));
         return 'continue';
       }
 
-      if (sub && isVis(sub) && !sub.disabled) {
+      if (sub && isOk(sub)) {
+        try { sub.focus(); } catch {}
         await humanClick(sub, '🎉 Submitting my application!');
         await sleep(rand(1500, 2500));
         return 'submitted';
       }
 
-      // Submit is present but disabled while a captcha is unsolved → hand to human
-      if (sub && sub.disabled && this.hasCaptcha()) {
-        return await this.waitForCaptcha(sub);
+      if (sub && this.hasCaptcha()) return await this.waitForCaptcha(sub);
+
+      // Submit found but temporarily disabled — wait up to 8s for page to enable it
+      if (sub) {
+        SPOT.status('⏳ Waiting for Submit to activate…', 'info');
+        for (let w = 0; w < 16 && this.running; w++) {
+          await sleep(500);
+          const { sub: s2 } = this.findStepButtons();
+          if (s2 && isOk(s2)) {
+            try { s2.focus(); } catch {}
+            await humanClick(s2, '🎉 Submitting my application!');
+            await sleep(rand(1500, 2500));
+            return 'submitted';
+          }
+        }
+        return 'blocked';
       }
 
-      // Button exists but is disabled → required fields are still empty
-      if ((cont && cont.disabled) || (sub && sub.disabled)) return 'blocked';
-      return null;
+      if (cont) return 'blocked'; // found but disabled — required fields still empty
+
+      return null; // nothing found yet — runApplication loop will retry
     }
 
     isDone() {
@@ -1154,6 +1269,8 @@
       report({ type: 'JOB_APPLIED', platform: 'indeed', title: document.title, url: location.href });
       SPOT.status(`✓ Applied on Indeed! (${this.applied} total) – returning to job list…`, 'success');
       await sleep(rand(1500, 2500));
+      // Stamp the time so startAgent knows to pause before the next job (navigation case)
+      try { chrome.storage.local.set({ jobbot_applied_at: Date.now() }); } catch {}
       await this.returnToList();
     }
 
@@ -1326,20 +1443,27 @@
         SPOT.status(`${cards.length} jobs on page`, 'info');
         if (!cards.length) break;
 
+        // On every page (including after pagination), auto-add all unapplied
+        // cards to selectedSet so the engine continues without manual re-ticking.
+        // Already-applied / already-attempted cards are excluded.
+        if (selectionMode()) {
+          for (const card of cards) {
+            const jk = this.cardId(card);
+            if (jk && !appliedSet.has(jk) && !attemptedSet.has(jk))
+              selectedSet.add(jk);
+          }
+        }
+
         // Process jobs one by one, re-querying the list after each so the
         // sequence survives panel re-renders. Clicking Apply usually
         // navigates away; auto-resume brings the run back here afterwards.
-        let processedThisPage = false; // owner-approved stability addition
+        let processedThisPage = false;
         let progressed = true;
         while (progressed && this.running) {
           progressed = false;
-          // Tick mode (owner-approved addition): apply only the queued jobs
           const selMode = selectionMode();
-          if (selMode && !selectedSet.size()) {
-            SPOT.status('All ticked jobs done – tick more jobs, or ✕ to stop', 'success');
-            this.running = false;
-            return 'nav';
-          }
+          // If nothing queued on this page, exit inner loop and paginate.
+          if (selMode && !selectedSet.size()) break;
           for (const card of this.jobCards()) {
             const jk = this.cardId(card);
             if (selMode && (!jk || !selectedSet.has(jk))) continue;
@@ -1349,13 +1473,16 @@
             }
             if (jk) attemptedSet.add(jk); // session-only; permanent mark happens on confirmed apply
 
-            card.scrollIntoView({ block: 'center' });
-            await sleep(rand(300, 600));
+            // Smooth scroll into view — visible, human-like movement.
+            card.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            await sleep(rand(500, 900));
             processedThisPage = true;
             pageChurn.set(0); // real work happened – reset the empty-page streak
             const res = await this.clickApply(card);
-            if (res === 'clicked') await this.runApplication();
-            else if (res === 'popup') {
+            if (res === 'clicked') {
+              await this.runApplication();
+              await sleep(rand(3500, 5000)); // natural 4s pause before next job
+            } else if (res === 'popup') {
               // The application runs in the tab Indeed opened; that tab's
               // agent fills it and closes itself. Wait here until focus
               // returns, then continue with the next job on THIS page.
@@ -1364,14 +1491,17 @@
                 await sleep(3000);
                 if (!document.hidden) break;
               }
-              await sleep(rand(1200, 2000));
-            }
-            else {
+              await sleep(rand(3500, 5000)); // natural 4s pause before next job
+            } else if (res === 'none') {
+              // No "Apply with Indeed" button — external-only job; skip immediately
+              // and let the loop pick the next card without a long pause.
+              this.skipped++; reportSkip();
+              await sleep(rand(600, 1000));
+            } else {
               if (res === 'already' && jk) appliedSet.add(jk); // Indeed says applied → permanent
               this.skipped++; reportSkip();
+              await sleep(rand(900, 1700));
             }
-
-            await sleep(rand(900, 1700));
             progressed = true;
             break; // re-query the list for the next job
           }
@@ -1407,7 +1537,19 @@
 
   // ─── Naukri Agent ─────────────────────────────────────────────────────────
   class NaukriAgent {
-    constructor(f) { this.f = f; this.applied = 0; this.skipped = 0; this.running = false; }
+    constructor(f) {
+      this.f = f; this.applied = 0; this.skipped = 0; this.running = false;
+      this._skipNow = false; this._jobTimer = null;
+    }
+    _armJobTimer(ms = 90000) {
+      clearTimeout(this._jobTimer);
+      this._skipNow = false;
+      this._jobTimer = setTimeout(() => {
+        this._skipNow = true;
+        SPOT.status('⏱ Job taking too long (90s) – skipping…', 'warning');
+      }, ms);
+    }
+    _disarmJobTimer() { clearTimeout(this._jobTimer); this._skipNow = false; }
 
     jobCards() {
       return $$(
@@ -1500,10 +1642,11 @@
     }
 
     async clickApply() {
-      // Wait up to 5s for the Apply button to hydrate after page load
+      // Wait up to 10s for the Apply button to hydrate after page load
+      SPOT.status('⏳ Looking for Apply button…', 'info');
       let { btn, external, already } = this.findApplyButton();
       if (!btn && !external && !already) {
-        for (let w = 0; w < 10; w++) {
+        for (let w = 0; w < 20; w++) {
           await sleep(500);
           ({ btn, external, already } = this.findApplyButton());
           if (btn || external || already) break;
@@ -1626,18 +1769,56 @@
       };
 
       // Free-text into Naukri's contenteditable <div class="textArea">:
-      // execCommand makes the drawer's JS see real keystrokes (textContent
-      // alone often leaves Save disabled), with a plain fallback after it.
+      // Type character-by-character via execCommand so the chatbot's input
+      // handler fires on every keystroke (enabling Save as text accumulates).
+      // A single bulk insertText often leaves Save disabled; direct textContent
+      // assignment bypasses Vue's reactivity entirely.
       const typeChat = async (input, ans) => {
+        if (!ans) return;
+        const str = String(ans).trim();
+        if (!str) return;
         input.focus();
-        await sleep(rand(150, 350));
+        await sleep(rand(100, 200));
         if (input.isContentEditable) {
-          try { document.getSelection()?.selectAllChildren(input); } catch {}
-          let ok = false;
-          try { ok = document.execCommand('insertText', false, ans); } catch {}
-          if (!ok || !input.textContent.trim()) input.textContent = ans;
-          input.dispatchEvent(new InputEvent('input', { bubbles: true, data: ans }));
-          input.dispatchEvent(new KeyboardEvent('keyup', { bubbles: true }));
+          // Clear any existing text first
+          try {
+            const sel = window.getSelection();
+            const range = document.createRange();
+            range.selectNodeContents(input);
+            sel.removeAllRanges();
+            sel.addRange(range);
+            document.execCommand('delete', false, null);
+          } catch {}
+          await sleep(rand(40, 80));
+          // Type char-by-char: each insertText fires the chatbot's input handler
+          let typed = 0;
+          for (const ch of str) {
+            try {
+              if (document.execCommand('insertText', false, ch)) typed++;
+              else break;
+            } catch { break; }
+            await sleep(rand(18, 45));
+          }
+          // Fallback when execCommand unavailable (very old/locked environments)
+          if (typed < str.length) {
+            input.textContent = str;
+            try {
+              const sel = window.getSelection();
+              const r = document.createRange();
+              r.selectNodeContents(input); r.collapse(false);
+              sel.removeAllRanges(); sel.addRange(r);
+            } catch {}
+          }
+          // Fire events so Vue/React detects the final value
+          input.dispatchEvent(new InputEvent('input', {
+            bubbles: true, cancelable: true, composed: true,
+            inputType: 'insertText', data: str,
+          }));
+          await sleep(rand(50, 100));
+          input.dispatchEvent(new Event('change', { bubbles: true }));
+          input.dispatchEvent(new KeyboardEvent('keyup', {
+            bubbles: true, cancelable: true, key: str.slice(-1) || 'a',
+          }));
         } else {
           await typeInto(input, ans);
         }
@@ -1682,8 +1863,12 @@
           await sleep(rand(300, 600));
         } else {
           // 4) Free text – Naukri uses a contenteditable <div class="textArea">
-          const input = $('div.textArea[contenteditable="true"], [contenteditable="true"], ' +
-                          'textarea, input[type="text"], input[type="number"], input:not([type])', drawer);
+          const input = $(
+            'div.textArea[contenteditable="true"], [class*="textArea"][contenteditable="true"], ' +
+            '[contenteditable="true"], textarea, ' +
+            'input[type="text"], input[type="number"], input[type="tel"], input[type="email"], ' +
+            'input:not([type="radio"]):not([type="checkbox"]):not([type="submit"]):not([type="button"])',
+            drawer);
           if (input && isVis(input)) {
             // On a retry the profile answer clearly didn't fit – ask the AI first
             let ans = attempt > 1
@@ -1805,7 +1990,7 @@
       if (!r)               return 'skip';
 
       let steps = 0, misses = 0;
-      while (steps < 25 && this.running) {
+      while (steps < 25 && this.running && !this._skipNow) {
         const res = await this.handleForm();
         if (res === 'done') return 'done';
         if (res === 'stuck') { if (++misses >= 3) return 'skip'; }
@@ -1840,11 +2025,19 @@
     async run() {
       this.running = true;
 
-      // Resumed on a job detail page mid-run (same-tab navigation landed here).
-      // Apply, go back, and return 'nav' so the watchdog restarts us on the list.
+      // ── Detail page (resumed via full-page navigation mid-run) ─────────────
+      // Apply, go back, return 'nav' → watchdog restarts us on the list page.
       if (this.onDetailPage()) {
+        SPOT.status('⏳ Preparing to apply…', 'info');
+        // Wait for full page load + React hydration before trying to apply
+        for (let w = 0; w < 16 && document.readyState !== 'complete'; w++) {
+          await sleep(500);
+        }
+        await sleep(rand(800, 1500));
         attemptedSet.add(normalizeJobId(location.href));
+        this._armJobTimer();
         const out = await this.applyHere();
+        this._disarmJobTimer();
         if (out === 'done') {
           appliedSet.add(normalizeJobId(location.href));
           this.applied++;
@@ -1859,42 +2052,452 @@
         }
         history.back();
         await sleep(rand(2500, 3500));
-        // Do NOT clear running here – return 'nav' keeps the flag alive
-        // and the watchdog restarts us on the list page.
-        return 'nav';
+        return 'nav'; // keep the run flag alive
       }
 
       SPOT.status('Naukri – scanning jobs…', 'info');
 
-      while (this.running) {
-        const cards = await waitForCards(() => this.jobCards());
+      // ── Search-results loop ───────────────────────────────────────────────
+      // Labeled so inner code can `continue outer` to re-run waitForCards
+      // (critical after history.back() — the SPA may still be rendering the
+      // card list when execution returns from navigation).
+      outer: while (this.running) {
+        const cards = await waitForCards(() => this.jobCards(), 8, 1500);
+        SPOT.status(`${cards.length} jobs on page`, 'info');
+
         if (!cards.length) {
-          SPOT.status('No job cards found – waiting for page to load…', 'info');
-          await sleep(rand(2000, 3500));
-          if (!this.jobCards().length) break; // truly empty, go to monitor
+          const churn = pageChurn.get() + 1;
+          pageChurn.set(churn);
+          SPOT.status(`Nothing new on this page (${churn}/5) – looking further…`, 'info');
+          await sleep(rand(2500, 4000));
+          if (churn >= 5) {
+            SPOT.status('No new jobs in the last 5 pages – monitoring… (✕ to stop)', 'info');
+            this.running = false;
+            return 'nav';
+          }
+          if (!await this.nextPage()) break;
           continue;
         }
-        SPOT.status(`Found ${cards.length} jobs – scanning…`, 'info');
 
-        // One job at a time. After openJob() the page navigates away and the
-        // watchdog/auto-resume reloads the run here via 'nav' path above.
-        let progressed = true;
-        while (progressed && this.running) {
-          progressed = false;
+        // Auto-add all unapplied visible cards to selectedSet in tick mode
+        if (selectionMode()) {
+          for (const card of cards) {
+            const jid = this.cardId(card);
+            if (jid && !appliedSet.has(jid) && !attemptedSet.has(jid))
+              selectedSet.add(jid);
+          }
+        }
+
+        // Find the next unprocessed card and apply it.
+        // After each card we `continue outer` so waitForCards re-runs and the
+        // full list is re-queried fresh (handles SPA re-renders + history.back).
+        let processedThisPage = false;
+        for (const card of this.jobCards()) {
+          if (!this.running) break;
+          const jid = this.cardId(card);
           const selMode = selectionMode();
-          // When all ticked jobs are consumed, exit tick-mode and scan everything
+
+          // Exit tick-mode when the queue is drained
           if (selMode && !selectedSet.size()) {
             _setSelMode(false);
             try { chrome.storage.local.remove('jobbot_selmode'); } catch {}
             SPOT.status('Ticked jobs done – continuing with all remaining jobs…', 'info');
-            await sleep(rand(800, 1400));
-            // Loop continues now without selMode restriction
+          }
+
+          if (selectionMode() && (!jid || !selectedSet.has(jid))) continue;
+          if (jid && (appliedSet.has(jid) || attemptedSet.has(jid))) {
+            if (jid) selectedSet.remove(jid);
+            continue;
+          }
+
+          // ── Found an unprocessed card ─────────────────────────────────────
+          if (jid) attemptedSet.add(jid);
+          card.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          await sleep(rand(600, 1100));
+          pageChurn.set(0);
+
+          if (!await this.openJob(card)) {
+            this.skipped++;
+            reportSkip();
+            processedThisPage = true;
+            continue outer; // re-query the list fresh after failed open
+          }
+
+          this._armJobTimer();
+          const out = await this.applyHere();
+          this._disarmJobTimer();
+
+          if (out === 'done') {
+            this.applied++;
+            if (jid) appliedSet.add(jid);
+            appliedSet.add(normalizeJobId(location.href));
+            report({ type: 'JOB_APPLIED', platform: 'naukri', title: document.title, url: location.href });
+            SPOT.status(`✓ Applied! (${this.applied} total) – next job…`, 'success');
+          } else {
+            this.skipped++;
+            reportSkip();
+          }
+
+          // If we ended up on a detail page (full navigation), go back to list.
+          // Brief pause then continue outer — waitForCards handles the rest.
+          if (this.onDetailPage()) {
+            await sleep(rand(1000, 1800));
+            history.back();
+            await sleep(rand(600, 1000));
+          } else {
+            await sleep(rand(1200, 2000));
+          }
+
+          processedThisPage = true;
+          continue outer; // always re-query via waitForCards after each card
+        }
+
+        // All cards on this page were skipped (already applied/attempted)
+        if (!processedThisPage) {
+          const churn = pageChurn.get() + 1;
+          pageChurn.set(churn);
+          SPOT.status(`Nothing new on this page (${churn}/5) – looking further…`, 'info');
+          await sleep(rand(2500, 4000));
+          if (churn >= 5) {
+            SPOT.status('No new jobs in the last 5 pages – monitoring… (✕ to stop)', 'info');
+            this.running = false;
+            return 'nav';
+          }
+        } else {
+          pageChurn.set(0);
+        }
+        if (!await this.nextPage()) break;
+      }
+
+      SPOT.status(`Done ✓ Applied: ${this.applied} | Skipped: ${this.skipped}`, 'success');
+      this.running = false;
+    }
+
+    stop() { this.running = false; }
+  }
+
+  // ─── Bayt Agent ───────────────────────────────────────────────────────────
+  class BaytAgent {
+    constructor(f) {
+      this.f = f; this.applied = 0; this.skipped = 0; this.running = false;
+      this._skipNow = false; this._jobTimer = null;
+    }
+    _armJobTimer(ms = 90000) {
+      clearTimeout(this._jobTimer);
+      this._skipNow = false;
+      this._jobTimer = setTimeout(() => {
+        this._skipNow = true;
+        SPOT.status('⏱ Job taking too long (90s) – skipping…', 'warning');
+      }, ms);
+    }
+    _disarmJobTimer() { clearTimeout(this._jobTimer); this._skipNow = false; }
+
+    // Detect Bayt job-listing search results pages
+    jobCards() {
+      return $$(
+        'li[data-job-id], li[class*="jb-job-item"], ' +
+        'li[data-automation-id="job"], ' +
+        '.jb-job-item, [class*="j-postings-results__listing"], ' +
+        '[class*="JobCard"], li.j-search-results__item'
+      ).filter(c => isVis(c)
+        && !c.closest('aside, [class*="similar"], [class*="related"], [class*="sidebar"], [class*="recommended"]'));
+    }
+
+    cardId(card) {
+      const id = card.getAttribute('data-job-id') || card.getAttribute('data-js-aid');
+      if (id) return 'bt:' + id;
+      const a = $('a[href*="/jobs/"]', card) || $('a[href*="bayt.com"]', card);
+      if (a?.href) return normalizeJobId(a.href);
+      return card.textContent.trim().slice(0, 80);
+    }
+
+    // Are we on a job detail / apply page (not the search list)?
+    onDetailPage() {
+      // URL has a slug ending in -\d+/ (Bayt job detail pattern)
+      if (/\/jobs\/[^/]+-\d+\//i.test(location.pathname)) return true;
+      // Or the dedicated apply URL
+      if (/\/apply\//i.test(location.pathname)) return true;
+      // Or an apply form / modal is visible
+      return !!$('#apply-btn-top, #apply-btn, .qa-apply-btn, ' +
+                 '[class*="apply-form-wrapper"], [class*="applyForm"], ' +
+                 '[data-automation-id="apply-form"]');
+    }
+
+    isApplyPage() {
+      return this.onDetailPage() || /\/apply\//i.test(location.href);
+    }
+
+    isApplied() {
+      // Success banner / confirmation page
+      if ($$('[class*="success"], [class*="confirmation"], [class*="applied-state"], ' +
+             '[class*="application-success"], [class*="apply-success"]')
+          .some(el => isVis(el) && el.textContent.trim().length > 5)) return true;
+      return $$('h1, h2, h3, p, [role="heading"], [class*="title"], [class*="header"]').some(el =>
+        isVis(el) && /application (has been |was )?sent|successfully applied|application received|you have applied|thank you for applying/i.test(el.textContent));
+    }
+
+    // Find the primary Apply button on a detail page; detect already-applied & external
+    findApplyButton() {
+      const already = $$('button, a, [class*="apply"], span').find(b =>
+        isVis(b) && /already applied|you('ve| have) applied|^applied$/i.test(b.textContent.trim()));
+      if (already) return { btn: null, already: true, external: false };
+
+      const ext = $$(
+        'a[href*="apply"][target="_blank"], a[class*="apply"][rel*="noopener"], ' +
+        '[class*="company-site"], [class*="companySite"]'
+      ).find(isVis);
+
+      const btn =
+        $('#apply-btn-top, #apply-btn, .qa-apply-btn, .btn-apply, ' +
+          '[data-automation-id="applyButton"], [data-js-aid="jobApplyBtn"], ' +
+          'a[href*="/apply/"], button[id*="apply"]') ||
+        $$('a, button, [role="button"]').find(b =>
+          isVis(b)
+          && /^(apply|quick apply|apply now|easy apply)$/i.test(b.textContent.trim())
+          && !/external|company\s*site|already applied|^applied$/i.test(b.textContent)
+          && !b.closest('aside, [class*="similar"], [class*="related"], [class*="sidebar"]')
+        );
+
+      if (btn && /already applied|^applied$/i.test(btn.textContent.trim()))
+        return { btn: null, already: true, external: false };
+      if (!btn && ext) return { btn: null, already: false, external: true };
+      return { btn: btn || null, already: false, external: false };
+    }
+
+    // Locate Continue / Next and Submit buttons on the active step
+    findStepButtons() {
+      const visible = $$('button, input[type="submit"], input[type="button"], [role="button"]').filter(isVis);
+      const text = el => (el.textContent || el.value || el.getAttribute('value') || '').trim();
+
+      const cont =
+        $('[data-automation-id="btn-next"], [data-qa="btn-next"], ' +
+          '[class*="next-step"], [class*="nextStep"]') ||
+        visible.find(b => /^(next|continue|proceed|save and continue|save & continue)$/i.test(text(b)) && !b.disabled);
+
+      const sub =
+        $('[data-automation-id="btn-submit"], [data-qa="btn-submit"], ' +
+          '[class*="submit-app"], [class*="submitApp"]') ||
+        visible.find(b => /submit (my |your )?application|send application|^(apply|apply now)$/i.test(text(b)) && !b.disabled);
+
+      return { cont, sub };
+    }
+
+    async fillStep() {
+      const form = $('form, [class*="apply-form"], [class*="application-form"], ' +
+                     '[class*="screening"], [class*="question-form"], ' +
+                     '[data-automation-id="apply-form"]') || document.body;
+      await this.f.all(form);
+      await sleep(rand(350, 600));
+    }
+
+    async clickContinue() {
+      const { cont, sub } = this.findStepButtons();
+
+      if (cont && isVis(cont) && !cont.disabled) {
+        await humanClick(cont, '✨ Clicking CONTINUE…');
+        await sleep(rand(900, 1600));
+        return 'continue';
+      }
+
+      if (sub && isVis(sub) && !sub.disabled) {
+        await humanClick(sub, '🎉 Submitting Bayt application!');
+        await sleep(rand(1500, 2500));
+        return 'submitted';
+      }
+
+      // Button present but disabled – required field still empty
+      if ((cont && cont.disabled) || (sub && sub.disabled)) return 'blocked';
+      return null;
+    }
+
+    async runApplication() {
+      SPOT.status('Processing Bayt application…', 'applying');
+      let steps = 0, misses = 0;
+
+      while (steps < 35 && this.running && !this._skipNow) {
+        if (this.isApplied()) {
+          this.applied++;
+          appliedSet.add(normalizeJobId(location.href));
+          report({ type: 'JOB_APPLIED', platform: 'bayt', title: document.title, url: location.href });
+          SPOT.status(`✓ Applied on Bayt! (${this.applied} total)`, 'success');
+          await sleep(rand(1500, 2500));
+          history.back();
+          await sleep(rand(2200, 3500));
+          return true;
+        }
+
+        await this.fillStep();
+        const res = await this.clickContinue();
+
+        if (res === 'continue') {
+          misses = 0; steps++;
+          await sleep(rand(700, 1400));
+          continue;
+        }
+
+        if (res === 'submitted') {
+          await sleep(rand(1500, 2500));
+          if (this.isApplied()) {
+            this.applied++;
+            appliedSet.add(normalizeJobId(location.href));
+            report({ type: 'JOB_APPLIED', platform: 'bayt', title: document.title, url: location.href });
+            SPOT.status(`✓ Applied on Bayt! (${this.applied} total)`, 'success');
+            await sleep(rand(1500, 2500));
+            history.back();
+            await sleep(rand(2200, 3500));
+            return true;
+          }
+          steps++; continue;
+        }
+
+        if (res === 'blocked') {
+          misses++;
+          if (misses < 3) { SPOT.status('Required fields pending – refilling…', 'warning'); await sleep(2000); continue; }
+        } else {
+          misses++;
+          if (this.isApplied()) continue;
+          if (misses < 3) { SPOT.status('Waiting for form to load…', 'applying'); await sleep(rand(1500, 2500)); continue; }
+        }
+
+        SPOT.status('Stuck on Bayt form – returning to job list', 'warning');
+        this.skipped++; reportSkip();
+        history.back();
+        await sleep(rand(1500, 2500));
+        return false;
+      }
+
+      this.skipped++; reportSkip();
+      history.back();
+      await sleep(rand(1500, 2500));
+      return false;
+    }
+
+    async openJob(card) {
+      const link = $('a[href*="/jobs/"], h2 a, [class*="title"] a, [class*="job-title"] a', card)
+                || $('a', card);
+      if (!link) return false;
+      SPOT.pulse(link, `Opening: ${(link.textContent || '').trim().substring(0, 60)}`);
+      if (link.tagName === 'A') link.setAttribute('target', '_self');
+      await sleep(rand(300, 600));
+      const before = location.href;
+      realClick(link);
+      await sleep(rand(2200, 3500));
+      return location.href !== before || this.onDetailPage();
+    }
+
+    async clickApplyBtn() {
+      let { btn, already, external } = this.findApplyButton();
+      if (!btn && !already && !external) {
+        // Wait up to ~5s for the button to hydrate after navigation
+        for (let w = 0; w < 10; w++) {
+          await sleep(500);
+          ({ btn, already, external } = this.findApplyButton());
+          if (btn || already || external) break;
+        }
+      }
+      if (already) return 'already';
+      if (external) return 'external';
+      if (!btn) return false;
+
+      btn.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      await sleep(rand(600, 900));
+
+      // Remember URL before click so we can detect if a new tab opened
+      const beforeUrl = location.href;
+
+      SPOT.pulse(btn, '🎯 Clicking APPLY on Bayt…');
+      await sleep(rand(500, 800));
+
+      // Click + retry (Bayt uses React-hydrated buttons that may ignore first click)
+      for (let i = 0; i < 6; i++) {
+        realClick(btn);
+        await sleep(800);
+        if (document.hidden) return 'popup'; // opened a new tab
+        // Apply form appeared, or URL changed
+        if (this.findStepButtons().cont || this.findStepButtons().sub ||
+            this.isApplied() || location.href !== beforeUrl) return 'clicked';
+        if ((i === 2 || i === 4) && btn.isConnected && isVis(btn)) {
+          SPOT.pulse(btn, '🎯 Re-clicking APPLY on Bayt…');
+        }
+      }
+      return 'clicked'; // assume clicked even if form not yet detected
+    }
+
+    async nextPage() {
+      const btn =
+        $('a.pager-next, [class*="pagination"] a[rel="next"], ' +
+          'a[class*="pagination__next"], [class*="pager"] a.next, ' +
+          'li.next > a, li.next-page > a') ||
+        $$('a, button').find(el =>
+          isVis(el)
+          && /^(next( page)?|>|التالي|التالية)$/i.test(el.textContent.trim())
+          && !el.closest('[class*="job-detail"], [class*="apply"]')
+        );
+      if (!btn || btn.getAttribute('aria-disabled') === 'true') return false;
+      SPOT.status('Page finished – moving to the next page…', 'info');
+      await humanClick(btn, '➡️ Next page…');
+      await sleep(rand(2800, 4200));
+      return true;
+    }
+
+    async run() {
+      this.running = true;
+
+      // Resumed on a job detail page after navigation
+      if (this.onDetailPage()) {
+        attemptedSet.add(normalizeJobId(location.href));
+        const res = await this.clickApplyBtn();
+        if (res === 'already') {
+          appliedSet.add(normalizeJobId(location.href));
+          SPOT.status('Already applied – skipping', 'info');
+          this.skipped++;
+        } else if (res === 'external') {
+          SPOT.status('Apply on company site – skipping', 'warning');
+          this.skipped++; reportSkip();
+        } else if (!res) {
+          SPOT.status('No Apply button – skipping', 'warning');
+          this.skipped++; reportSkip();
+        } else if (res === 'popup') {
+          SPOT.status('Applying in the opened tab – waiting…', 'applying');
+          for (let w = 0; w < 100 && this.running; w++) {
+            await sleep(3000);
+            if (!document.hidden) break;
+          }
+          await sleep(rand(1000, 2000));
+        } else {
+          this._armJobTimer();
+          await this.runApplication();
+          this._disarmJobTimer();
+        }
+        history.back();
+        await sleep(rand(2500, 3500));
+        this.running = false;
+        return 'nav';
+      }
+
+      SPOT.status('Bayt – scanning jobs…', 'info');
+
+      while (this.running) {
+        const cards = await waitForCards(() => this.jobCards());
+        SPOT.status(`${cards.length} jobs on page`, 'info');
+        if (!cards.length) {
+          SPOT.status('No job cards found – open a Bayt Jobs search page', 'warning');
+          break;
+        }
+
+        let progressed = true;
+        while (progressed && this.running) {
+          progressed = false;
+          const selMode = selectionMode();
+          if (selMode && !selectedSet.size()) {
+            SPOT.status('All selected jobs done – tick more or ✕ to stop', 'success');
+            this.running = false;
+            return 'nav';
           }
           for (const card of this.jobCards()) {
             if (!this.running) break;
             const jid = this.cardId(card);
-            const nowSelMode = selectionMode();
-            if (nowSelMode && (!jid || !selectedSet.has(jid))) continue;
+            if (selMode && (!jid || !selectedSet.has(jid))) continue;
             if (jid && (appliedSet.has(jid) || attemptedSet.has(jid))) {
               if (jid) selectedSet.remove(jid);
               continue;
@@ -1902,38 +2505,52 @@
             if (jid) attemptedSet.add(jid);
 
             card.scrollIntoView({ behavior: 'smooth', block: 'center' });
-            await sleep(rand(600, 1100));
+            await sleep(rand(500, 900));
+
             if (!await this.openJob(card)) { this.skipped++; reportSkip(); progressed = true; break; }
 
-            // openJob navigated to a detail page – applyHere handles it,
-            // but on same-page open (detail panel) handle inline too.
-            const out = await this.applyHere();
-            if (out === 'done') {
-              this.applied++;
-              if (jid) appliedSet.add(jid);
+            // Now on detail page – find and click apply
+            const res = await this.clickApplyBtn();
+            if (res === 'already') {
               appliedSet.add(normalizeJobId(location.href));
-              report({ type: 'JOB_APPLIED', platform: 'naukri', title: document.title, url: location.href });
-              SPOT.status(`✓ Applied! (${this.applied} total) – next job…`, 'success');
-            } else { this.skipped++; reportSkip(); }
+              SPOT.status('Already applied – moving to next job', 'info');
+            } else if (res === 'external') {
+              SPOT.status('External apply – skipping', 'warning');
+              this.skipped++; reportSkip();
+            } else if (!res) {
+              SPOT.status('No Apply button – skipping', 'warning');
+              this.skipped++; reportSkip();
+            } else if (res === 'popup') {
+              // Application opened in a new tab – wait for it to finish and close
+              SPOT.status('Applying in the opened tab – waiting for it to finish…', 'applying');
+              for (let w = 0; w < 100 && this.running; w++) {
+                await sleep(3000);
+                if (!document.hidden) break;
+              }
+              await sleep(rand(1000, 2000));
+            } else {
+              this._armJobTimer();
+              await this.runApplication();
+              this._disarmJobTimer();
+              if (jid) selectedSet.remove(jid);
+            }
 
-            await sleep(rand(1500, 2500));
-            // Go back to the list and re-scan from top
+            await sleep(rand(1000, 2000));
+            // Return to list if still on detail page
             if (this.onDetailPage()) {
               history.back();
-              await sleep(rand(2800, 3800));
+              await sleep(rand(2500, 3500));
             }
             progressed = true;
             break;
           }
         }
 
-        if (!this.running) break;
         if (!await this.nextPage()) break;
       }
 
-      // All visible pages exhausted – hand off to monitor mode (watchdog will
-      // re-scan after ~60 s). Do NOT clear the running flag; only Stop does that.
-      SPOT.status(`All jobs processed – monitoring for new ones… ✓ ${this.applied} applied`, 'info');
+      SPOT.status(`Bayt – all visible jobs processed ✓ ${this.applied} applied`, 'info');
+      this.running = false;
     }
 
     stop() { this.running = false; }
@@ -2025,14 +2642,33 @@
   // Backed by chrome.storage.local so ticked jobs survive the cross-origin
   // indeed.com → apply.indeed.com hop that wipes sessionStorage. The in-memory
   // Set is the fast-path; chrome.storage is the durable source-of-truth.
+  //
+  // IMPORTANT: chrome.storage is ONLY restored when a run is active. If there
+  // is no active run on page load we wipe both stores immediately so the user
+  // never sees phantom checkmarks from a previous session.
   const selectedSet = (() => {
     let s = new Set();
-    // Sync seed from sessionStorage (instant) then merge from chrome.storage
+    // Sync seed from sessionStorage first (instant, within same origin/tab)
     try { s = new Set(JSON.parse(sessionStorage.getItem('jobbot_selected') || '[]')); } catch {}
     const CKEY = 'jobbot_selected_run';
     try {
-      chrome.storage.local.get(CKEY, d => {
-        (Array.isArray(d[CKEY]) ? d[CKEY] : []).forEach(id => s.add(id));
+      // Combine the run-state check and the tick/selmode restore in ONE read so
+      // there is no race between clearing stale data and re-seeding it.
+      chrome.storage.local.get(['jobbot_running', CKEY, 'jobbot_selmode'], d => {
+        if (d.jobbot_running) {
+          // Active run (cross-origin hop): restore ticks + selection mode flag
+          (Array.isArray(d[CKEY]) ? d[CKEY] : []).forEach(id => s.add(id));
+          if (d.jobbot_selmode === '1') {
+            try { sessionStorage.setItem('jobbot_selmode', '1'); } catch {}
+          }
+        } else {
+          // No active run: delete every trace of stale selections so the user
+          // always starts with a clean slate — no phantom checkmarks.
+          s = new Set();
+          try { sessionStorage.removeItem('jobbot_selected'); } catch {}
+          try { sessionStorage.setItem('jobbot_selmode', '0'); } catch {}
+          chrome.storage.local.remove([CKEY, 'jobbot_selmode']);
+        }
       });
     } catch {}
     const persist = () => {
@@ -2046,6 +2682,13 @@
       toggle(id) { s.has(id) ? s.delete(id) : s.add(id); persist(); return s.has(id); },
       add(id) { if (id) { s.add(id); persist(); } },
       remove(id) { s.delete(id); persist(); },
+      // Wipe all selections (called when the user explicitly clears or stops)
+      clear() {
+        s = new Set();
+        try { sessionStorage.removeItem('jobbot_selected'); } catch {}
+        try { sessionStorage.setItem('jobbot_selmode', '0'); } catch {}
+        chrome.storage.local.remove([CKEY, 'jobbot_selmode']);
+      },
     };
   })();
 
@@ -2059,14 +2702,8 @@
     try { sessionStorage.setItem('jobbot_selmode', on ? '1' : '0'); } catch {}
     try { chrome.storage.local.set({ jobbot_selmode: on ? '1' : '0' }); } catch {}
   };
-  // On load: re-seed sessionStorage from chrome.storage if it was cleared
-  try {
-    chrome.storage.local.get('jobbot_selmode', d => {
-      if (d.jobbot_selmode === '1') {
-        try { sessionStorage.setItem('jobbot_selmode', '1'); } catch {}
-      }
-    });
-  } catch {}
+  // NOTE: selmode re-seed from chrome.storage is handled inside the selectedSet
+  // IIFE above (combined with the run-state check) so there is no separate read.
 
   // Consecutive result-pages with nothing new to apply to. Persisted in
   // chrome.storage.local (survives cross-origin hops that wipe sessionStorage).
@@ -2109,7 +2746,7 @@
 
   async function startAgent(profile) {
     if (agent?.running) return;
-    if (PLATFORM !== 'linkedin' && PLATFORM !== 'indeed' && PLATFORM !== 'naukri') {
+    if (!['linkedin', 'indeed', 'naukri', 'bayt'].includes(PLATFORM)) {
       SPOT.status('Not a supported job site', 'error'); return;
     }
 
@@ -2135,6 +2772,7 @@
     if      (PLATFORM === 'linkedin') agent = new LinkedInAgent(f);
     else if (PLATFORM === 'indeed')   agent = new IndeedAgent(f);
     else if (PLATFORM === 'naukri')   agent = new NaukriAgent(f);
+    else if (PLATFORM === 'bayt')     agent = new BaytAgent(f);
     else { SPOT.status('Not a supported job site', 'error'); return; }
 
     // Only the top frame owns the running flag; 'nav' means the page is about
@@ -2152,8 +2790,28 @@
     if (IS_TOP) setStore({ jobbot_running: MY_TAB ?? true });
     // Remember the exact search-results page (query + filters + page number)
     // so the apply flow can return to it and continue with the next job.
+    // Strip vjk= (the "highlighted job" param) so we always land at the
+    // top of the clean list rather than scrolled to the last-applied card.
     if (IS_TOP && PLATFORM === 'indeed' && agent.onResultsPage?.()) {
-      setStore({ jobbot_return_url: location.href });
+      try {
+        const u = new URL(location.href);
+        u.searchParams.delete('vjk');
+        setStore({ jobbot_return_url: u.toString() });
+      } catch {
+        setStore({ jobbot_return_url: location.href });
+      }
+    }
+    // After a completed application, pause ~4s on the list page before scanning the
+    // next job — covers the navigation case where run() never gets its own sleep.
+    if (IS_TOP && PLATFORM === 'indeed' && agent.onResultsPage?.()) {
+      const prev = await new Promise(res =>
+        chrome.storage.local.get('jobbot_applied_at', d => { void chrome.runtime.lastError; res(d?.jobbot_applied_at || 0); })
+      );
+      if (prev && Date.now() - prev < 60000) {
+        SPOT.status('⏳ Pausing before next job…', 'info');
+        await sleep(rand(3500, 5000));
+        try { chrome.storage.local.remove('jobbot_applied_at'); } catch {}
+      }
     }
     let outcome = 'done';
     try { outcome = await agent.run(); }
@@ -2170,7 +2828,8 @@
       // postings, pagination, or a search the user tweaks.
       if (IS_TOP && outcome !== 'nav') {
         lastDoneAt = Date.now();
-        SPOT.status('All visible jobs processed – monitoring for new ones… (✕ to stop)', 'info');
+        // Engine is continuous: agent will restart automatically in ~12 s
+        SPOT.status('Page complete – rescanning shortly… (✕ to stop)', 'info');
       }
       agent = null;
     }
@@ -2229,16 +2888,33 @@
     if (!data.jobbot_running || !data.jobbot_profile) return;
     try { await tabReady; } catch {} // know our tab id before deciding
     if (!flagMatchesThisTab(data.jobbot_running)) {
-      // The run lives in ANOTHER tab. If Indeed opened the apply flow in this
+      // The run lives in ANOTHER tab. If a job site opened the apply flow in this
       // new tab (it uses noopener, so window.opener is unreliable), fill it
       // here, then CLOSE this tab – the original search tab carries on.
       if (IS_TOP && PLATFORM === 'indeed') {
         const a = new IndeedAgent(new Filler(data.jobbot_profile));
         if (a.isApplyPage()) {
-          a.returnToList = async () => { // close instead of navigating away
+          a.returnToList = async () => {
             SPOT.status('Application finished – closing this tab…', 'success');
             await sleep(rand(1200, 1800));
             try { chrome.runtime.sendMessage({ type: 'CLOSE_TAB' }); } catch {}
+          };
+          a.running = true;
+          agent = a;
+          a.runApplication().catch(() => {}).finally(() => { agent = null; });
+        }
+      }
+      // Bayt sometimes opens the apply page in a new tab
+      if (IS_TOP && PLATFORM === 'bayt') {
+        const a = new BaytAgent(new Filler(data.jobbot_profile));
+        if (a.isApplyPage()) {
+          const origRun = a.runApplication.bind(a);
+          a.runApplication = async () => {
+            const ok = await origRun();
+            SPOT.status('Application finished – closing this tab…', 'success');
+            await sleep(rand(1200, 1800));
+            try { chrome.runtime.sendMessage({ type: 'CLOSE_TAB' }); } catch {}
+            return ok;
           };
           a.running = true;
           agent = a;
@@ -2272,23 +2948,30 @@
   if (IS_TOP && PLATFORM) {
     const probe = PLATFORM === 'linkedin' ? new LinkedInAgent(new Filler({}))
                 : PLATFORM === 'naukri'   ? new NaukriAgent(new Filler({}))
+                : PLATFORM === 'bayt'     ? new BaytAgent(new Filler({}))
                 : new IndeedAgent(new Filler({}));
 
-    // Floating command button: nothing runs until the user clicks this (or
-    // Start in the popup) – loading a page never initiates applications.
-    let startBtn = null;
-    function syncStartBtn() {
-      const n = selectedSet.size();
-      const show = n > 0 && !(agent && agent.running);
-      if (show && !startBtn && document.body) {
-        startBtn = document.createElement('button');
-        startBtn.id = 'jobbotx-start';
-        startBtn.addEventListener('click', () => {
-          startBtn.style.display = 'none';
+    // "Apply All" button — the single action button. If jobs are ticked it applies
+    // only those in order (selection mode); otherwise applies every visible job.
+    let applyAllBtn = null;
+    function syncApplyAllBtn() {
+      const running = !!(agent && agent.running);
+      const show = !running;
+      if (show && !applyAllBtn && document.body) {
+        applyAllBtn = document.createElement('button');
+        applyAllBtn.id = 'jobbotx-applyall';
+        applyAllBtn.addEventListener('click', () => {
+          applyAllBtn.style.display = 'none';
           attemptedSet.clear();
           lastDoneAt = 0;
           pageChurn.set(0);
-          _setSelMode(true);
+          const n = selectedSet.size();
+          if (n > 0) {
+            _setSelMode(true); // apply only ticked jobs in sequence
+          } else {
+            selectedSet.clear();
+            _setSelMode(false); // apply every visible job
+          }
           try {
             chrome.runtime.sendMessage({ type: 'GET_PROFILE' }, r => {
               void chrome.runtime.lastError;
@@ -2296,11 +2979,12 @@
             });
           } catch {}
         });
-        document.body.appendChild(startBtn);
+        document.body.appendChild(applyAllBtn);
       }
-      if (startBtn) {
-        startBtn.textContent = `▶ Apply ${n} ticked job${n === 1 ? '' : 's'}`;
-        startBtn.style.display = show ? 'block' : 'none';
+      if (applyAllBtn) {
+        const n = selectedSet.size();
+        applyAllBtn.textContent = n > 0 ? `▶ Apply ${n} selected` : '▶ Apply All';
+        applyAllBtn.style.display = show ? 'block' : 'none';
       }
     }
 
@@ -2324,7 +3008,9 @@
     }
     function syncSelAllBtn() {
       const ids = visibleIds();
-      const show = ids.length > 0 && !(agent && agent.running);
+      // Always show the Select All button whenever job cards are visible —
+      // the user should be able to bulk-select at any time, even mid-run.
+      const show = ids.length > 0;
       if (show && !selAllBtn && document.body) {
         selAllBtn = document.createElement('button');
         selAllBtn.id = 'jobbotx-selall';
@@ -2333,16 +3019,20 @@
           const allOn = cur.length && cur.every(id => selectedSet.has(id));
           cur.forEach(id => allOn ? selectedSet.remove(id) : selectedSet.add(id));
           paintTicks();
-          SPOT.status(selectedSet.size()
-            ? `${selectedSet.size()} job(s) ticked – press ▶ to apply them in sequence`
+          const n = selectedSet.size();
+          SPOT.status(n
+            ? `${n} job(s) selected – click ▶ Apply All to start`
             : 'Selection cleared', 'info');
-          syncStartBtn(); syncSelAllBtn();
+          syncApplyAllBtn(); syncSelAllBtn();
         });
         document.body.appendChild(selAllBtn);
       }
       if (selAllBtn) {
         const allOn = ids.length && ids.every(id => selectedSet.has(id));
-        selAllBtn.textContent = allOn ? '✗ Clear all' : `☑ Select all (${ids.length})`;
+        const n = selectedSet.size();
+        selAllBtn.textContent = allOn ? `✗ Deselect all (${ids.length})` : `☑ Select all (${ids.length})`;
+        // Bold badge shows how many are currently selected
+        selAllBtn.title = n > 0 ? `${n} job(s) selected` : 'Click to select all visible jobs';
         selAllBtn.style.display = show ? 'block' : 'none';
       }
     }
@@ -2350,7 +3040,8 @@
     // (Generic utility-class selectors can match header nav, icons, etc.)
     const isJobCard = card =>
       !!$('a[data-jk], [data-jk], [data-job-id], [data-occludable-job-id], ' +
-          'a[href*="viewjob"], a[href*="/jobs/view/"], a[href*="/rc/clk"], a[href*="job-listings"]', card)
+          'a[href*="viewjob"], a[href*="/jobs/view/"], a[href*="/rc/clk"], ' +
+          'a[href*="job-listings"], a[href*="bayt.com"][href*="/jobs/"]', card)
       || (card.matches && card.matches('[data-jk], [data-job-id], [data-occludable-job-id]'));
 
     const tickTimer = setInterval(() => {
@@ -2358,7 +3049,9 @@
       SPOT.ensure(); // styles must exist before any run starts, or ticks render invisible
 
       // No ticks on apply/transitional pages – only on job lists
-      if (PLATFORM === 'indeed' && probe.isApplyPage()) return;
+      if (PLATFORM === 'indeed'  && probe.isApplyPage())  return;
+      if (PLATFORM === 'bayt'    && probe.isApplyPage())  return;
+      if (PLATFORM === 'naukri'  && probe.onDetailPage()) return;
 
       let cards;
       try { cards = probe.jobCards(); } catch { return; }
@@ -2420,13 +3113,13 @@
           const on = selectedSet.toggle(id);
           t.classList.toggle('on', on);
           SPOT.status(selectedSet.size()
-            ? `${selectedSet.size()} job(s) ticked – press ▶ to apply them in sequence`
-            : 'No jobs ticked – Start applies all jobs', 'info');
-          syncStartBtn(); syncSelAllBtn();
+            ? `${selectedSet.size()} job(s) selected – click ▶ Apply All to start`
+            : 'Selection cleared – click ▶ Apply All to apply all visible jobs', 'info');
+          syncApplyAllBtn(); syncSelAllBtn();
         });
         wrap.appendChild(t);
       }
-      syncStartBtn();
+      syncApplyAllBtn();
       syncSelAllBtn();
     }, 1500);
   }
@@ -2455,9 +3148,10 @@
         return;
       }
       if (agent && agent.running) return;
-      // Monitor mode: after a full pass, re-scan every ~60s for new postings
-      // instead of hammering an exhausted list.
-      if (lastDoneAt && Date.now() - lastDoneAt < 60000) return;
+      // Continuous engine: re-scan after a short cooldown so the agent never
+      // idles for long. Once the user presses Start the run never stops until
+      // they explicitly press Stop (or click ✕ on the bar).
+      if (lastDoneAt && Date.now() - lastDoneAt < 12000) return;
       try {
         chrome.storage.local.get(['jobbot_running', 'jobbot_profile'], d => {
           if (chrome.runtime.lastError) return;

@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>JobBot CRM – Application Tracker</title>
+  <title>AutoApplier CRM – Application Tracker</title>
   <style>
     :root {
       --violet: #7c3aed; --bg: #0f0a1f; --card: #1a1230; --text: #ece9f7;
@@ -60,7 +60,7 @@
 <body>
   <div class="container">
     <header>
-      <h1>📋 JobBot CRM <a href="/" style="font-size:13px;color:var(--muted)">← landing</a></h1>
+      <h1>📋 AutoApplier CRM <a href="/" style="font-size:13px;color:var(--muted)">← landing</a></h1>
       <span id="live" class="live" style="display:none"><span class="dot"></span><span id="live-txt">live</span></span>
     </header>
 
@@ -139,7 +139,7 @@
       $('#c-week').textContent = week;
 
       if (!rows.length) {
-        $('#list').innerHTML = '<div class="empty">📭 No applications tracked yet.<br><small>Run the JobBot agent with CRM sync configured in the extension popup — every application lands here in real time.</small></div>';
+        $('#list').innerHTML = '<div class="empty">📭 No applications tracked yet.<br><small>Run the AutoApplier agent with CRM sync configured in the extension popup — every application lands here in real time.</small></div>';
         return;
       }
       $('#list').innerHTML = `<table><thead><tr>

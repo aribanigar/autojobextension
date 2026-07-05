@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>JobBot – Choose a Plan</title>
+  <title>AutoApplier – Choose a Plan</title>
   <script src="https://checkout.razorpay.com/v1/checkout.js"></script>
   <style>
     :root {
@@ -39,7 +39,7 @@
 <body>
   <div class="container">
     <header>
-      <h1>🚀 JobBot Plans <a href="/">← home</a></h1>
+      <h1>🚀 AutoApplier Plans <a href="/">← home</a></h1>
       <span id="who" class="who"></span>
     </header>
 
@@ -58,7 +58,7 @@
 
     <!-- plans -->
     <div id="app" style="display:none">
-      <p class="lead">Pick a plan to unlock the JobBot extension and CRM. Payments are processed securely by Razorpay.</p>
+      <p class="lead">Pick a plan to unlock the AutoApplier extension and CRM. Payments are processed securely by Razorpay.</p>
       <div id="plans" class="plans"></div>
       <div id="msg" class="msg"></div>
       <div class="note">Already purchased? <a href="/crm.html" style="color:#a78bfa">Open your dashboard →</a></div>
@@ -124,7 +124,7 @@
         if (!r.ok) throw new Error(d.error || r.status);
 
         const opts = {
-          key: d.key_id, name: 'JobBot', description: name,
+          key: d.key_id, name: 'AutoApplier', description: name,
           prefill: { email: d.email }, theme: { color: '#7c3aed' },
           handler: async (resp) => {
             $('#msg').textContent = 'Verifying payment…';

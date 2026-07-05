@@ -3,28 +3,28 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>JobBot – Admin</title>
+  <title>AutoApplier – Admin Console</title>
   <style>
-    :root{--violet:#7c3aed;--bg:#0f0a1f;--card:#1a1230;--text:#ece9f7;--muted:#a89fc8;--border:rgba(124,58,237,.25);--green:#34d399;--red:#f87171;--amber:#fbbf24}
+    :root{--violet:#7c3aed;--bg:#080810;--card:#12121e;--text:#f0eef9;--muted:#8b85a8;--border:rgba(124,58,237,.18);--green:#22c55e;--red:#ef4444}
     *{margin:0;padding:0;box-sizing:border-box}
     body{font-family:system-ui,-apple-system,sans-serif;background:var(--bg);color:var(--text);min-height:100vh}
     .container{max-width:1100px;margin:0 auto;padding:24px}
     header{display:flex;align-items:center;justify-content:space-between;padding:8px 0 20px;flex-wrap:wrap;gap:12px}
     h1{font-size:22px}h1 a{color:var(--muted);font-size:13px;text-decoration:none}
-    h2{font-size:16px;margin:24px 0 12px}
+    h2{font-size:16px;margin:0 0 12px}
     input,select,button,textarea{background:var(--card);border:1px solid var(--border);color:var(--text);border-radius:9px;padding:9px 12px;font-size:14px;font-family:inherit}
     button{cursor:pointer}.btn-v{background:var(--violet);border-color:var(--violet);font-weight:600}
     .tabs{display:flex;gap:8px;margin-bottom:16px;flex-wrap:wrap}
     .tabs button{background:var(--card)}.tabs button.on{background:var(--violet);border-color:var(--violet)}
     table{width:100%;border-collapse:collapse;background:var(--card);border-radius:12px;overflow:hidden;margin-top:8px}
-    th,td{padding:10px 12px;text-align:left;font-size:13px;border-bottom:1px solid rgba(124,58,237,.12);vertical-align:middle}
+    th,td{padding:10px 12px;text-align:left;font-size:13px;border-bottom:1px solid rgba(124,58,237,.1);vertical-align:middle}
     th{color:var(--muted);font-size:12px;text-transform:uppercase;letter-spacing:.04em}
     tr:last-child td{border-bottom:none}
     .pill{padding:2px 9px;border-radius:999px;font-size:11px;font-weight:700}
-    .pill.yes{background:rgba(52,211,153,.15);color:var(--green)}.pill.no{background:rgba(168,159,200,.15);color:var(--muted)}
-    .pill.on{background:rgba(52,211,153,.15);color:var(--green)}.pill.off{background:rgba(248,113,113,.15);color:var(--red)}
+    .pill.yes,.pill.on{background:rgba(34,197,94,.15);color:var(--green)}
+    .pill.no,.pill.off{background:rgba(239,68,68,.15);color:var(--red)}
     .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px}
-    .card{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:16px}
+    .card{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:16px;margin-bottom:16px}
     .gate{max-width:340px;margin:60px auto;text-align:center}
     .gate input{width:100%;margin:8px 0}
     .msg{font-size:13px;margin-top:8px;min-height:16px}.msg.err{color:var(--red)}.msg.ok{color:var(--green)}
@@ -35,7 +35,7 @@
 <body>
   <div class="container">
     <header>
-      <h1>🛠️ JobBot Admin <a href="/crm.html">← dashboard</a></h1>
+      <h1>🛠️ AutoApplier Admin <a href="/">← home</a></h1>
       <span id="who" style="font-size:13px;color:var(--muted)"></span>
     </header>
 
@@ -51,20 +51,18 @@
     <div id="app" style="display:none">
       <div class="tabs">
         <button data-tab="plans" class="on">Plans</button>
-        <button data-tab="users">Users</button>
+        <button data-tab="users">Users &amp; Access</button>
         <button data-tab="purchases">Purchases</button>
       </div>
 
       <!-- PLANS -->
       <section id="tab-plans">
         <div class="card">
-          <h2 style="margin-top:0">Create a plan</h2>
+          <h2>Create a plan</h2>
           <div class="grid">
             <div><label>Name</label><input id="p-name" placeholder="Pro" style="width:100%"></div>
             <div><label>Price (₹)</label><input id="p-price" type="number" min="0" placeholder="499" style="width:100%"></div>
-            <div><label>Billing</label>
-              <select id="p-interval" style="width:100%"><option value="once">One-time (lifetime)</option><option value="monthly">Monthly subscription</option></select>
-            </div>
+            <div><label>Billing</label><select id="p-interval" style="width:100%"><option value="once">One-time (lifetime)</option><option value="monthly">Monthly subscription</option></select></div>
             <div><label>Active</label><select id="p-active" style="width:100%"><option value="true">Yes</option><option value="false">No</option></select></div>
           </div>
           <label>Description</label><textarea id="p-desc" rows="2" style="width:100%" placeholder="What this plan includes"></textarea>
@@ -79,7 +77,16 @@
       <!-- USERS -->
       <section id="tab-users" style="display:none">
         <div class="card">
-          <label>Grant / revoke access manually</label>
+          <h2>Create an account (manual / provisioned)</h2>
+          <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+            <input id="u-email" type="email" placeholder="user@email.com" style="flex:1;min-width:180px">
+            <input id="u-pass" type="text" placeholder="temp password" style="width:180px">
+            <button class="btn-v mini" id="u-create">Create</button>
+          </div>
+          <div id="u-msg" class="msg"></div>
+        </div>
+        <div class="card">
+          <h2>Grant / revoke access</h2>
           <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
             <input id="g-email" type="email" placeholder="user@email.com" style="flex:1;min-width:180px">
             <input id="g-days" type="number" placeholder="days (blank = lifetime)" style="width:190px">
@@ -92,37 +99,33 @@
       </section>
 
       <!-- PURCHASES -->
-      <section id="tab-purchases" style="display:none">
-        <div id="purchases-list"></div>
-      </section>
+      <section id="tab-purchases" style="display:none"><div id="purchases-list"></div></section>
     </div>
   </div>
 
   <script>
     const $ = s => document.querySelector(s);
-    const TOKEN='jobbot_crm_token', EMAIL='jobbot_crm_email';
+    const TOKEN = 'autoapplier_admin_token';
     let token = localStorage.getItem(TOKEN) || '';
-
-    const api = (path, init={}) => fetch(path, { ...init, headers:{'Content-Type':'application/json',Authorization:'Bearer '+token, ...init.headers} })
-      .then(async r => { const d = await r.json().catch(()=>({})); if (!r.ok) throw new Error(d.error||r.status); return d; });
     const esc = s => { const d=document.createElement('div'); d.textContent=String(s??''); return d.innerHTML; };
+
+    const adminPost = body => fetch('/api/admin', {
+      method:'POST', headers:{'Content-Type':'application/json', Authorization:'Bearer '+token}, body:JSON.stringify(body)
+    }).then(async r => { const d = await r.json().catch(()=>({})); if (!r.ok) throw new Error(d.error||r.status); return d; });
 
     async function login() {
       const email=$('#email').value.trim(), password=$('#pass').value;
       try {
-        const r = await fetch('/api/auth',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'login',email,password})});
+        const r = await fetch('/api/admin',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'login',email,password})});
         const d = await r.json(); if (!r.ok) throw new Error(d.error||r.status);
-        if (!d.is_admin) throw new Error('This account is not an admin');
-        token=d.token; localStorage.setItem(TOKEN,token); localStorage.setItem(EMAIL,d.email);
-        boot();
+        token=d.token; localStorage.setItem(TOKEN,token); $('#who').textContent=d.email; boot();
       } catch(e){ $('#gate-msg').className='msg err'; $('#gate-msg').textContent=e.message; }
     }
     $('#login').onclick=login;
     $('#pass').addEventListener('keydown',e=>{if(e.key==='Enter')login();});
 
     document.querySelectorAll('.tabs button').forEach(b=>b.onclick=()=>{
-      document.querySelectorAll('.tabs button').forEach(x=>x.classList.remove('on'));
-      b.classList.add('on');
+      document.querySelectorAll('.tabs button').forEach(x=>x.classList.remove('on')); b.classList.add('on');
       ['plans','users','purchases'].forEach(t=>$('#tab-'+t).style.display = t===b.dataset.tab?'':'none');
       if(b.dataset.tab==='users') loadUsers();
       if(b.dataset.tab==='purchases') loadPurchases();
@@ -133,20 +136,16 @@
       const features = {};
       $('#p-feats').value.split('\n').map(s=>s.trim()).filter(Boolean).forEach(f=>features[f]=true);
       try {
-        await api('/api/plans',{method:'POST',body:JSON.stringify({
-          name:$('#p-name').value.trim(),
-          description:$('#p-desc').value.trim(),
-          price_paise: Math.round(parseFloat($('#p-price').value||'0')*100),
-          interval:$('#p-interval').value, active:$('#p-active').value==='true', features,
-        })});
+        await adminPost({ action:'create_plan', name:$('#p-name').value.trim(), description:$('#p-desc').value.trim(),
+          price_paise: Math.round(parseFloat($('#p-price').value||'0')*100), interval:$('#p-interval').value,
+          active:$('#p-active').value==='true', features });
         $('#p-msg').className='msg ok'; $('#p-msg').textContent='Plan created';
-        $('#p-name').value=$('#p-price').value=$('#p-desc').value=$('#p-feats').value='';
-        loadPlans();
+        $('#p-name').value=$('#p-price').value=$('#p-desc').value=$('#p-feats').value=''; loadPlans();
       } catch(e){ $('#p-msg').className='msg err'; $('#p-msg').textContent=e.message; }
     };
     async function loadPlans() {
       try {
-        const plans = await api('/api/plans?all=1');
+        const plans = await adminPost({ action:'list_plans' });
         $('#plans-list').innerHTML = `<table><thead><tr><th>Name</th><th>Price</th><th>Billing</th><th>Active</th><th></th></tr></thead><tbody>${
           plans.map(p=>`<tr>
             <td>${esc(p.name)}<div style="color:var(--muted);font-size:12px">${esc(p.description||'')}</div></td>
@@ -155,66 +154,59 @@
             <td><span class="pill ${p.active?'on':'off'}">${p.active?'active':'inactive'}</span></td>
             <td style="white-space:nowrap">
               <button class="mini" data-toggle="${p.id}" data-active="${p.active}">${p.active?'Deactivate':'Activate'}</button>
-              <button class="mini" data-del="${p.id}">✕</button>
-            </td></tr>`).join('')}</tbody></table>`;
-        $('#plans-list').querySelectorAll('[data-toggle]').forEach(b=>b.onclick=async()=>{
-          await api('/api/plans',{method:'PATCH',body:JSON.stringify({id:b.dataset.toggle,active:b.dataset.active!=='true'})}); loadPlans();
-        });
-        $('#plans-list').querySelectorAll('[data-del]').forEach(b=>b.onclick=async()=>{
-          if(confirm('Delete this plan?')){ await api('/api/plans?id='+b.dataset.del,{method:'DELETE'}); loadPlans(); }
-        });
+              <button class="mini" data-del="${p.id}">✕</button></td></tr>`).join('')}</tbody></table>`;
+        $('#plans-list').querySelectorAll('[data-toggle]').forEach(b=>b.onclick=async()=>{ await adminPost({action:'update_plan',id:b.dataset.toggle,active:b.dataset.active!=='true'}); loadPlans(); });
+        $('#plans-list').querySelectorAll('[data-del]').forEach(b=>b.onclick=async()=>{ if(confirm('Delete this plan?')){ await adminPost({action:'delete_plan',id:b.dataset.del}); loadPlans(); } });
       } catch(e){ $('#plans-list').innerHTML='<p class="msg err">'+esc(e.message)+'</p>'; }
     }
 
     // USERS
+    $('#u-create').onclick = async () => {
+      try { await adminPost({action:'create_user',email:$('#u-email').value.trim(),password:$('#u-pass').value});
+        $('#u-msg').className='msg ok'; $('#u-msg').textContent='Account created'; $('#u-email').value=$('#u-pass').value=''; loadUsers(); }
+      catch(e){ $('#u-msg').className='msg err'; $('#u-msg').textContent=e.message; }
+    };
     $('#g-grant').onclick = async () => {
-      try { await api('/api/admin',{method:'POST',body:JSON.stringify({action:'grant',email:$('#g-email').value.trim(),days:$('#g-days').value?parseInt($('#g-days').value):null})});
+      try { await adminPost({action:'grant',email:$('#g-email').value.trim(),days:$('#g-days').value?parseInt($('#g-days').value):null});
         $('#g-msg').className='msg ok'; $('#g-msg').textContent='Access granted'; loadUsers(); }
       catch(e){ $('#g-msg').className='msg err'; $('#g-msg').textContent=e.message; }
     };
     $('#g-revoke').onclick = async () => {
-      try { await api('/api/admin',{method:'POST',body:JSON.stringify({action:'revoke',email:$('#g-email').value.trim()})});
+      try { await adminPost({action:'revoke',email:$('#g-email').value.trim()});
         $('#g-msg').className='msg ok'; $('#g-msg').textContent='Access revoked'; loadUsers(); }
       catch(e){ $('#g-msg').className='msg err'; $('#g-msg').textContent=e.message; }
     };
     async function loadUsers() {
       try {
-        const users = await api('/api/admin?view=users');
-        $('#users-list').innerHTML = `<table><thead><tr><th>Email</th><th>Licensed</th><th>Type</th><th>Expires</th><th>Admin</th></tr></thead><tbody>${
+        const users = await adminPost({ action:'list_users' });
+        $('#users-list').innerHTML = `<table><thead><tr><th>Email</th><th>Licensed</th><th>Type</th><th>Expires</th><th></th></tr></thead><tbody>${
           users.map(u=>`<tr>
             <td>${esc(u.email)}</td>
             <td><span class="pill ${u.licensed?'yes':'no'}">${u.licensed?'yes':'no'}</span></td>
             <td>${u.interval?esc(u.interval):'–'}</td>
             <td style="color:var(--muted)">${u.expires_at?new Date(u.expires_at).toLocaleDateString():(u.licensed?'lifetime':'–')}</td>
-            <td><span class="pill ${u.is_admin?'yes':'no'}">${u.is_admin?'admin':'user'}</span></td>
+            <td><button class="mini" data-del="${esc(u.email)}">Delete</button></td>
           </tr>`).join('')}</tbody></table>`;
+        $('#users-list').querySelectorAll('[data-del]').forEach(b=>b.onclick=async()=>{ if(confirm('Delete '+b.dataset.del+'?')){ await adminPost({action:'delete_user',email:b.dataset.del}); loadUsers(); } });
       } catch(e){ $('#users-list').innerHTML='<p class="msg err">'+esc(e.message)+'</p>'; }
     }
 
     // PURCHASES
     async function loadPurchases() {
       try {
-        const rows = await api('/api/admin?view=purchases');
+        const rows = await adminPost({ action:'list_purchases' });
         $('#purchases-list').innerHTML = `<table><thead><tr><th>Email</th><th>Status</th><th>Amount</th><th>Type</th><th>When</th></tr></thead><tbody>${
           rows.map(p=>`<tr>
             <td>${esc(p.user_email)}</td>
             <td><span class="pill ${['paid','active'].includes(p.status)?'on':'off'}">${esc(p.status)}</span></td>
             <td>₹${(p.amount_paise/100).toLocaleString('en-IN')}</td>
             <td>${esc(p.interval)}</td>
-            <td style="color:var(--muted)">${new Date(p.created_at).toLocaleString()}</td>
-          </tr>`).join('')}</tbody></table>`;
+            <td style="color:var(--muted)">${new Date(p.created_at).toLocaleString()}</td></tr>`).join('')}</tbody></table>`;
       } catch(e){ $('#purchases-list').innerHTML='<p class="msg err">'+esc(e.message)+'</p>'; }
     }
 
-    function boot() {
-      $('#gate').style.display='none'; $('#app').style.display='';
-      $('#who').textContent = localStorage.getItem(EMAIL)||'';
-      loadPlans();
-    }
-    (async () => {
-      if (!token) return;
-      try { const d = await api('/api/license'); if (d.is_admin) boot(); } catch {}
-    })();
+    function boot(){ $('#gate').style.display='none'; $('#app').style.display=''; loadPlans(); }
+    if (token) boot();
   </script>
 </body>
 </html>

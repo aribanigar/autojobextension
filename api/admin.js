@@ -1,28 +1,85 @@
-// /api/admin – admin-only overview and manual licence control.
-//   GET  ?view=users      → all accounts + whether each has an active licence
-//   GET  ?view=purchases  → all purchase rows (most recent first)
-//   POST { action:'grant',  email, days? }  → give a manual licence (days null = lifetime)
-//   POST { action:'revoke', email }         → expire all of a user's licences
-//   POST { action:'set_admin', email, is_admin } → toggle another user's admin flag
-// Requires an admin bearer token.
-import { cors, sb, backendConfigured, getUserByToken } from './_lib.js';
+// /api/admin – AutoApplier admin console (combined).
+// Auth: POST { action:'login', email, password } → { token, role:'admin' }.
+//   The admin token is a deterministic SHA-256 of the fixed credentials
+//   (ADMIN_EMAIL / ADMIN_PASSWORD env, with defaults). All other actions
+//   require  Authorization: Bearer <that token>.
+//
+// User management (invite/provision):
+//   create_user { email, password }        → make an account
+//   list_users                             → accounts + whether each is licensed
+//   delete_user { email }                  → remove an account
+//
+// Licence control (works alongside self-service Razorpay checkout):
+//   grant   { email, days? }               → give access (days null = lifetime)
+//   revoke  { email }                      → cancel a user's active licences
+//   list_purchases                         → all purchase rows
+//
+// Plan management (what the checkout page sells):
+//   create_plan { name, price_paise, interval, description?, features?, active? }
+//   list_plans                             → every plan
+//   update_plan { id, ...fields }          → edit a plan
+//   delete_plan { id }                     → remove a plan
+import { createHash, scryptSync, randomBytes } from 'crypto';
+import { sb, backendConfigured, rzp, razorpayConfigured } from './_lib.js';
+
+const ADMIN_EMAIL    = process.env.ADMIN_EMAIL    || 'arfatshah.qa@gmail.com';
+const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || 'Autoapplier@54321';
+
+function cors(res) {
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Methods', 'POST,OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+}
+
+const adminToken = () =>
+  createHash('sha256').update(`autoapplier-admin:${ADMIN_EMAIL}:${ADMIN_PASSWORD}`).digest('hex');
+
+const verifyAdmin = req => {
+  const m = (req.headers.authorization || '').match(/^Bearer (.+)$/i);
+  return m && m[1] === adminToken();
+};
+
+const hashPassword = (pw, salt = randomBytes(16).toString('hex')) =>
+  `${salt}:${scryptSync(pw, salt, 64).toString('hex')}`;
 
 export default async function handler(req, res) {
-  cors(res, 'GET,POST,OPTIONS');
+  cors(res);
   if (req.method === 'OPTIONS') return res.status(204).end();
-  if (!backendConfigured()) return res.status(500).json({ error: 'Backend not configured' });
+  if (req.method !== 'POST') return res.status(405).json({ error: 'POST only' });
 
-  const user = await getUserByToken(req);
-  if (!user || !user.is_admin) return res.status(403).json({ error: 'Admin only' });
+  const { action, email: rawEmail, password } = req.body || {};
+
+  // ── Admin login (no Supabase required) ──────────────────────────────────
+  if (action === 'login') {
+    const email = String(rawEmail || '').trim().toLowerCase();
+    if (email !== ADMIN_EMAIL.toLowerCase() || password !== ADMIN_PASSWORD) {
+      return res.status(401).json({ error: 'Invalid admin credentials' });
+    }
+    return res.status(200).json({ token: adminToken(), role: 'admin', email: ADMIN_EMAIL });
+  }
+
+  // ── All other actions require a valid admin token + Supabase ─────────────
+  if (!verifyAdmin(req)) return res.status(401).json({ error: 'Admin auth required' });
+  if (!backendConfigured()) {
+    return res.status(500).json({ error: 'Backend not configured: set SUPABASE_URL and SUPABASE_SERVICE_KEY' });
+  }
+
+  const email = String(rawEmail || '').trim().toLowerCase();
 
   try {
-    if (req.method === 'GET') {
-      if (req.query.view === 'purchases') {
-        const rows = await sb('purchases?order=created_at.desc&limit=500');
-        return res.status(200).json(rows);
-      }
-      // users + active-licence flag
-      const users = await sb('users?select=id,email,is_admin,created_at&order=created_at.desc&limit=1000');
+    // ── Users ──────────────────────────────────────────────────────────────
+    if (action === 'create_user') {
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return res.status(400).json({ error: 'Valid email required' });
+      if (!password || String(password).length < 6)  return res.status(400).json({ error: 'Password must be at least 6 characters' });
+      const existing = await sb(`users?email=eq.${encodeURIComponent(email)}&select=id`);
+      if (existing.length) return res.status(409).json({ error: 'Email already registered' });
+      const token = randomBytes(32).toString('hex');
+      await sb('users', { method: 'POST', body: JSON.stringify([{ email, password_hash: hashPassword(String(password)), token }]) });
+      return res.status(201).json({ ok: true, email });
+    }
+
+    if (action === 'list_users') {
+      const users = await sb('users?select=email,created_at,is_admin&order=created_at.desc&limit=1000');
       const nowIso = new Date().toISOString();
       const active = await sb(
         `purchases?status=in.(paid,active)&or=(expires_at.is.null,expires_at.gte.${encodeURIComponent(nowIso)})&select=user_email,interval,expires_at`
@@ -37,46 +94,82 @@ export default async function handler(req, res) {
       })));
     }
 
-    if (req.method === 'POST') {
-      const { action, email, days, is_admin } = req.body || {};
-      const target = String(email || '').trim().toLowerCase();
-      if (!action) return res.status(400).json({ error: 'action required' });
-
-      if (action === 'grant') {
-        if (!target) return res.status(400).json({ error: 'email required' });
-        const now = new Date();
-        const expires_at = days ? new Date(now.getTime() + Number(days) * 864e5).toISOString() : null;
-        const rows = await sb('purchases', {
-          method: 'POST',
-          body: JSON.stringify([{
-            user_email: target, interval: days ? 'monthly' : 'once',
-            amount_paise: 0, status: days ? 'active' : 'paid',
-            starts_at: now.toISOString(), expires_at,
-          }]),
-        });
-        return res.status(201).json(rows[0]);
-      }
-
-      if (action === 'revoke') {
-        if (!target) return res.status(400).json({ error: 'email required' });
-        await sb(`purchases?user_email=eq.${encodeURIComponent(target)}&status=in.(paid,active)`, {
-          method: 'PATCH', body: JSON.stringify({ status: 'cancelled' }),
-        });
-        return res.status(200).json({ ok: true });
-      }
-
-      if (action === 'set_admin') {
-        if (!target) return res.status(400).json({ error: 'email required' });
-        await sb(`users?email=eq.${encodeURIComponent(target)}`, {
-          method: 'PATCH', body: JSON.stringify({ is_admin: !!is_admin }),
-        });
-        return res.status(200).json({ ok: true });
-      }
-
-      return res.status(400).json({ error: 'Unknown action' });
+    if (action === 'delete_user') {
+      if (!email) return res.status(400).json({ error: 'email required' });
+      await sb(`users?email=eq.${encodeURIComponent(email)}`, { method: 'DELETE' });
+      return res.status(200).json({ ok: true });
     }
 
-    return res.status(405).json({ error: 'Method not allowed' });
+    // ── Licence control ────────────────────────────────────────────────────
+    if (action === 'grant') {
+      if (!email) return res.status(400).json({ error: 'email required' });
+      const now = new Date();
+      const { days } = req.body || {};
+      const expires_at = days ? new Date(now.getTime() + Number(days) * 864e5).toISOString() : null;
+      const rows = await sb('purchases', {
+        method: 'POST',
+        body: JSON.stringify([{
+          user_email: email, interval: days ? 'monthly' : 'once',
+          amount_paise: 0, status: days ? 'active' : 'paid',
+          starts_at: now.toISOString(), expires_at,
+        }]),
+      });
+      return res.status(201).json(rows[0]);
+    }
+
+    if (action === 'revoke') {
+      if (!email) return res.status(400).json({ error: 'email required' });
+      await sb(`purchases?user_email=eq.${encodeURIComponent(email)}&status=in.(paid,active)`, {
+        method: 'PATCH', body: JSON.stringify({ status: 'cancelled' }),
+      });
+      return res.status(200).json({ ok: true });
+    }
+
+    if (action === 'list_purchases') {
+      return res.status(200).json(await sb('purchases?order=created_at.desc&limit=500'));
+    }
+
+    // ── Plan management ────────────────────────────────────────────────────
+    if (action === 'list_plans') {
+      return res.status(200).json(await sb('plans?order=created_at.desc'));
+    }
+
+    if (action === 'create_plan') {
+      const { name, description = '', price_paise, interval = 'once', features = {}, active = true } = req.body || {};
+      if (!name || !Number.isInteger(price_paise) || price_paise < 0) {
+        return res.status(400).json({ error: 'name and a non-negative integer price_paise are required' });
+      }
+      if (!['once', 'monthly'].includes(interval)) return res.status(400).json({ error: "interval must be 'once' or 'monthly'" });
+      let razorpay_plan_id = null;
+      if (interval === 'monthly') {
+        if (!razorpayConfigured()) return res.status(400).json({ error: 'Razorpay keys not set — cannot create a recurring plan' });
+        const rp = await rzp('plans', {
+          method: 'POST',
+          body: JSON.stringify({ period: 'monthly', interval: 1, item: { name, amount: price_paise, currency: 'INR', description: description || name } }),
+        });
+        razorpay_plan_id = rp.id;
+      }
+      const rows = await sb('plans', { method: 'POST', body: JSON.stringify([{ name, description, price_paise, interval, razorpay_plan_id, features, active }]) });
+      return res.status(201).json(rows[0]);
+    }
+
+    if (action === 'update_plan') {
+      const { id, ...fields } = req.body || {};
+      if (!id) return res.status(400).json({ error: 'id required' });
+      const allowed = {};
+      for (const k of ['name', 'description', 'price_paise', 'features', 'active']) if (k in fields) allowed[k] = fields[k];
+      const rows = await sb(`plans?id=eq.${encodeURIComponent(id)}`, { method: 'PATCH', body: JSON.stringify(allowed) });
+      return res.status(200).json(rows[0] || null);
+    }
+
+    if (action === 'delete_plan') {
+      const { id } = req.body || {};
+      if (!id) return res.status(400).json({ error: 'id required' });
+      await sb(`plans?id=eq.${encodeURIComponent(id)}`, { method: 'DELETE' });
+      return res.status(200).json({ ok: true });
+    }
+
+    return res.status(400).json({ error: 'Unknown action' });
   } catch (e) {
     return res.status(502).json({ error: String(e.message || e) });
   }
