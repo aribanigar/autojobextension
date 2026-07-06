@@ -155,7 +155,7 @@
 
     document.querySelectorAll('.tabs button').forEach(b=>b.onclick=()=>{
       document.querySelectorAll('.tabs button').forEach(x=>x.classList.remove('on')); b.classList.add('on');
-      ['plans','users','purchases'].forEach(t=>$('#tab-'+t).style.display = t===b.dataset.tab?'':'none');
+      ['plans','users','coupons','purchases'].forEach(t=>$('#tab-'+t).style.display = t===b.dataset.tab?'':'none');
       if(b.dataset.tab==='users') loadUsers();
       if(b.dataset.tab==='coupons') loadCoupons();
       if(b.dataset.tab==='purchases') loadPurchases();
