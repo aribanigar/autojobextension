@@ -86,3 +86,29 @@ create index if not exists purchases_user_idx  on purchases (user_email);
 create index if not exists purchases_order_idx on purchases (razorpay_order_id);
 create index if not exists purchases_sub_idx   on purchases (razorpay_subscription_id);
 create index if not exists purchases_status_idx on purchases (status);
+
+-- ── Referrals / discount codes ───────────────────────────────────────────────
+-- A code gives the BUYER a discount and its owner (the referrer) a reward of
+-- reward_days free access per successful purchase. owner_email is null for
+-- pure admin promo codes (discount only, no referrer to reward).
+create table if not exists coupons (
+  id             uuid primary key default gen_random_uuid(),
+  code           text unique not null,
+  owner_email    text,                                   -- referrer, null = admin promo
+  discount_type  text not null default 'percent',        -- percent | flat
+  discount_value integer not null default 0,             -- percent (0-100) or paise (flat)
+  reward_days    integer not null default 0,             -- days credited to referrer per use
+  max_uses       integer,                                -- null = unlimited
+  used_count     integer not null default 0,
+  active         boolean not null default true,
+  created_at     timestamptz not null default now()
+);
+alter table coupons enable row level security;
+create index if not exists coupons_owner_idx on coupons (owner_email);
+
+-- Track which code/referrer each purchase used, and whether the referrer has
+-- already been rewarded for it (idempotency across verify + webhook).
+alter table purchases add column if not exists coupon_code    text;
+alter table purchases add column if not exists referrer_email text;
+alter table purchases add column if not exists discount_paise integer not null default 0;
+alter table purchases add column if not exists rewarded       boolean not null default false;

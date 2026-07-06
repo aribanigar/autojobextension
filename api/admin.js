@@ -181,6 +181,46 @@ export default async function handler(req, res) {
       return res.status(200).json({ ok: true });
     }
 
+    // ── Referral / discount codes ──────────────────────────────────────────
+    if (action === 'create_coupon') {
+      const { code, owner_email = null, discount_type = 'percent', discount_value, reward_days = 0, max_uses = null, active = true } = req.body || {};
+      const c = String(code || '').trim().toUpperCase();
+      if (!c) return res.status(400).json({ error: 'code required' });
+      if (!['percent', 'flat'].includes(discount_type)) return res.status(400).json({ error: "discount_type must be 'percent' or 'flat'" });
+      if (!Number.isInteger(discount_value) || discount_value < 0) return res.status(400).json({ error: 'discount_value must be a non-negative integer (percent, or paise for flat)' });
+      const exists = await sb(`coupons?code=eq.${encodeURIComponent(c)}&select=id`);
+      if (exists.length) return res.status(409).json({ error: 'A code with that name already exists' });
+      const rows = await sb('coupons', {
+        method: 'POST',
+        body: JSON.stringify([{
+          code: c, owner_email: owner_email ? String(owner_email).trim().toLowerCase() : null,
+          discount_type, discount_value, reward_days: Number(reward_days) || 0,
+          max_uses: max_uses ? Number(max_uses) : null, active: !!active,
+        }]),
+      });
+      return res.status(201).json(rows[0]);
+    }
+
+    if (action === 'list_coupons') {
+      return res.status(200).json(await sb('coupons?order=created_at.desc&limit=500'));
+    }
+
+    if (action === 'update_coupon') {
+      const { id, ...fields } = req.body || {};
+      if (!id) return res.status(400).json({ error: 'id required' });
+      const allowed = {};
+      for (const k of ['discount_type', 'discount_value', 'reward_days', 'max_uses', 'active', 'owner_email']) if (k in fields) allowed[k] = fields[k];
+      const rows = await sb(`coupons?id=eq.${encodeURIComponent(id)}`, { method: 'PATCH', body: JSON.stringify(allowed) });
+      return res.status(200).json(rows[0] || null);
+    }
+
+    if (action === 'delete_coupon') {
+      const { id } = req.body || {};
+      if (!id) return res.status(400).json({ error: 'id required' });
+      await sb(`coupons?id=eq.${encodeURIComponent(id)}`, { method: 'DELETE' });
+      return res.status(200).json({ ok: true });
+    }
+
     return res.status(400).json({ error: 'Unknown action' });
   } catch (e) {
     return res.status(502).json({ error: String(e.message || e) });

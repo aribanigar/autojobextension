@@ -50,6 +50,11 @@
     </header>
 
     <p class="lead">Choose a plan to unlock the AutoApplier extension and CRM. Secure payment via Razorpay — you'll create your account in one step at checkout.</p>
+    <div style="display:flex;gap:8px;align-items:center;max-width:380px;margin-bottom:18px">
+      <input id="ref-code" placeholder="Referral / discount code (optional)" autocomplete="off"
+             style="flex:1;background:var(--card);border:1px solid var(--border);color:var(--text);border-radius:9px;padding:10px 12px;font-size:14px;text-transform:uppercase" />
+      <span id="ref-note" style="font-size:12px;color:var(--green);white-space:nowrap"></span>
+    </div>
     <div id="plans" class="plans"></div>
     <div id="msg" class="msg"></div>
     <div class="note">Already have a plan? <a href="/crm.html">Open your dashboard →</a></div>
@@ -148,11 +153,14 @@
       if (!pendingPlan) return;
       $('#msg').className='msg'; $('#msg').textContent = 'Starting secure checkout…';
       try {
-        const r = await fetch('/api/checkout', { method:'POST', headers:{'Content-Type':'application/json',Authorization:'Bearer '+token}, body:JSON.stringify({plan_id:pendingPlan.id}) });
+        const code = ($('#ref-code').value || '').trim();
+        const r = await fetch('/api/checkout', { method:'POST', headers:{'Content-Type':'application/json',Authorization:'Bearer '+token}, body:JSON.stringify({plan_id:pendingPlan.id, code}) });
         const d = await r.json();
         if (r.status === 401) { token=''; localStorage.removeItem(TOKEN); return start(pendingPlan.id, pendingPlan.name); }
-        if (r.status === 402 || (d.active)) { location.href='/crm.html'; return; } // already licensed
         if (!r.ok) throw new Error(d.error || r.status);
+        if (d.free) { $('#msg').className='msg ok'; $('#msg').textContent='Access unlocked with your code! Redirecting…'; setTimeout(()=>location.href='/crm.html',1200); return; }
+        if (d.active) { location.href='/crm.html'; return; } // already licensed
+        if (d.discount_paise > 0) { $('#msg').className='msg ok'; $('#msg').textContent = `Discount applied: −₹${(d.discount_paise/100).toLocaleString('en-IN')}`; }
 
         const opts = {
           key: d.key_id, name: 'AutoApplier', description: pendingPlan.name,
@@ -180,6 +188,10 @@
         new Razorpay(opts).open();
       } catch (e) { $('#msg').className='msg err'; $('#msg').textContent = e.message; }
     }
+
+    // Prefill a referral code from ?ref=CODE in the URL.
+    const refParam = new URLSearchParams(location.search).get('ref');
+    if (refParam) { $('#ref-code').value = refParam.toUpperCase(); $('#ref-note').textContent = '✓ code added'; }
 
     // Boot: show plans right away. If already licensed, jump to the dashboard.
     (async () => {

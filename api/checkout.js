@@ -6,6 +6,7 @@
 import {
   cors, sb, backendConfigured, getUserByToken,
   rzp, razorpayConfigured, verifyHmac,
+  validateCoupon, applyReferral,
 } from './_lib.js';
 
 export default async function handler(req, res) {
@@ -47,15 +48,44 @@ export default async function handler(req, res) {
           : null,                                              // lifetime
       };
       await sb(`purchases?id=eq.${encodeURIComponent(purchase_id)}`, { method: 'PATCH', body: JSON.stringify(patch) });
+      await applyReferral(purchase_id); // bump code use + reward referrer (idempotent)
       return res.status(200).json({ ok: true });
     }
 
     // ── Step 1: create the order/subscription for the chosen plan ────────────
-    const { plan_id } = req.body || {};
+    const { plan_id, code } = req.body || {};
     if (!plan_id) return res.status(400).json({ error: 'plan_id required' });
     const planRows = await sb(`plans?id=eq.${encodeURIComponent(plan_id)}&active=eq.true&select=*`);
     const plan = planRows[0];
     if (!plan) return res.status(404).json({ error: 'Plan not found or inactive' });
+
+    // Referral / discount code. Discount applies to one-time plans; for monthly
+    // subscriptions the code still records the referrer (rewarded on payment)
+    // but does not change the recurring amount.
+    let coupon = null, discount_paise = 0, amount = plan.price_paise;
+    if (code) {
+      const v = await validateCoupon(code, plan.price_paise, user.email); // throws if invalid
+      if (v) {
+        coupon = v.coupon;
+        if (plan.interval !== 'monthly') { discount_paise = v.discount_paise; amount = v.final_paise; }
+      }
+    }
+    const referrer_email = coupon?.owner_email || null;
+    const couponCode = coupon?.code || null;
+
+    // Free after discount (one-time only): grant access without Razorpay.
+    if (plan.interval !== 'monthly' && amount <= 0) {
+      const rows = await sb('purchases', {
+        method: 'POST',
+        body: JSON.stringify([{
+          user_email: user.email, plan_id: plan.id, interval: 'once',
+          amount_paise: 0, discount_paise, coupon_code: couponCode, referrer_email,
+          status: 'paid', starts_at: new Date().toISOString(), expires_at: null,
+        }]),
+      });
+      await applyReferral(rows[0].id);
+      return res.status(200).json({ free: true });
+    }
 
     let order_id = null, subscription_id = null;
     if (plan.interval === 'monthly') {
@@ -72,7 +102,7 @@ export default async function handler(req, res) {
       const order = await rzp('orders', {
         method: 'POST',
         body: JSON.stringify({
-          amount: plan.price_paise, currency: 'INR',
+          amount, currency: 'INR',
           receipt: `jb_${Date.now()}`, notes: { email: user.email, plan: plan.name },
         }),
       });
@@ -83,7 +113,8 @@ export default async function handler(req, res) {
       method: 'POST',
       body: JSON.stringify([{
         user_email: user.email, plan_id: plan.id, interval: plan.interval,
-        amount_paise: plan.price_paise, status: 'created',
+        amount_paise: amount, discount_paise, coupon_code: couponCode, referrer_email,
+        status: 'created',
         razorpay_order_id: order_id, razorpay_subscription_id: subscription_id,
       }]),
     });
@@ -92,8 +123,8 @@ export default async function handler(req, res) {
       key_id: process.env.RAZORPAY_KEY_ID,
       purchase_id: purchaseRows[0].id,
       order_id, subscription_id,
-      amount: plan.price_paise, interval: plan.interval,
-      name: plan.name, email: user.email,
+      amount, discount_paise, list_price: plan.price_paise,
+      interval: plan.interval, name: plan.name, email: user.email,
     });
   } catch (e) {
     return res.status(502).json({ error: String(e.message || e) });

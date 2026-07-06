@@ -52,6 +52,7 @@
       <div class="tabs">
         <button data-tab="plans" class="on">Plans</button>
         <button data-tab="users">Users &amp; Access</button>
+        <button data-tab="coupons">Referral Codes</button>
         <button data-tab="purchases">Purchases</button>
       </div>
 
@@ -107,6 +108,25 @@
         <div id="users-list"></div>
       </section>
 
+      <!-- COUPONS / REFERRALS -->
+      <section id="tab-coupons" style="display:none">
+        <div class="card">
+          <h2>Create a referral / discount code</h2>
+          <div class="grid">
+            <div><label>Code</label><input id="c-code" placeholder="LAUNCH20" style="width:100%;text-transform:uppercase"></div>
+            <div><label>Discount type</label><select id="c-type" style="width:100%"><option value="percent">Percent (%)</option><option value="flat">Flat (₹)</option></select></div>
+            <div><label>Discount value</label><input id="c-value" type="number" min="0" placeholder="20" style="width:100%"></div>
+            <div><label>Reward days (to referrer)</label><input id="c-reward" type="number" min="0" placeholder="15" style="width:100%"></div>
+            <div><label>Referrer email (optional)</label><input id="c-owner" type="email" placeholder="blank = admin promo" style="width:100%"></div>
+            <div><label>Max uses (optional)</label><input id="c-max" type="number" min="0" placeholder="blank = unlimited" style="width:100%"></div>
+          </div>
+          <div style="font-size:12px;color:var(--muted);margin-top:6px">Percent: enter 20 for 20%. Flat: enter rupees (e.g. 100 for ₹100 off). Reward days credit the referrer's account per successful purchase.</div>
+          <button class="btn-v" id="c-create" style="margin-top:10px">＋ Create code</button>
+          <div id="c-msg" class="msg"></div>
+        </div>
+        <div id="coupons-list"></div>
+      </section>
+
       <!-- PURCHASES -->
       <section id="tab-purchases" style="display:none"><div id="purchases-list"></div></section>
     </div>
@@ -137,8 +157,44 @@
       document.querySelectorAll('.tabs button').forEach(x=>x.classList.remove('on')); b.classList.add('on');
       ['plans','users','purchases'].forEach(t=>$('#tab-'+t).style.display = t===b.dataset.tab?'':'none');
       if(b.dataset.tab==='users') loadUsers();
+      if(b.dataset.tab==='coupons') loadCoupons();
       if(b.dataset.tab==='purchases') loadPurchases();
     });
+
+    // COUPONS
+    $('#c-create').onclick = async () => {
+      const type = $('#c-type').value;
+      let value = parseInt($('#c-value').value||'0',10);
+      if (type==='flat') value = Math.round(value*100); // rupees → paise
+      try {
+        await adminPost({ action:'create_coupon',
+          code:$('#c-code').value.trim(), discount_type:type, discount_value:value,
+          reward_days: parseInt($('#c-reward').value||'0',10),
+          owner_email: $('#c-owner').value.trim() || null,
+          max_uses: $('#c-max').value ? parseInt($('#c-max').value,10) : null });
+        $('#c-msg').className='msg ok'; $('#c-msg').textContent='Code created';
+        $('#c-code').value=$('#c-value').value=$('#c-reward').value=$('#c-owner').value=$('#c-max').value='';
+        loadCoupons();
+      } catch(e){ $('#c-msg').className='msg err'; $('#c-msg').textContent=e.message; }
+    };
+    async function loadCoupons() {
+      try {
+        const rows = await adminPost({ action:'list_coupons' });
+        $('#coupons-list').innerHTML = `<table><thead><tr><th>Code</th><th>Discount</th><th>Reward</th><th>Referrer</th><th>Used</th><th>Active</th><th></th></tr></thead><tbody>${
+          rows.map(c=>`<tr>
+            <td style="font-weight:700">${esc(c.code)}</td>
+            <td>${c.discount_type==='flat'?('₹'+(c.discount_value/100).toLocaleString('en-IN')):(c.discount_value+'%')}</td>
+            <td>${c.reward_days?c.reward_days+' days':'–'}</td>
+            <td style="color:var(--muted)">${c.owner_email?esc(c.owner_email):'admin promo'}</td>
+            <td>${c.used_count}${c.max_uses?'/'+c.max_uses:''}</td>
+            <td><span class="pill ${c.active?'on':'off'}">${c.active?'active':'off'}</span></td>
+            <td style="white-space:nowrap">
+              <button class="mini" data-toggle="${c.id}" data-active="${c.active}">${c.active?'Disable':'Enable'}</button>
+              <button class="mini" data-del="${c.id}">✕</button></td></tr>`).join('')}</tbody></table>`;
+        $('#coupons-list').querySelectorAll('[data-toggle]').forEach(b=>b.onclick=async()=>{ await adminPost({action:'update_coupon',id:b.dataset.toggle,active:b.dataset.active!=='true'}); loadCoupons(); });
+        $('#coupons-list').querySelectorAll('[data-del]').forEach(b=>b.onclick=async()=>{ if(confirm('Delete this code?')){ await adminPost({action:'delete_coupon',id:b.dataset.del}); loadCoupons(); } });
+      } catch(e){ $('#coupons-list').innerHTML='<p class="msg err">'+esc(e.message)+'</p>'; }
+    }
 
     // PLANS
     $('#p-create').onclick = async () => {

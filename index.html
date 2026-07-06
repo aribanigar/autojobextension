@@ -354,6 +354,17 @@
     </div>
   </div>
 
+  <!-- Referral link (any signed-in user) -->
+  <div class="card" id="ref-card" style="display:none">
+    <h3>Refer &amp; earn</h3>
+    <p style="font-size:13px;color:var(--muted);margin:8px 0 12px" id="ref-terms">Share your link — friends get a discount and you earn free days.</p>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+      <input id="ref-link" readonly style="flex:1;min-width:220px;background:var(--bg);border:1px solid var(--border);color:var(--text);border-radius:9px;padding:10px 12px;font-size:13px" />
+      <button class="btn btn-primary btn-sm" id="ref-copy">Copy link</button>
+    </div>
+    <div style="font-size:12px;color:var(--muted);margin-top:8px" id="ref-stats"></div>
+  </div>
+
   <!-- Change password (any signed-in user) -->
   <div class="card" id="acct-card">
     <h3>Change Password</h3>
@@ -437,11 +448,14 @@
       `;
       const ap = document.getElementById('admin-panel');
       const banner = document.getElementById('lic-banner');
+      const acct = document.getElementById('acct-card');
       if (s.role === 'admin') {
         ap.style.display = 'block';
         if (banner) banner.style.display = 'none';
+        if (acct) acct.style.display = 'none';   // admin changes creds via env, not here
         Admin.loadUsers();
       } else {
+        if (acct) acct.style.display = 'block';
         ap.style.display = 'none';
         // Regular user: show the "buy a plan" banner unless they're licensed.
         if (banner) {
@@ -451,6 +465,8 @@
             .catch(() => {});
         }
       }
+      // Everyone signed in gets a referral link + change-password card.
+      if (typeof loadReferral === 'function') loadReferral(s);
     },
   };
 
@@ -524,6 +540,29 @@
     const p = document.getElementById('f-pass'); p.type = p.type === 'password' ? 'text' : 'password';
   });
   document.getElementById('f-forgot')?.addEventListener('click', e => { e.preventDefault(); Auth.forgot(); });
+
+  // Referral card — load the user's code/link when the dashboard shows
+  async function loadReferral(session) {
+    const card = document.getElementById('ref-card');
+    if (!card || !session?.token) return;
+    try {
+      const r = await fetch('/api/referral', { headers: { Authorization: 'Bearer ' + session.token } });
+      if (!r.ok) return;
+      const d = await r.json();
+      card.style.display = 'block';
+      document.getElementById('ref-link').value = d.link;
+      document.getElementById('ref-terms').textContent =
+        `Friends get ${d.discount}; you earn ${d.reward_days} free days for every purchase with your code.`;
+      document.getElementById('ref-stats').textContent = `Your code: ${d.code} · used ${d.uses} time${d.uses===1?'':'s'}`;
+    } catch {}
+  }
+  document.getElementById('ref-copy')?.addEventListener('click', () => {
+    const el = document.getElementById('ref-link');
+    el.select(); try { document.execCommand('copy'); } catch {}
+    navigator.clipboard?.writeText(el.value).catch(()=>{});
+    document.getElementById('ref-copy').textContent = 'Copied!';
+    setTimeout(()=>{ document.getElementById('ref-copy').textContent = 'Copy link'; }, 1500);
+  });
 
   // Change-password card
   document.getElementById('cp-eye')?.addEventListener('click', () => {

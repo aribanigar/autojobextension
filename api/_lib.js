@@ -64,6 +64,65 @@ export async function activeLicense(email) {
   return rows.length ? rows[0] : null;
 }
 
+// ── Referrals / discount codes ───────────────────────────────────────────────
+// Validate a code against a plan price. Returns { coupon, discount_paise, final_paise }
+// or throws an Error with a user-facing message. buyerEmail can't use their own code.
+export async function validateCoupon(code, priceP, buyerEmail) {
+  const c = String(code || '').trim().toUpperCase();
+  if (!c) return null;
+  const rows = await sb(`coupons?code=eq.${encodeURIComponent(c)}&select=*`);
+  const coupon = rows[0];
+  if (!coupon || !coupon.active) throw new Error('That code is invalid or no longer active');
+  if (coupon.max_uses != null && coupon.used_count >= coupon.max_uses) throw new Error('That code has been fully redeemed');
+  if (coupon.owner_email && buyerEmail && coupon.owner_email.toLowerCase() === String(buyerEmail).toLowerCase()) {
+    throw new Error("You can't use your own referral code");
+  }
+  let discount = coupon.discount_type === 'flat'
+    ? Math.min(coupon.discount_value, priceP)
+    : Math.round(priceP * coupon.discount_value / 100);
+  discount = Math.max(0, Math.min(discount, priceP));
+  return { coupon, discount_paise: discount, final_paise: priceP - discount };
+}
+
+// Add `days` of access to a referrer, stacking on top of any current expiry.
+// Skips if they already have lifetime access.
+export async function creditReferrerDays(email, days) {
+  if (!email || !days) return;
+  const nowIso = new Date().toISOString();
+  const active = await sb(
+    `purchases?user_email=eq.${encodeURIComponent(email)}&status=in.(paid,active)` +
+    `&or=(expires_at.is.null,expires_at.gte.${encodeURIComponent(nowIso)})&select=expires_at`
+  ).catch(() => []);
+  if (active.some(p => p.expires_at == null)) return; // already lifetime
+  let base = Date.now();
+  for (const p of active) { const t = new Date(p.expires_at).getTime(); if (t > base) base = t; }
+  const expires = new Date(base + days * 864e5).toISOString();
+  await sb('purchases', {
+    method: 'POST',
+    body: JSON.stringify([{
+      user_email: email, interval: 'referral', amount_paise: 0,
+      status: 'active', starts_at: new Date().toISOString(), expires_at: expires, rewarded: true,
+    }]),
+  });
+}
+
+// Idempotently finalise a purchase's referral: bump the code's used_count and
+// credit the referrer once. Safe to call from both verify and webhook.
+export async function applyReferral(purchaseId) {
+  const rows = await sb(`purchases?id=eq.${encodeURIComponent(purchaseId)}&select=*`).catch(() => []);
+  const p = rows[0];
+  if (!p || p.rewarded || !p.coupon_code) return;
+  const cs = await sb(`coupons?code=eq.${encodeURIComponent(p.coupon_code)}&select=*`).catch(() => []);
+  const coupon = cs[0];
+  if (coupon) {
+    await sb(`coupons?id=eq.${coupon.id}`, { method: 'PATCH', body: JSON.stringify({ used_count: (coupon.used_count || 0) + 1 }) }).catch(() => {});
+    if (p.referrer_email && coupon.reward_days > 0) {
+      await creditReferrerDays(p.referrer_email, coupon.reward_days).catch(() => {});
+    }
+  }
+  await sb(`purchases?id=eq.${encodeURIComponent(purchaseId)}`, { method: 'PATCH', body: JSON.stringify({ rewarded: true }) }).catch(() => {});
+}
+
 // ── Razorpay ────────────────────────────────────────────────────────────────
 export function razorpayConfigured() {
   return !!(process.env.RAZORPAY_KEY_ID && process.env.RAZORPAY_KEY_SECRET);

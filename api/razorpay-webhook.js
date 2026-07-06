@@ -4,7 +4,7 @@
 // in RAZORPAY_WEBHOOK_SECRET, subscribing to: order.paid, payment.captured,
 // subscription.charged, subscription.activated, subscription.halted,
 // subscription.cancelled, subscription.completed.
-import { sb, backendConfigured, verifyHmac, readRawBody } from './_lib.js';
+import { sb, backendConfigured, verifyHmac, readRawBody, applyReferral } from './_lib.js';
 
 // Vercel must NOT pre-parse the body — signature is over the raw bytes.
 export const config = { api: { bodyParser: false } };
@@ -36,10 +36,11 @@ export default async function handler(req, res) {
     // One-time payments — mark the matching order paid (lifetime access).
     if ((type === 'order.paid' || type === 'payment.captured') && (order?.id || payment?.order_id)) {
       const orderId = order?.id || payment?.order_id;
-      await patchPurchase(`razorpay_order_id=eq.${encodeURIComponent(orderId)}`, {
-        status: 'paid', starts_at: now.toISOString(),
-        razorpay_payment_id: payment?.id || null, expires_at: null,
-      });
+      const updated = await sb(`purchases?razorpay_order_id=eq.${encodeURIComponent(orderId)}`, {
+        method: 'PATCH',
+        body: JSON.stringify({ status: 'paid', starts_at: now.toISOString(), razorpay_payment_id: payment?.id || null, expires_at: null }),
+      }).catch(() => []);
+      if (Array.isArray(updated) && updated[0]) await applyReferral(updated[0].id); // reward referrer (idempotent)
     }
 
     // Subscription lifecycle.
@@ -50,7 +51,11 @@ export default async function handler(req, res) {
         const end = sub.current_end
           ? new Date(sub.current_end * 1000)
           : new Date(now.getTime() + 31 * 864e5);
-        await patchPurchase(filter, { status: 'active', starts_at: now.toISOString(), expires_at: end.toISOString() });
+        const updated = await sb(`purchases?${filter}`, {
+          method: 'PATCH',
+          body: JSON.stringify({ status: 'active', starts_at: now.toISOString(), expires_at: end.toISOString() }),
+        }).catch(() => []);
+        if (Array.isArray(updated) && updated[0]) await applyReferral(updated[0].id);
       } else if (type === 'subscription.halted' || type === 'subscription.cancelled' || type === 'subscription.completed') {
         await patchPurchase(filter, { status: 'expired' });
       }
