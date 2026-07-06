@@ -28,12 +28,18 @@
     button{cursor:pointer;font-family:inherit}
     .buy{background:linear-gradient(135deg,#7c3aed,#6d28d9);color:#fff;border:none;border-radius:10px;padding:12px;font-size:15px;font-weight:700;margin-top:6px}
     .buy:hover{filter:brightness(1.1)}
-    .gate{max-width:340px;margin:40px auto;background:var(--card);border:1px solid var(--border);border-radius:16px;padding:28px;text-align:center}
-    .gate input{width:100%;margin:8px 0;background:var(--bg);border:1px solid var(--border);color:var(--text);border-radius:9px;padding:11px 12px;font-size:14px}
-    .gate .buy{width:100%}
-    .row{display:flex;gap:8px}.row .buy{flex:1}
     .msg{margin-top:12px;font-size:13px;min-height:16px}.msg.err{color:var(--red)}.msg.ok{color:var(--green)}
-    .note{margin-top:26px;font-size:12px;color:var(--muted);text-align:center}
+    .note{margin-top:26px;font-size:13px;color:var(--muted);text-align:center}
+    .note a{color:#a78bfa}
+    /* modal */
+    .overlay{position:fixed;inset:0;background:rgba(6,3,15,.72);display:none;align-items:center;justify-content:center;z-index:50;padding:20px}
+    .overlay.on{display:flex}
+    .modal{width:100%;max-width:360px;background:var(--card);border:1px solid var(--border);border-radius:16px;padding:26px;text-align:center}
+    .modal h2{font-size:19px;margin-bottom:4px}
+    .modal p{font-size:13px;color:var(--muted);margin-bottom:16px}
+    .modal input{width:100%;margin:7px 0;background:var(--bg);border:1px solid var(--border);color:var(--text);border-radius:9px;padding:12px;font-size:14px}
+    .modal .buy{width:100%}
+    .x{position:absolute;top:14px;right:18px;background:none;border:none;color:var(--muted);font-size:22px;cursor:pointer}
   </style>
 </head>
 <body>
@@ -43,25 +49,22 @@
       <span id="who" class="who"></span>
     </header>
 
-    <!-- login gate -->
-    <div id="gate" class="gate">
-      <div style="font-size:32px">🔐</div>
-      <h2 style="margin:8px 0">Log in to continue</h2>
-      <input id="email" type="email" placeholder="Email" autocomplete="email" />
-      <input id="pass" type="password" placeholder="Password" autocomplete="current-password" />
-      <div class="row">
-        <button class="buy" id="login">Log in</button>
-        <button class="buy" id="signup" style="background:#241740">Create account</button>
-      </div>
-      <div id="gate-msg" class="msg"></div>
-    </div>
+    <p class="lead">Choose a plan to unlock the AutoApplier extension and CRM. Secure payment via Razorpay — you'll create your account in one step at checkout.</p>
+    <div id="plans" class="plans"></div>
+    <div id="msg" class="msg"></div>
+    <div class="note">Already have a plan? <a href="/crm.html">Open your dashboard →</a></div>
+  </div>
 
-    <!-- plans -->
-    <div id="app" style="display:none">
-      <p class="lead">Pick a plan to unlock the AutoApplier extension and CRM. Payments are processed securely by Razorpay.</p>
-      <div id="plans" class="plans"></div>
-      <div id="msg" class="msg"></div>
-      <div class="note">Already purchased? <a href="/crm.html" style="color:#a78bfa">Open your dashboard →</a></div>
+  <!-- one-step account + pay modal -->
+  <div id="overlay" class="overlay">
+    <div class="modal" style="position:relative">
+      <button class="x" id="close">×</button>
+      <h2 id="m-title">Continue to payment</h2>
+      <p id="m-sub">Enter your email and a password — we'll create your account and take you to payment.</p>
+      <input id="m-email" type="email" placeholder="Email" autocomplete="email" />
+      <input id="m-pass" type="password" placeholder="Password (min 6 chars)" autocomplete="current-password" />
+      <button class="buy" id="m-go">Continue &amp; pay →</button>
+      <div id="m-msg" class="msg"></div>
     </div>
   </div>
 
@@ -69,30 +72,9 @@
     const $ = s => document.querySelector(s);
     const TOKEN = 'jobbot_crm_token', EMAIL = 'jobbot_crm_email';
     let token = localStorage.getItem(TOKEN) || '';
+    let pendingPlan = null; // {id, name} chosen before auth
 
-    function showApp() {
-      $('#gate').style.display = 'none'; $('#app').style.display = '';
-      $('#who').textContent = localStorage.getItem(EMAIL) || '';
-      loadPlans();
-    }
-    function showGate(m) { $('#gate').style.display = ''; $('#app').style.display = 'none'; if (m) $('#gate-msg').textContent = m; }
-
-    async function auth(action) {
-      const email = $('#email').value.trim(), password = $('#pass').value;
-      if (!email || !password) { $('#gate-msg').className = 'msg err'; $('#gate-msg').textContent = 'Enter email and password'; return; }
-      try {
-        const r = await fetch('/api/auth', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({action,email,password}) });
-        const d = await r.json(); if (!r.ok) throw new Error(d.error || r.status);
-        token = d.token; localStorage.setItem(TOKEN, token); localStorage.setItem(EMAIL, d.email);
-        // If they already have access, skip straight to the dashboard.
-        const lic = await fetch('/api/license', { headers:{ Authorization:'Bearer '+token } }).then(x=>x.json()).catch(()=>({}));
-        if (lic.active) { location.href = '/crm.html'; return; }
-        showApp();
-      } catch (e) { $('#gate-msg').className='msg err'; $('#gate-msg').textContent = e.message; }
-    }
-    $('#login').onclick = () => auth('login');
-    $('#signup').onclick = () => auth('signup');
-    $('#pass').addEventListener('keydown', e => { if (e.key === 'Enter') auth('login'); });
+    const esc = s => { const d=document.createElement('div'); d.textContent=String(s??''); return d.innerHTML; };
 
     async function loadPlans() {
       try {
@@ -108,23 +90,53 @@
             <div class="price">₹${(p.price_paise/100).toLocaleString('en-IN')}<small>${p.interval==='monthly'?' / month':' one-time'}</small></div>
             <p>${esc(p.description||'')}</p>
             ${feats.length?`<ul class="feat">${feats.map(f=>`<li>${esc(f)}</li>`).join('')}</ul>`:''}
-            <button class="buy" data-id="${p.id}" data-name="${esc(p.name)}">Buy now</button>
+            <button class="buy" data-id="${p.id}" data-name="${esc(p.name)}">Get this plan</button>
           </div>`;
         }).join('');
-        document.querySelectorAll('.buy[data-id]').forEach(b => b.onclick = () => buy(b.dataset.id, b.dataset.name));
-      } catch (e) { $('#msg').className='msg err'; $('#msg').textContent = e.message; }
+        document.querySelectorAll('.buy[data-id]').forEach(b => b.onclick = () => start(b.dataset.id, b.dataset.name));
+      } catch (e) { $('#msg').className='msg err'; $('#msg').textContent = 'Could not load plans: ' + e.message; }
     }
 
-    async function buy(plan_id, name) {
+    // Click a plan → if signed in, pay now; else open the one-step account modal.
+    function start(plan_id, name) {
+      pendingPlan = { id: plan_id, name };
+      if (token) return pay();
+      $('#m-msg').textContent = ''; $('#m-email').value = ''; $('#m-pass').value = '';
+      $('#overlay').classList.add('on'); $('#m-email').focus();
+    }
+    $('#close').onclick = () => $('#overlay').classList.remove('on');
+
+    // One button, no "log in vs sign up" decision: create the account, or if it
+    // already exists, log in with the same password — then go straight to pay.
+    async function continueAndPay() {
+      const email = $('#m-email').value.trim(), password = $('#m-pass').value;
+      if (!email || password.length < 6) { $('#m-msg').className='msg err'; $('#m-msg').textContent = 'Enter your email and a password (min 6 characters)'; return; }
+      $('#m-msg').className='msg'; $('#m-msg').textContent = 'Setting up your account…';
+      const call = action => fetch('/api/auth', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({action,email,password}) });
+      try {
+        let r = await call('signup'), d = await r.json();
+        if (r.status === 409) { r = await call('login'); d = await r.json(); } // exists → log in
+        if (!r.ok) throw new Error(d.error || 'Could not sign in');
+        token = d.token; localStorage.setItem(TOKEN, token); localStorage.setItem(EMAIL, d.email);
+        $('#overlay').classList.remove('on');
+        pay();
+      } catch (e) { $('#m-msg').className='msg err'; $('#m-msg').textContent = e.message; }
+    }
+    $('#m-go').onclick = continueAndPay;
+    $('#m-pass').addEventListener('keydown', e => { if (e.key === 'Enter') continueAndPay(); });
+
+    async function pay() {
+      if (!pendingPlan) return;
       $('#msg').className='msg'; $('#msg').textContent = 'Starting secure checkout…';
       try {
-        const r = await fetch('/api/checkout', { method:'POST', headers:{'Content-Type':'application/json',Authorization:'Bearer '+token}, body:JSON.stringify({plan_id}) });
+        const r = await fetch('/api/checkout', { method:'POST', headers:{'Content-Type':'application/json',Authorization:'Bearer '+token}, body:JSON.stringify({plan_id:pendingPlan.id}) });
         const d = await r.json();
-        if (r.status === 401) return showGate('Session expired — log in again');
+        if (r.status === 401) { token=''; localStorage.removeItem(TOKEN); return start(pendingPlan.id, pendingPlan.name); }
+        if (r.status === 402 || (d.active)) { location.href='/crm.html'; return; } // already licensed
         if (!r.ok) throw new Error(d.error || r.status);
 
         const opts = {
-          key: d.key_id, name: 'AutoApplier', description: name,
+          key: d.key_id, name: 'AutoApplier', description: pendingPlan.name,
           prefill: { email: d.email }, theme: { color: '#7c3aed' },
           handler: async (resp) => {
             $('#msg').textContent = 'Verifying payment…';
@@ -150,18 +162,16 @@
       } catch (e) { $('#msg').className='msg err'; $('#msg').textContent = e.message; }
     }
 
-    function esc(s){const d=document.createElement('div');d.textContent=String(s??'');return d.innerHTML;}
-
-    // Boot: if a token exists and is already licensed, go to dashboard.
+    // Boot: show plans right away. If already licensed, jump to the dashboard.
     (async () => {
-      if (!token) return showGate();
-      try {
-        const lic = await fetch('/api/license', { headers:{ Authorization:'Bearer '+token } });
-        if (lic.status === 401) return showGate();
-        const d = await lic.json();
-        if (d.active) { location.href = '/crm.html'; return; }
-        showApp();
-      } catch { showGate(); }
+      loadPlans();
+      if (token) {
+        try {
+          const lic = await fetch('/api/license', { headers:{ Authorization:'Bearer '+token } }).then(x=>x.json()).catch(()=>({}));
+          $('#who').textContent = localStorage.getItem(EMAIL) || '';
+          if (lic.active) location.href = '/crm.html';
+        } catch {}
+      }
     })();
   </script>
 </body>
