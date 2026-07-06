@@ -1,5 +1,13 @@
 {
   "cleanUrls": true,
+  "redirects": [
+    { "source": "/login",   "destination": "/",           "permanent": false },
+    { "source": "/signin",  "destination": "/",           "permanent": false },
+    { "source": "/sign-in", "destination": "/",           "permanent": false },
+    { "source": "/dashboard","destination": "/",          "permanent": false },
+    { "source": "/plans",   "destination": "/checkout",   "permanent": false },
+    { "source": "/buy",     "destination": "/checkout",   "permanent": false }
+  ],
   "headers": [
     {
       "source": "/jobbot-extension.zip",
