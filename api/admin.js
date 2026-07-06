@@ -22,8 +22,10 @@
 import { createHash, scryptSync, randomBytes } from 'crypto';
 import { sb, backendConfigured, rzp, razorpayConfigured } from './_lib.js';
 
-const ADMIN_EMAIL    = process.env.ADMIN_EMAIL    || 'arfatshah.qa@gmail.com';
-const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || 'Autoapplier@54321';
+// .trim() guards against a trailing space/newline accidentally saved in the
+// Vercel env value — the most common cause of "my correct password won't work".
+const ADMIN_EMAIL    = (process.env.ADMIN_EMAIL    || 'arfatshah.qa@gmail.com').trim();
+const ADMIN_PASSWORD = (process.env.ADMIN_PASSWORD || 'Autoapplier@54321').trim();
 
 function cors(res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
