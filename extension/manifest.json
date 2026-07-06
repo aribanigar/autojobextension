@@ -14,7 +14,8 @@
     "https://*.indeed.com/*",
     "https://apply.indeed.com/*",
     "https://*.naukri.com/*",
-    "https://*.bayt.com/*"
+    "https://*.bayt.com/*",
+    "https://generativelanguage.googleapis.com/*"
   ],
   "background": {
     "service_worker": "background.js"

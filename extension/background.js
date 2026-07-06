@@ -102,6 +102,61 @@ async function getLicense(force = false) {
   }
 }
 
+// ── Per-user AI (Gemini) ─────────────────────────────────────────────────────
+// Runs the AI question here in the background worker using the USER'S OWN key.
+// The key stays local to their browser and the usage is billed to their Google
+// account — the app owner never sees the key or pays for the call.
+function profileSummary(p = {}) {
+  const per = p.personal || {}, pro = p.professional || {}, prf = p.preferences || {};
+  return [
+    per.name && `Name: ${per.name}`,
+    per.location && `Location: ${per.location}`,
+    pro.currentTitle && `Current title: ${pro.currentTitle} at ${pro.currentCompany || 'current company'}`,
+    pro.experience && `Experience: ${pro.experience} years`,
+    pro.skills && `Skills: ${pro.skills}`,
+    pro.education && `Education: ${pro.education}`,
+    pro.currentSalary && `Current salary: ${pro.currentSalary}`,
+    pro.expectedSalary && `Expected salary: ${pro.expectedSalary}`,
+    pro.noticePeriod && `Notice period: ${pro.noticePeriod}`,
+    pro.languages && `Languages: ${pro.languages}`,
+    `Work mode preference: ${prf.workMode || 'hybrid'}`,
+    `Willing to relocate: ${prf.willingToRelocate ? 'Yes' : 'No'}`,
+    `Authorized to work: ${prf.workAuth !== false ? 'Yes' : 'No'}`,
+  ].filter(Boolean).join('\n');
+}
+
+async function geminiAnswer(apiKey, question, options = [], profile = {}) {
+  if (!apiKey || !question) return null;
+  const opts = Array.isArray(options) && options.length
+    ? `\nChoose EXACTLY one of these options and reply with that option text verbatim:\n${options.map(o => `- ${o}`).join('\n')}`
+    : '\nReply with a short, direct answer (a number, "Yes"/"No", or at most one sentence). No explanations.';
+  const prompt =
+    `You are filling out a job application form on behalf of this candidate:\n${profileSummary(profile)}\n\n` +
+    `Application question: "${question}"${opts}\n\n` +
+    `Answer in the candidate's favor when reasonable, but never fabricate credentials they don't have.`;
+
+  const ctrl = new AbortController();
+  const t = setTimeout(() => ctrl.abort(), 15000);
+  try {
+    const r = await fetch(
+      'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent',
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'x-goog-api-key': apiKey },
+        body: JSON.stringify({
+          contents: [{ parts: [{ text: prompt }] }],
+          generationConfig: { temperature: 0.2, maxOutputTokens: 300 },
+        }),
+        signal: ctrl.signal,
+      }
+    );
+    clearTimeout(t);
+    if (!r.ok) return null;
+    const data = await r.json();
+    return (data?.candidates?.[0]?.content?.parts?.[0]?.text || '').trim() || null;
+  } catch { clearTimeout(t); return null; }
+}
+
 // Real-time CRM sync under the user's account; falls back to the legacy
 // shared key if no account is configured. Re-logs in once on 401.
 async function syncToCRM(row) {
@@ -147,6 +202,15 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
     case 'GET_LICENSE':
       // Content script asks before starting the agent — no licence, no run.
       getLicense(msg.force).then(lic => sendResponse(lic));
+      return true;
+
+    case 'GEMINI_ANSWER':
+      // Each user's own Gemini key: the call runs here (background worker),
+      // straight to Google, so the key stays on their machine and the usage is
+      // billed to them — never to the app's shared account.
+      geminiAnswer(msg.apiKey, msg.question, msg.options || [], msg.profile || {})
+        .then(answer => sendResponse({ answer }))
+        .catch(() => sendResponse({ answer: null }));
       return true;
 
     case 'GET_PROFILE':

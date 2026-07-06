@@ -258,10 +258,17 @@
         <div class="toggle-row">
           <div class="toggle-text">
             <span class="toggle-label">AI Smart Answers</span>
-            <span class="toggle-sub">Gemini answers questions the profile can't (via your backend)</span>
+            <span class="toggle-sub">Gemini answers questions your profile can't</span>
           </div>
           <label class="toggle"><input id="p-ai" type="checkbox"><span class="ttrack"></span></label>
         </div>
+      </div>
+      <div class="field">
+        <label>Your Gemini API Key <small class="field-hint">your own key — usage is billed to you</small></label>
+        <input id="p-gemini" type="password" placeholder="AIza…" autocomplete="off">
+        <small class="field-hint" style="display:block;margin-top:6px">
+          Free key from <span style="color:#a78bfa">aistudio.google.com/apikey</span>. Stays on your device; never sent to our servers.
+        </small>
       </div>
     </div>
 

@@ -74,6 +74,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     s('p-crm-url',   p.preferences?.crmUrl);
     s('p-crm-email', p.preferences?.crmEmail);
     s('p-crm-pass',  p.preferences?.crmPassword);
+    s('p-gemini',    p.preferences?.geminiKey);
     c('p-ai',        p.preferences?.aiEnabled);
     updateBuyLink(p.preferences?.crmUrl);
   }
@@ -120,6 +121,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         crmUrl:            v('p-crm-url').replace(/\/+$/, ''),
         crmEmail:          v('p-crm-email'),
         crmPassword:       v('p-crm-pass'),
+        geminiKey:         v('p-gemini'),
         aiEnabled:         c('p-ai'),
       },
     };

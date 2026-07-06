@@ -372,11 +372,40 @@
       this._aiCache = new Map();
     }
 
-    // AI fallback (Gemini via the user's backend) for questions map() can't answer
+    // AI fallback for questions map() can't answer. Each user brings their OWN
+    // Gemini key (preferences.geminiKey): the call runs from the background
+    // worker straight to Google with that key, so it's billed to them and the
+    // key never touches the app's server. If no personal key is set, fall back
+    // to the shared backend (/api/ai) for backward compatibility.
     async aiAnswer(question, options = []) {
       const prefs = this.p.preferences || {};
-      if (!prefs.aiEnabled || !prefs.crmUrl) return null;
-      // Authenticate as the user's CRM account; legacy shared key as fallback
+      if (!prefs.aiEnabled) return null;
+      const q = String(question).trim();
+      if (q.length < 3) return null;
+
+      const cacheKey = q + '|' + options.join(',');
+      if (this._aiCache.has(cacheKey)) return this._aiCache.get(cacheKey);
+
+      // ── Path A: user's own Gemini key (preferred, independent per account) ──
+      if (prefs.geminiKey) {
+        try {
+          SPOT.status(`AI answering: "${q.substring(0, 50)}…"`, 'applying');
+          const ans = await new Promise(res => {
+            try {
+              chrome.runtime.sendMessage(
+                { type: 'GEMINI_ANSWER', apiKey: prefs.geminiKey, question: q, options, profile: this.p },
+                r => { void chrome.runtime.lastError; res(r?.answer || null); }
+              );
+            } catch { res(null); }
+          });
+          const clean = (ans || '').trim() || null;
+          this._aiCache.set(cacheKey, clean);
+          return clean;
+        } catch { this._aiCache.set(cacheKey, null); return null; }
+      }
+
+      // ── Path B: shared backend (only if no personal key is configured) ──────
+      if (!prefs.crmUrl) return null;
       const auth = {};
       if (prefs.crmEmail && prefs.crmPassword) {
         const token = await new Promise(res => {
@@ -391,11 +420,6 @@
       }
       if (!auth.Authorization && prefs.crmKey) auth['x-api-key'] = prefs.crmKey;
       if (!auth.Authorization && !auth['x-api-key']) return null;
-      const q = String(question).trim();
-      if (q.length < 3) return null;
-
-      const cacheKey = q + '|' + options.join(',');
-      if (this._aiCache.has(cacheKey)) return this._aiCache.get(cacheKey);
 
       try {
         SPOT.status(`AI answering: "${q.substring(0, 50)}…"`, 'applying');
