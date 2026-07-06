@@ -147,11 +147,12 @@ export default async function handler(req, res) {
     }
 
     if (action === 'create_plan') {
-      const { name, description = '', price_paise, interval = 'once', features = {}, active = true } = req.body || {};
+      const { name, description = '', price_paise, interval = 'once', duration_days = null, features = {}, active = true } = req.body || {};
       if (!name || !Number.isInteger(price_paise) || price_paise < 0) {
         return res.status(400).json({ error: 'name and a non-negative integer price_paise are required' });
       }
       if (!['once', 'monthly'].includes(interval)) return res.status(400).json({ error: "interval must be 'once' or 'monthly'" });
+      const dur = duration_days ? Number(duration_days) : null; // one-time validity; null = lifetime
       let razorpay_plan_id = null;
       if (interval === 'monthly') {
         if (!razorpayConfigured()) return res.status(400).json({ error: 'Razorpay keys not set — cannot create a recurring plan' });
@@ -161,7 +162,7 @@ export default async function handler(req, res) {
         });
         razorpay_plan_id = rp.id;
       }
-      const rows = await sb('plans', { method: 'POST', body: JSON.stringify([{ name, description, price_paise, interval, razorpay_plan_id, features, active }]) });
+      const rows = await sb('plans', { method: 'POST', body: JSON.stringify([{ name, description, price_paise, interval, duration_days: dur, razorpay_plan_id, features, active }]) });
       return res.status(201).json(rows[0]);
     }
 
@@ -169,7 +170,7 @@ export default async function handler(req, res) {
       const { id, ...fields } = req.body || {};
       if (!id) return res.status(400).json({ error: 'id required' });
       const allowed = {};
-      for (const k of ['name', 'description', 'price_paise', 'features', 'active']) if (k in fields) allowed[k] = fields[k];
+      for (const k of ['name', 'description', 'price_paise', 'duration_days', 'features', 'active']) if (k in fields) allowed[k] = fields[k];
       const rows = await sb(`plans?id=eq.${encodeURIComponent(id)}`, { method: 'PATCH', body: JSON.stringify(allowed) });
       return res.status(200).json(rows[0] || null);
     }

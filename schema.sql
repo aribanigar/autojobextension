@@ -54,12 +54,16 @@ create table if not exists plans (
   description      text,
   price_paise      integer not null default 0,
   interval         text not null default 'once',    -- once | monthly
+  duration_days    integer,                          -- one-time validity; null/0 = lifetime
   razorpay_plan_id text,                             -- set for monthly plans
   features         jsonb not null default '{}'::jsonb,
   active           boolean not null default true,
   created_at       timestamptz not null default now()
 );
 alter table plans enable row level security;
+
+-- Add duration to existing installs (safe to re-run)
+alter table plans add column if not exists duration_days integer;
 
 -- One row per checkout attempt / active licence. status drives access:
 --   created  → order/subscription made, not paid yet
@@ -112,3 +116,4 @@ alter table purchases add column if not exists coupon_code    text;
 alter table purchases add column if not exists referrer_email text;
 alter table purchases add column if not exists discount_paise integer not null default 0;
 alter table purchases add column if not exists rewarded       boolean not null default false;
+alter table purchases add column if not exists duration_days  integer;   -- validity window for this purchase

@@ -63,9 +63,11 @@
           <div class="grid">
             <div><label>Name</label><input id="p-name" placeholder="Pro" style="width:100%"></div>
             <div><label>Price (₹)</label><input id="p-price" type="number" min="0" placeholder="499" style="width:100%"></div>
-            <div><label>Billing</label><select id="p-interval" style="width:100%"><option value="once">One-time (lifetime)</option><option value="monthly">Monthly subscription</option></select></div>
+            <div><label>Billing</label><select id="p-interval" style="width:100%"><option value="once">One-time</option><option value="monthly">Monthly subscription</option></select></div>
+            <div><label>Validity (days)</label><input id="p-days" type="number" min="0" placeholder="30 · blank = lifetime" style="width:100%"></div>
             <div><label>Active</label><select id="p-active" style="width:100%"><option value="true">Yes</option><option value="false">No</option></select></div>
           </div>
+          <div style="font-size:12px;color:var(--muted);margin-top:4px">Validity = how many days one purchase unlocks access (e.g. 30, 90, 365). Leave blank for lifetime. (Monthly plans renew automatically and ignore this.)</div>
           <label>Description</label><textarea id="p-desc" rows="2" style="width:100%" placeholder="What this plan includes"></textarea>
           <label>Features (one per line — shown as ticks on checkout)</label>
           <textarea id="p-feats" rows="3" style="width:100%" placeholder="LinkedIn auto-apply&#10;Indeed auto-apply&#10;AI smart answers"></textarea>
@@ -203,19 +205,21 @@
       try {
         await adminPost({ action:'create_plan', name:$('#p-name').value.trim(), description:$('#p-desc').value.trim(),
           price_paise: Math.round(parseFloat($('#p-price').value||'0')*100), interval:$('#p-interval').value,
+          duration_days: $('#p-days').value ? parseInt($('#p-days').value,10) : null,
           active:$('#p-active').value==='true', features });
         $('#p-msg').className='msg ok'; $('#p-msg').textContent='Plan created';
-        $('#p-name').value=$('#p-price').value=$('#p-desc').value=$('#p-feats').value=''; loadPlans();
+        $('#p-name').value=$('#p-price').value=$('#p-days').value=$('#p-desc').value=$('#p-feats').value=''; loadPlans();
       } catch(e){ $('#p-msg').className='msg err'; $('#p-msg').textContent=e.message; }
     };
     async function loadPlans() {
       try {
         const plans = await adminPost({ action:'list_plans' });
-        $('#plans-list').innerHTML = `<table><thead><tr><th>Name</th><th>Price</th><th>Billing</th><th>Active</th><th></th></tr></thead><tbody>${
+        $('#plans-list').innerHTML = `<table><thead><tr><th>Name</th><th>Price</th><th>Billing</th><th>Validity</th><th>Active</th><th></th></tr></thead><tbody>${
           plans.map(p=>`<tr>
             <td>${esc(p.name)}<div style="color:var(--muted);font-size:12px">${esc(p.description||'')}</div></td>
             <td>₹${(p.price_paise/100).toLocaleString('en-IN')}</td>
             <td>${p.interval==='monthly'?'Monthly':'One-time'}</td>
+            <td>${p.interval==='monthly'?'per cycle':(p.duration_days?p.duration_days+' days':'lifetime')}</td>
             <td><span class="pill ${p.active?'on':'off'}">${p.active?'active':'inactive'}</span></td>
             <td style="white-space:nowrap">
               <button class="mini" data-toggle="${p.id}" data-active="${p.active}">${p.active?'Deactivate':'Activate'}</button>

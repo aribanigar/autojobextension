@@ -320,6 +320,12 @@
     <a class="btn btn-primary btn-sm" href="/checkout.html">View plans &amp; buy →</a>
   </div>
 
+  <!-- Active-licence note (shows validity window) -->
+  <div id="lic-ok" style="display:none;background:linear-gradient(135deg,rgba(34,197,94,.14),rgba(34,197,94,.04));border:1px solid rgba(34,197,94,.3);border-radius:14px;padding:14px 20px;margin-bottom:22px;font-size:14px">
+    <span style="font-weight:700;color:var(--success)">✓ Access active</span>
+    <span id="lic-until" style="color:var(--muted);margin-left:8px"></span>
+  </div>
+
   <!-- Download -->
   <div class="dl-card">
     <div class="dl-icon">⬇️</div>
@@ -460,8 +466,17 @@
         // Regular user: show the "buy a plan" banner unless they're licensed.
         if (banner) {
           banner.style.display = 'none';
+          const ok = document.getElementById('lic-ok'), until = document.getElementById('lic-until');
           fetch('/api/license', { headers: { Authorization: 'Bearer ' + s.token } })
-            .then(r => r.json()).then(d => { banner.style.display = d.active ? 'none' : 'block'; })
+            .then(r => r.json()).then(d => {
+              banner.style.display = d.active ? 'none' : 'block';
+              if (ok) {
+                ok.style.display = d.active ? 'block' : 'none';
+                if (d.active && until) until.textContent = d.expires_at
+                  ? 'valid until ' + new Date(d.expires_at).toLocaleDateString('en-IN', { day:'2-digit', month:'short', year:'numeric' })
+                  : 'lifetime access';
+              }
+            })
             .catch(() => {});
         }
       }

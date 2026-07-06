@@ -94,9 +94,12 @@
         }
         $('#plans').innerHTML = plans.map(p => {
           const feats = p.features && typeof p.features === 'object' ? Object.entries(p.features).filter(([,v])=>v).map(([k])=>k) : [];
+          const validity = p.interval==='monthly' ? 'auto-renews monthly'
+            : (p.duration_days ? `${p.duration_days} days access` : 'lifetime access');
           return `<div class="plan">
             <h3>${esc(p.name)}</h3>
             <div class="price">₹${(p.price_paise/100).toLocaleString('en-IN')}<small>${p.interval==='monthly'?' / month':' one-time'}</small></div>
+            <div style="font-size:12px;color:#a78bfa;font-weight:600">${validity}</div>
             <p>${esc(p.description||'')}</p>
             ${feats.length?`<ul class="feat">${feats.map(f=>`<li>${esc(f)}</li>`).join('')}</ul>`:''}
             <button class="buy" data-id="${p.id}" data-name="${esc(p.name)}">Get this plan</button>

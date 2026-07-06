@@ -33,14 +33,21 @@ export default async function handler(req, res) {
     const payment = event.payload?.payment?.entity;
     const now = new Date();
 
-    // One-time payments — mark the matching order paid (lifetime access).
+    // One-time payments — mark the matching order paid. Honour the purchase's
+    // validity window (duration_days): null/0 = lifetime, else expires after it.
     if ((type === 'order.paid' || type === 'payment.captured') && (order?.id || payment?.order_id)) {
       const orderId = order?.id || payment?.order_id;
-      const updated = await sb(`purchases?razorpay_order_id=eq.${encodeURIComponent(orderId)}`, {
-        method: 'PATCH',
-        body: JSON.stringify({ status: 'paid', starts_at: now.toISOString(), razorpay_payment_id: payment?.id || null, expires_at: null }),
-      }).catch(() => []);
-      if (Array.isArray(updated) && updated[0]) await applyReferral(updated[0].id); // reward referrer (idempotent)
+      const rows = await sb(`purchases?razorpay_order_id=eq.${encodeURIComponent(orderId)}&select=id,duration_days`).catch(() => []);
+      const p = rows[0];
+      if (p) {
+        const expires_at = p.duration_days && p.duration_days > 0
+          ? new Date(now.getTime() + p.duration_days * 864e5).toISOString() : null;
+        await sb(`purchases?id=eq.${encodeURIComponent(p.id)}`, {
+          method: 'PATCH',
+          body: JSON.stringify({ status: 'paid', starts_at: now.toISOString(), razorpay_payment_id: payment?.id || null, expires_at }),
+        }).catch(() => {});
+        await applyReferral(p.id); // reward referrer (idempotent)
+      }
     }
 
     // Subscription lifecycle.

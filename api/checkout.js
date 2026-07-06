@@ -39,13 +39,22 @@ export default async function handler(req, res) {
       }
 
       const now = new Date();
+      // One-time purchase: if the plan has a validity window (duration_days),
+      // access expires after it; otherwise it's lifetime (null). Monthly:
+      // ~31 days per cycle, extended by the subscription webhook.
+      let expires_at;
+      if (purchase.interval === 'monthly') {
+        expires_at = new Date(now.getTime() + 31 * 864e5).toISOString();
+      } else if (purchase.duration_days && purchase.duration_days > 0) {
+        expires_at = new Date(now.getTime() + purchase.duration_days * 864e5).toISOString();
+      } else {
+        expires_at = null; // lifetime
+      }
       const patch = {
         razorpay_payment_id,
         starts_at: now.toISOString(),
         status: purchase.interval === 'monthly' ? 'active' : 'paid',
-        expires_at: purchase.interval === 'monthly'
-          ? new Date(now.getTime() + 31 * 864e5).toISOString() // +31 days; webhook renews
-          : null,                                              // lifetime
+        expires_at,
       };
       await sb(`purchases?id=eq.${encodeURIComponent(purchase_id)}`, { method: 'PATCH', body: JSON.stringify(patch) });
       await applyReferral(purchase_id); // bump code use + reward referrer (idempotent)
@@ -75,12 +84,15 @@ export default async function handler(req, res) {
 
     // Free after discount (one-time only): grant access without Razorpay.
     if (plan.interval !== 'monthly' && amount <= 0) {
+      const now = new Date();
+      const freeExpiry = plan.duration_days && plan.duration_days > 0
+        ? new Date(now.getTime() + plan.duration_days * 864e5).toISOString() : null;
       const rows = await sb('purchases', {
         method: 'POST',
         body: JSON.stringify([{
-          user_email: user.email, plan_id: plan.id, interval: 'once',
+          user_email: user.email, plan_id: plan.id, interval: 'once', duration_days: plan.duration_days || null,
           amount_paise: 0, discount_paise, coupon_code: couponCode, referrer_email,
-          status: 'paid', starts_at: new Date().toISOString(), expires_at: null,
+          status: 'paid', starts_at: now.toISOString(), expires_at: freeExpiry,
         }]),
       });
       await applyReferral(rows[0].id);
@@ -113,6 +125,7 @@ export default async function handler(req, res) {
       method: 'POST',
       body: JSON.stringify([{
         user_email: user.email, plan_id: plan.id, interval: plan.interval,
+        duration_days: plan.duration_days || null,
         amount_paise: amount, discount_paise, coupon_code: couponCode, referrer_email,
         status: 'created',
         razorpay_order_id: order_id, razorpay_subscription_id: subscription_id,

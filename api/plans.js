@@ -11,7 +11,7 @@ export default async function handler(req, res) {
   }
   try {
     const rows = await sb('plans?active=eq.true&order=price_paise.asc' +
-      '&select=id,name,description,price_paise,interval,features');
+      '&select=id,name,description,price_paise,interval,duration_days,features');
     return res.status(200).json(rows);
   } catch (e) {
     return res.status(502).json({ error: String(e.message || e) });
