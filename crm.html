@@ -71,11 +71,15 @@
       <p>Your applications are saved to your account and stay there.</p>
       <div style="display:flex;flex-direction:column;gap:10px;align-items:center;margin-top:14px">
         <input id="email-input" type="email" placeholder="Email" autocomplete="email" style="width:280px" />
-        <input id="pass-input" type="password" placeholder="Password" autocomplete="current-password" style="width:280px" />
+        <div style="position:relative;width:280px">
+          <input id="pass-input" type="password" placeholder="Password" autocomplete="current-password" style="width:280px;padding-right:40px;margin:0" />
+          <button type="button" id="pass-eye" title="Show/hide" style="position:absolute;right:10px;top:50%;transform:translateY(-50%);background:none;border:none;color:var(--muted);cursor:pointer;font-size:15px">👁</button>
+        </div>
         <div>
           <button class="btn-v" id="login-btn">Log in</button>
           <button id="signup-btn">Create account</button>
         </div>
+        <a href="#" id="forgot-btn" style="color:#a78bfa;font-size:12px;text-decoration:none">Forgot password?</a>
       </div>
       <div id="gate-err" class="err-msg"></div>
     </div>
@@ -223,6 +227,19 @@
     $('#login-btn').onclick = () => authenticate('login');
     $('#signup-btn').onclick = () => authenticate('signup');
     $('#pass-input').addEventListener('keydown', e => { if (e.key === 'Enter') authenticate('login'); });
+    $('#pass-eye').onclick = () => { const p = $('#pass-input'); p.type = p.type === 'password' ? 'text' : 'password'; };
+    $('#forgot-btn').onclick = async (e) => {
+      e.preventDefault();
+      const email = $('#email-input').value.trim();
+      if (!email) { $('#gate-err').textContent = 'Enter your email above, then click Forgot password.'; return; }
+      $('#gate-err').textContent = 'Sending reset link…';
+      try {
+        const r = await fetch('/api/auth', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({ action:'forgot', email }) });
+        const d = await r.json();
+        $('#gate-err').style.color = 'var(--green)';
+        $('#gate-err').textContent = d.emailed === false ? (d.note || 'Contact an admin to reset your password.') : 'If that email is registered, a reset link is on its way.';
+      } catch (err) { $('#gate-err').textContent = err.message; }
+    };
 
     $('#btn-refresh').onclick = () => load();
     $('#btn-logout').onclick = () => logout();

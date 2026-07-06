@@ -290,8 +290,12 @@
         </div>
         <div class="field">
           <label>Password</label>
-          <input type="password" id="f-pass" placeholder="••••••••" autocomplete="current-password" required />
+          <div style="position:relative">
+            <input type="password" id="f-pass" placeholder="••••••••" autocomplete="current-password" required style="padding-right:44px" />
+            <button type="button" id="f-eye" title="Show/hide" style="position:absolute;right:12px;top:50%;transform:translateY(-50%);background:none;border:none;color:var(--muted);cursor:pointer;font-size:15px">👁</button>
+          </div>
         </div>
+        <div style="text-align:right;margin-top:-4px"><a href="#" id="f-forgot" style="font-size:12px;color:var(--accent-light);text-decoration:none">Forgot password?</a></div>
         <div class="ferr" id="login-err"></div>
         <button type="submit" id="login-btn" class="btn btn-primary btn-lg" style="width:100%;margin-top:4px;">
           Sign In
@@ -348,6 +352,24 @@
         <p>Open LinkedIn Jobs, Indeed, or Naukri — click the AutoApplier icon, fill your profile, and hit <strong>Start</strong>.</p>
       </div>
     </div>
+  </div>
+
+  <!-- Change password (any signed-in user) -->
+  <div class="card" id="acct-card">
+    <h3>Change Password</h3>
+    <div class="field" style="margin-top:12px">
+      <label>Current password</label>
+      <div style="position:relative">
+        <input type="password" id="cp-cur" placeholder="current password" style="padding-right:44px" />
+        <button type="button" id="cp-eye" title="Show/hide" style="position:absolute;right:12px;top:50%;transform:translateY(-50%);background:none;border:none;color:var(--muted);cursor:pointer;font-size:15px">👁</button>
+      </div>
+    </div>
+    <div class="field">
+      <label>New password</label>
+      <input type="password" id="cp-new" placeholder="new password (min 6 chars)" />
+    </div>
+    <button class="btn btn-primary btn-sm" id="cp-save" style="margin-top:6px">Update password</button>
+    <div class="ferr" id="cp-msg" style="margin-top:8px"></div>
   </div>
 
   <!-- Admin Panel — visible only to admin -->
@@ -479,7 +501,48 @@
       Views.session = null;
       Views.showLanding();
     },
+
+    async forgot() {
+      const email = (document.getElementById('f-email').value || '').trim();
+      const errEl = document.getElementById('login-err');
+      errEl.classList.add('show');
+      if (!email) { errEl.textContent = 'Enter your email above, then click Forgot password.'; return; }
+      errEl.textContent = 'Sending reset link…';
+      try {
+        const r = await post('/api/auth', { action: 'forgot', email });
+        const d = await r.json();
+        errEl.style.color = 'var(--success)';
+        errEl.textContent = d.emailed === false
+          ? (d.note || 'Contact your administrator to reset your password.')
+          : 'If that email is registered, a reset link is on its way.';
+      } catch { errEl.textContent = 'Could not send reset link — try again.'; }
+    },
   };
+
+  // Password show/hide + forgot link on the login form
+  document.getElementById('f-eye')?.addEventListener('click', () => {
+    const p = document.getElementById('f-pass'); p.type = p.type === 'password' ? 'text' : 'password';
+  });
+  document.getElementById('f-forgot')?.addEventListener('click', e => { e.preventDefault(); Auth.forgot(); });
+
+  // Change-password card
+  document.getElementById('cp-eye')?.addEventListener('click', () => {
+    const p = document.getElementById('cp-cur'); p.type = p.type === 'password' ? 'text' : 'password';
+  });
+  document.getElementById('cp-save')?.addEventListener('click', async () => {
+    const msg = document.getElementById('cp-msg');
+    const cur = document.getElementById('cp-cur').value, next = document.getElementById('cp-new').value;
+    const s = Views.session;
+    if (!s) { msg.classList.add('show'); msg.textContent = 'Sign in first.'; return; }
+    if (next.length < 6) { msg.classList.add('show'); msg.style.color=''; msg.textContent = 'New password must be at least 6 characters.'; return; }
+    msg.classList.add('show'); msg.style.color=''; msg.textContent = 'Updating…';
+    try {
+      const r = await post('/api/auth', { action: 'change', email: s.email, password: cur, newPassword: next });
+      const d = await r.json(); if (!r.ok) throw new Error(d.error || 'Failed');
+      msg.style.color = 'var(--success)'; msg.textContent = 'Password updated.';
+      document.getElementById('cp-cur').value = document.getElementById('cp-new').value = '';
+    } catch (e) { msg.style.color = ''; msg.textContent = e.message; }
+  });
 
   // ── Admin ─────────────────────────────────────────────────────────────────
   const Admin = {

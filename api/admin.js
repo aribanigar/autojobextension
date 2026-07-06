@@ -100,6 +100,16 @@ export default async function handler(req, res) {
       return res.status(200).json({ ok: true });
     }
 
+    if (action === 'reset_password') {
+      if (!email) return res.status(400).json({ error: 'email required' });
+      if (!password || String(password).length < 6) return res.status(400).json({ error: 'Password must be at least 6 characters' });
+      const rows = await sb(`users?email=eq.${encodeURIComponent(email)}&select=id`);
+      if (!rows.length) return res.status(404).json({ error: 'No account with that email' });
+      // New password + clear the session so the user must log in again.
+      await sb(`users?id=eq.${rows[0].id}`, { method: 'PATCH', body: JSON.stringify({ password_hash: hashPassword(String(password)), token: null }) });
+      return res.status(200).json({ ok: true });
+    }
+
     // ── Licence control ────────────────────────────────────────────────────
     if (action === 'grant') {
       if (!email) return res.status(400).json({ error: 'email required' });

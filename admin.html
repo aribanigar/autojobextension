@@ -95,6 +95,15 @@
           </div>
           <div id="g-msg" class="msg"></div>
         </div>
+        <div class="card">
+          <h2>Reset a user's password</h2>
+          <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+            <input id="r-email" type="email" placeholder="user@email.com" style="flex:1;min-width:180px">
+            <input id="r-pass" type="text" placeholder="new password (min 6)" style="width:200px">
+            <button class="btn-v mini" id="r-reset">Set password</button>
+          </div>
+          <div id="r-msg" class="msg"></div>
+        </div>
         <div id="users-list"></div>
       </section>
 
@@ -175,6 +184,14 @@
       try { await adminPost({action:'revoke',email:$('#g-email').value.trim()});
         $('#g-msg').className='msg ok'; $('#g-msg').textContent='Access revoked'; loadUsers(); }
       catch(e){ $('#g-msg').className='msg err'; $('#g-msg').textContent=e.message; }
+    };
+    $('#r-reset').onclick = async () => {
+      const email=$('#r-email').value.trim(), password=$('#r-pass').value;
+      if (!email || password.length<6) { $('#r-msg').className='msg err'; $('#r-msg').textContent='Enter email and a new password (min 6 chars)'; return; }
+      try { await adminPost({action:'reset_password',email,password});
+        $('#r-msg').className='msg ok'; $('#r-msg').textContent='Password reset. The user must log in again with the new password.';
+        $('#r-email').value=$('#r-pass').value=''; }
+      catch(e){ $('#r-msg').className='msg err'; $('#r-msg').textContent=e.message; }
     };
     async function loadUsers() {
       try {

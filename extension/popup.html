@@ -244,7 +244,10 @@
       </div>
       <div class="field">
         <label>CRM Password</label>
-        <input id="p-crm-pass" type="password" placeholder="••••••••••">
+        <div style="position:relative">
+          <input id="p-crm-pass" type="password" placeholder="••••••••••" style="padding-right:40px">
+          <button type="button" class="pw-eye" data-target="p-crm-pass" title="Show/hide" style="position:absolute;right:8px;top:50%;transform:translateY(-50%);background:none;border:none;cursor:pointer;font-size:14px;opacity:.7">👁</button>
+        </div>
       </div>
       <div class="field">
         <a id="p-buy" href="#" target="_blank" rel="noopener"
@@ -265,7 +268,10 @@
       </div>
       <div class="field">
         <label>Your Gemini API Key <small class="field-hint">your own key — usage is billed to you</small></label>
-        <input id="p-gemini" type="password" placeholder="AIza…" autocomplete="off">
+        <div style="position:relative">
+          <input id="p-gemini" type="password" placeholder="AIza…" autocomplete="off" style="padding-right:40px">
+          <button type="button" class="pw-eye" data-target="p-gemini" title="Show/hide" style="position:absolute;right:8px;top:50%;transform:translateY(-50%);background:none;border:none;cursor:pointer;font-size:14px;opacity:.7">👁</button>
+        </div>
         <small class="field-hint" style="display:block;margin-top:6px">
           Free key from <span style="color:#a78bfa">aistudio.google.com/apikey</span>. Stays on your device; never sent to our servers.
         </small>

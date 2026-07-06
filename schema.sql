@@ -41,6 +41,10 @@ create index if not exists jobs_user_email_idx on jobs (user_email);
 -- treated as admin even without this flag; use this column to grant others.
 alter table users add column if not exists is_admin boolean not null default false;
 
+-- Password-reset (forgot-password email flow): a one-time token + its expiry.
+alter table users add column if not exists reset_token   text;
+alter table users add column if not exists reset_expires timestamptz;
+
 -- Plans the admin creates in the admin panel. price_paise is in paise (₹1 = 100).
 -- interval 'once' = lifetime one-time purchase; 'monthly' = Razorpay subscription.
 -- features is a free-form JSON map of feature-flags the admin can toggle per plan.

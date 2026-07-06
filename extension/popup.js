@@ -88,6 +88,14 @@ document.addEventListener('DOMContentLoaded', async () => {
   }
   document.getElementById('p-crm-url')?.addEventListener('input', e => updateBuyLink(e.target.value));
 
+  // Show/hide toggles for password-type fields
+  document.querySelectorAll('.pw-eye').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const el = document.getElementById(btn.dataset.target);
+      if (el) el.type = el.type === 'password' ? 'text' : 'password';
+    });
+  });
+
   function readForm() {
     const v = id => document.getElementById(id)?.value?.trim() || '';
     const c = id => document.getElementById(id)?.checked ?? false;

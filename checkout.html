@@ -62,8 +62,12 @@
       <h2 id="m-title">Continue to payment</h2>
       <p id="m-sub">Enter your email and a password — we'll create your account and take you to payment.</p>
       <input id="m-email" type="email" placeholder="Email" autocomplete="email" />
-      <input id="m-pass" type="password" placeholder="Password (min 6 chars)" autocomplete="current-password" />
+      <div style="position:relative">
+        <input id="m-pass" type="password" placeholder="Password (min 6 chars)" autocomplete="current-password" style="padding-right:44px" />
+        <button type="button" id="m-eye" title="Show/hide" style="position:absolute;right:10px;top:50%;transform:translateY(-50%);background:none;border:none;color:var(--muted);cursor:pointer;font-size:16px">👁</button>
+      </div>
       <button class="buy" id="m-go">Continue &amp; pay →</button>
+      <div style="margin-top:10px"><a href="#" id="m-forgot" style="color:#a78bfa;font-size:12px;text-decoration:none">Forgot password?</a></div>
       <div id="m-msg" class="msg"></div>
     </div>
   </div>
@@ -124,6 +128,21 @@
     }
     $('#m-go').onclick = continueAndPay;
     $('#m-pass').addEventListener('keydown', e => { if (e.key === 'Enter') continueAndPay(); });
+    $('#m-eye').onclick = () => { const p=$('#m-pass'); p.type = p.type==='password'?'text':'password'; };
+    $('#m-forgot').onclick = async (e) => {
+      e.preventDefault();
+      const email = $('#m-email').value.trim();
+      if (!email) { $('#m-msg').className='msg err'; $('#m-msg').textContent='Enter your email above first, then click Forgot password.'; return; }
+      $('#m-msg').className='msg'; $('#m-msg').textContent='Sending reset link…';
+      try {
+        const r = await fetch('/api/auth', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({ action:'forgot', email }) });
+        const d = await r.json();
+        $('#m-msg').className = 'msg ok';
+        $('#m-msg').textContent = d.emailed === false
+          ? (d.note || 'Contact an admin to reset your password.')
+          : 'If that email is registered, a reset link is on its way.';
+      } catch (err) { $('#m-msg').className='msg err'; $('#m-msg').textContent = err.message; }
+    };
 
     async function pay() {
       if (!pendingPlan) return;

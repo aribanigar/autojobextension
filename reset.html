@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>AutoApplier – Reset Password</title>
+  <style>
+    :root{--violet:#7c3aed;--bg:#0f0a1f;--card:#1a1230;--text:#ece9f7;--muted:#a89fc8;--border:rgba(124,58,237,.25);--green:#34d399;--red:#f87171}
+    *{margin:0;padding:0;box-sizing:border-box}
+    body{font-family:system-ui,-apple-system,sans-serif;background:var(--bg);color:var(--text);min-height:100vh;display:flex;align-items:center;justify-content:center;padding:20px}
+    .card{width:100%;max-width:360px;background:var(--card);border:1px solid var(--border);border-radius:16px;padding:28px;text-align:center}
+    h2{font-size:20px;margin:8px 0}
+    p{font-size:13px;color:var(--muted);margin-bottom:16px}
+    .pw{position:relative}
+    input{width:100%;margin:7px 0;background:var(--bg);border:1px solid var(--border);color:var(--text);border-radius:9px;padding:12px 44px 12px 12px;font-size:14px}
+    .eye{position:absolute;right:10px;top:50%;transform:translateY(-50%);background:none;border:none;color:var(--muted);cursor:pointer;font-size:16px}
+    .btn{width:100%;background:linear-gradient(135deg,#7c3aed,#6d28d9);color:#fff;border:none;border-radius:10px;padding:12px;font-size:15px;font-weight:700;cursor:pointer;margin-top:6px}
+    .msg{font-size:13px;margin-top:12px;min-height:16px}.msg.err{color:var(--red)}.msg.ok{color:var(--green)}
+    a{color:#a78bfa;text-decoration:none;font-size:13px}
+  </style>
+</head>
+<body>
+  <div class="card">
+    <div style="font-size:30px">🔑</div>
+    <h2>Set a new password</h2>
+    <p>Enter a new password for your AutoApplier account.</p>
+    <div class="pw">
+      <input id="pass" type="password" placeholder="New password (min 6 chars)" autocomplete="new-password" />
+      <button class="eye" id="eye" type="button" title="Show/hide">👁</button>
+    </div>
+    <button class="btn" id="go">Update password</button>
+    <div id="msg" class="msg"></div>
+    <div style="margin-top:14px"><a href="/checkout.html">← Back to sign in</a></div>
+  </div>
+  <script>
+    const $ = s => document.querySelector(s);
+    const token = new URLSearchParams(location.search).get('token');
+    if (!token) { $('#msg').className='msg err'; $('#msg').textContent='Invalid reset link — no token.'; $('#go').disabled = true; }
+
+    $('#eye').onclick = () => { const p=$('#pass'); p.type = p.type==='password'?'text':'password'; };
+    $('#pass').addEventListener('keydown', e => { if (e.key==='Enter') submit(); });
+    $('#go').onclick = submit;
+
+    async function submit() {
+      const password = $('#pass').value;
+      if (password.length < 6) { $('#msg').className='msg err'; $('#msg').textContent='Password must be at least 6 characters'; return; }
+      $('#msg').className='msg'; $('#msg').textContent='Updating…';
+      try {
+        const r = await fetch('/api/auth', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({ action:'reset', token, password }) });
+        const d = await r.json(); if (!r.ok) throw new Error(d.error || r.status);
+        $('#msg').className='msg ok'; $('#msg').textContent='Password updated! Redirecting to sign in…';
+        setTimeout(()=>location.href='/checkout.html', 1400);
+      } catch (e) { $('#msg').className='msg err'; $('#msg').textContent = e.message; }
+    }
+  </script>
+</body>
+</html>
