@@ -326,6 +326,18 @@
     <span id="lic-until" style="color:var(--muted);margin-left:8px"></span>
   </div>
 
+  <!-- Activation key (same key goes into the extension) -->
+  <div class="card" id="key-card">
+    <h3>🔑 Activation Key</h3>
+    <p style="font-size:13px;color:var(--muted);margin:8px 0 12px">Enter your activation key here, then paste the <strong>same key</strong> into the extension (Prefs → License Key). One key runs both the extension and this CRM.</p>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+      <input id="ak-input" placeholder="AA-XXXX-XXXX-XXXX" autocomplete="off"
+             style="flex:1;min-width:220px;background:var(--card);border:1px solid var(--border);color:var(--text);border-radius:8px;padding:11px 13px;font-size:14px;text-transform:uppercase;font-weight:600;letter-spacing:.04em" />
+      <button class="btn btn-primary btn-sm" id="ak-save">Save key</button>
+    </div>
+    <div class="ferr" id="ak-msg" style="margin-top:8px"></div>
+  </div>
+
   <!-- Download -->
   <div class="dl-card">
     <div class="dl-icon">⬇️</div>
@@ -455,13 +467,16 @@
       const ap = document.getElementById('admin-panel');
       const banner = document.getElementById('lic-banner');
       const acct = document.getElementById('acct-card');
+      const keyCard = document.getElementById('key-card');
       if (s.role === 'admin') {
         ap.style.display = 'block';
         if (banner) banner.style.display = 'none';
         if (acct) acct.style.display = 'none';   // admin changes creds via env, not here
+        if (keyCard) keyCard.style.display = 'none'; // admin doesn't use an activation key
         Admin.loadUsers();
       } else {
         if (acct) acct.style.display = 'block';
+        if (keyCard) keyCard.style.display = 'block';
         ap.style.display = 'none';
         // Regular user: show the "buy a plan" banner unless they're licensed.
         if (banner) {
@@ -577,6 +592,30 @@
     navigator.clipboard?.writeText(el.value).catch(()=>{});
     document.getElementById('ref-copy').textContent = 'Copied!';
     setTimeout(()=>{ document.getElementById('ref-copy').textContent = 'Copy link'; }, 1500);
+  });
+
+  // Activation-key card — validate + save; same key goes into the extension.
+  const AK_STORE = 'jobbot_crm_key';
+  const akInput = document.getElementById('ak-input');
+  if (akInput) akInput.value = localStorage.getItem(AK_STORE) || '';
+  document.getElementById('ak-save')?.addEventListener('click', async () => {
+    const key = (akInput.value || '').trim().toUpperCase();
+    const msg = document.getElementById('ak-msg');
+    msg.classList.add('show'); msg.style.color = '';
+    if (!key) { msg.textContent = 'Enter your activation key'; return; }
+    msg.textContent = 'Checking…';
+    try {
+      const r = await fetch('/api/license-key', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ key }) });
+      const d = await r.json().catch(() => ({}));
+      if (!r.ok || !d.valid) throw new Error(d.error || 'Invalid activation key');
+      localStorage.setItem(AK_STORE, key);
+      msg.style.color = 'var(--success)';
+      msg.textContent = d.active
+        ? (d.expires_at
+            ? `✓ Saved & active until ${new Date(d.expires_at).toLocaleDateString()}. Paste this same key into the extension.`
+            : '✓ Saved & active. Paste this same key into the extension.')
+        : (d.error || 'This key has expired');
+    } catch (e) { msg.style.color = ''; msg.textContent = e.message; }
   });
 
   // Change-password card
