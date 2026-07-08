@@ -11,335 +11,162 @@
   <!-- ── Header ─────────────────────────────────────────────────── -->
   <header class="header">
     <div class="header-left">
-      <div class="logo-wrap">
-        <span id="logo-icon" class="logo-icon">🤖</span>
-      </div>
+      <span id="logo-icon" class="logo-icon">🤖</span>
       <div>
         <div class="logo-title">JobBot</div>
-        <div class="logo-sub">Auto Apply Agent</div>
+        <div class="logo-sub">Auto Apply</div>
       </div>
     </div>
     <div class="header-right">
       <span id="platform-pill" class="pill pill--off">No site</span>
-      <span id="run-pill" class="run-pill" style="display:none">
-        <span class="run-dot"></span>Running
-      </span>
+      <span id="run-pill" class="run-pill" style="display:none"><span class="run-dot"></span>Live</span>
     </div>
   </header>
 
   <!-- ── Stats ──────────────────────────────────────────────────── -->
   <div class="stats-row">
-    <div class="stat">
-      <div id="s-li" class="stat-n">0</div>
-      <div class="stat-l"><span class="dot dot-li"></span>LinkedIn</div>
-    </div>
-    <div class="stat-sep"></div>
-    <div class="stat">
-      <div id="s-in" class="stat-n">0</div>
-      <div class="stat-l"><span class="dot dot-in"></span>Indeed</div>
-    </div>
-    <div class="stat-sep"></div>
-    <div class="stat">
-      <div id="s-nk" class="stat-n">0</div>
-      <div class="stat-l"><span class="dot dot-nk"></span>Naukri</div>
-    </div>
-    <div class="stat-sep"></div>
-    <div class="stat">
-      <div id="s-sk" class="stat-n stat-n--dim">0</div>
-      <div class="stat-l">Skipped</div>
-    </div>
+    <div class="stat"><div id="s-li" class="stat-n">0</div><div class="stat-l"><span class="dot dot-li"></span>LinkedIn</div></div>
+    <div class="stat"><div id="s-in" class="stat-n">0</div><div class="stat-l"><span class="dot dot-in"></span>Indeed</div></div>
+    <div class="stat"><div id="s-nk" class="stat-n">0</div><div class="stat-l"><span class="dot dot-nk"></span>Naukri</div></div>
+    <div class="stat"><div id="s-sk" class="stat-n stat-n--dim">0</div><div class="stat-l">Skipped</div></div>
   </div>
 
   <!-- ── Controls ───────────────────────────────────────────────── -->
   <div class="ctrl">
-    <button id="btn-start" class="action-btn action-start">
-      <span class="btn-ico">▶</span> Start Agent
-    </button>
-    <button id="btn-stop" class="action-btn action-stop" style="display:none">
-      <span class="btn-ico">⏹</span> Stop Agent
-    </button>
-    <div id="status-txt" class="status-txt">Fill your profile below, then hit Start</div>
+    <button id="btn-start" class="action-btn action-start"><span class="btn-ico">▶</span> Start Agent</button>
+    <button id="btn-stop" class="action-btn action-stop" style="display:none"><span class="btn-ico">■</span> Stop Agent</button>
+    <div id="status-txt" class="status-txt">Activate your key, then hit Start</div>
   </div>
 
   <!-- ── Tabs ───────────────────────────────────────────────────── -->
   <nav class="tab-nav">
-    <button class="tab-btn active" data-tab="profile">👤 Profile</button>
-    <button class="tab-btn" data-tab="prefs">⚙️ Prefs</button>
+    <button class="tab-btn active" data-tab="prefs">🔑 Activate</button>
+    <button class="tab-btn" data-tab="profile">👤 Profile</button>
     <button class="tab-btn" data-tab="history">📋 History</button>
   </nav>
 
-  <!-- ════════════════════════════════════════════════════════════ -->
-  <!-- PROFILE TAB                                                   -->
-  <!-- ════════════════════════════════════════════════════════════ -->
-  <div id="tab-profile" class="tab-pane active">
+  <!-- ════ ACTIVATE / PREFS TAB ════ -->
+  <div id="tab-prefs" class="tab-pane active">
 
-    <div class="section">
-      <div class="section-hd"><span>👤</span> Personal</div>
-      <div class="grid-2">
-        <div class="field">
-          <label>Full Name</label>
-          <input id="f-name" type="text" placeholder="Your full name" autocomplete="name">
-        </div>
-        <div class="field">
-          <label>Phone</label>
-          <input id="f-phone" type="tel" placeholder="+91 98765 43210" autocomplete="tel">
-        </div>
+    <!-- Activation card (primary action) -->
+    <div class="card card--accent">
+      <div class="card-hd">🔑 License Key</div>
+      <div class="input-wrap">
+        <input id="p-license" type="text" class="key-input" placeholder="AA-XXXX-XXXX-XXXX" autocomplete="off">
+        <button type="button" class="pw-eye" data-target="p-license" title="Show/hide">👁</button>
       </div>
-      <div class="field">
-        <label>Email</label>
-        <input id="f-email" type="email" placeholder="your@email.com" autocomplete="email">
-      </div>
-      <div class="grid-2">
-        <div class="field">
-          <label>City / Location</label>
-          <input id="f-location" type="text" placeholder="Mumbai, India">
-        </div>
-        <div class="field">
-          <label>Postal / PIN Code</label>
-          <input id="f-zip" type="text" placeholder="400001" autocomplete="postal-code">
-        </div>
-      </div>
-      <div class="grid-2">
-        <div class="field">
-          <label>Gender</label>
-          <select id="f-gender">
-            <option value="">Prefer not to say</option>
-            <option value="Male">Male</option>
-            <option value="Female">Female</option>
-            <option value="Other">Other</option>
-          </select>
-        </div>
-      </div>
+      <button id="p-activate" type="button" class="primary-btn">🔓 Save &amp; Activate</button>
+      <div id="p-license-note" class="key-note"></div>
     </div>
 
-    <div class="section">
-      <div class="section-hd"><span>💼</span> Professional</div>
-      <div class="grid-2">
-        <div class="field">
-          <label>Current Title</label>
-          <input id="f-title" type="text" placeholder="Software Engineer">
-        </div>
-        <div class="field">
-          <label>Current Company</label>
-          <input id="f-company" type="text" placeholder="Company Name">
-        </div>
-      </div>
-      <div class="grid-3">
-        <div class="field">
-          <label>Experience (yrs)</label>
-          <input id="f-exp" type="number" min="0" max="40" placeholder="3">
-        </div>
-        <div class="field">
-          <label>Current Salary</label>
-          <input id="f-curr-sal" type="text" placeholder="12 LPA">
-        </div>
-        <div class="field">
-          <label>Expected Salary</label>
-          <input id="f-exp-sal" type="text" placeholder="18 LPA">
-        </div>
-      </div>
-      <div class="grid-2">
-        <div class="field">
-          <label>Notice Period</label>
-          <input id="f-notice" type="text" placeholder="30 days">
-        </div>
-        <div class="field">
-          <label>Education</label>
-          <input id="f-edu" type="text" placeholder="B.Tech / MBA">
-        </div>
-      </div>
-      <div class="field">
-        <label>Skills <small class="field-hint">comma-separated</small></label>
-        <input id="f-skills" type="text" placeholder="Python, React, SQL, Leadership">
-      </div>
-      <div class="field">
-        <label>Languages</label>
-        <input id="f-langs" type="text" placeholder="English, Hindi">
-      </div>
-    </div>
-
-    <div class="section">
-      <div class="section-hd">
-        <span>📝</span> Cover Statement
-        <span class="badge-pill">used for "Why apply?" questions</span>
-      </div>
-      <div class="field">
-        <textarea id="f-cover" rows="3" placeholder="I bring X years of experience in… I am excited about this role because…"></textarea>
-      </div>
-    </div>
-
-    <div class="form-footer">
-      <button id="btn-save-profile" class="save-btn">
-        <span>💾</span> Save Profile
-      </button>
-      <span id="ok-profile" class="ok-badge" style="display:none">✓ Saved!</span>
-    </div>
-
-  </div><!-- /tab-profile -->
-
-  <!-- ════════════════════════════════════════════════════════════ -->
-  <!-- PREFS TAB                                                     -->
-  <!-- ════════════════════════════════════════════════════════════ -->
-  <div id="tab-prefs" class="tab-pane">
-
-    <div class="section">
-      <div class="section-hd"><span>🎯</span> Preferences</div>
+    <!-- Job preferences -->
+    <div class="card">
+      <div class="card-hd">🎯 Job Preferences</div>
       <div class="grid-2">
         <div class="field">
           <label>Work Mode</label>
-          <select id="p-mode">
-            <option value="hybrid">Hybrid</option>
-            <option value="remote">Remote</option>
-            <option value="onsite">On-site</option>
-          </select>
+          <select id="p-mode"><option value="hybrid">Hybrid</option><option value="remote">Remote</option><option value="onsite">On-site</option></select>
         </div>
         <div class="field">
-          <label>Travel Willingness</label>
-          <select id="p-travel">
-            <option value="0">0% – No travel</option>
-            <option value="25" selected>25%</option>
-            <option value="50">50%</option>
-            <option value="75">75%</option>
-            <option value="100">100%</option>
-          </select>
+          <label>Travel</label>
+          <select id="p-travel"><option value="0">0%</option><option value="25" selected>25%</option><option value="50">50%</option><option value="75">75%</option><option value="100">100%</option></select>
         </div>
       </div>
+      <label class="toggle-row"><span>Willing to relocate</span><span class="toggle"><input id="p-relocate" type="checkbox"><span class="ttrack"></span></span></label>
+      <label class="toggle-row"><span>LinkedIn: Easy Apply only</span><span class="toggle"><input id="p-easyonly" type="checkbox" checked><span class="ttrack"></span></span></label>
+      <label class="toggle-row"><span>Authorized to work</span><span class="toggle"><input id="p-auth" type="checkbox" checked><span class="ttrack"></span></span></label>
+    </div>
 
-      <div class="toggle-group">
-        <div class="toggle-row">
-          <div class="toggle-text">
-            <span class="toggle-label">Willing to Relocate</span>
-            <span class="toggle-sub">Agent answers Yes on relocation questions</span>
-          </div>
-          <label class="toggle"><input id="p-relocate" type="checkbox"><span class="ttrack"></span></label>
+    <!-- AI -->
+    <div class="card">
+      <div class="card-hd">✨ AI Smart Answers</div>
+      <label class="toggle-row"><span>Answer unknown questions with AI</span><span class="toggle"><input id="p-ai" type="checkbox"><span class="ttrack"></span></span></label>
+      <div class="field" style="margin-top:8px">
+        <label>Your Gemini API key <small>billed to you</small></label>
+        <div class="input-wrap">
+          <input id="p-gemini" type="password" placeholder="AIza…" autocomplete="off">
+          <button type="button" class="pw-eye" data-target="p-gemini" title="Show/hide">👁</button>
         </div>
-        <div class="toggle-row">
-          <div class="toggle-text">
-            <span class="toggle-label">LinkedIn: Easy Apply Only</span>
-            <span class="toggle-sub">Skip jobs that don't have Easy Apply</span>
-          </div>
-          <label class="toggle"><input id="p-easyonly" type="checkbox" checked><span class="ttrack"></span></label>
-        </div>
-        <div class="toggle-row">
-          <div class="toggle-text">
-            <span class="toggle-label">Authorized to Work in India</span>
-            <span class="toggle-sub">Auto-answers work authorization questions</span>
-          </div>
-          <label class="toggle"><input id="p-auth" type="checkbox" checked><span class="ttrack"></span></label>
-        </div>
+        <div class="hint">Free at aistudio.google.com/apikey · stays on your device</div>
       </div>
     </div>
 
-    <div class="section">
-      <div class="section-hd"><span>🔑</span> License Key
-        <span class="badge-pill">paste your key, then Start</span>
-      </div>
-      <div class="field">
-        <label>License Key <small class="field-hint">issued by the admin — unlocks the agent</small></label>
-        <div style="position:relative">
-          <input id="p-license" type="text" placeholder="AA-XXXX-XXXX-XXXX" autocomplete="off" style="padding-right:40px;text-transform:uppercase;letter-spacing:.04em;font-weight:600">
-          <button type="button" class="pw-eye" data-target="p-license" title="Show/hide" style="position:absolute;right:8px;top:50%;transform:translateY(-50%);background:none;border:none;cursor:pointer;font-size:14px;opacity:.7">👁</button>
-        </div>
-        <button id="p-activate" type="button"
-          style="width:100%;margin-top:8px;padding:11px;border:none;border-radius:9px;cursor:pointer;font-weight:700;font-size:14px;color:#fff;background:linear-gradient(135deg,#7c3aed,#6d28d9)">
-          🔓 Save &amp; Activate
-        </button>
-        <small id="p-license-note" class="field-hint" style="display:block;margin-top:8px;min-height:16px"></small>
-      </div>
-
-      <div class="section-hd" style="margin-top:14px"><span>🛰️</span> Advanced
-        <span class="badge-pill">optional</span>
-      </div>
-      <div class="field">
-        <label>Backend URL <small class="field-hint">leave blank to use the default</small></label>
+    <!-- Advanced (collapsed) -->
+    <details class="card card--details">
+      <summary class="card-hd">⚙️ Advanced <span class="chev">▾</span></summary>
+      <div class="field" style="margin-top:10px">
+        <label>Backend URL <small>blank = default</small></label>
         <input id="p-crm-url" type="url" placeholder="https://jobs.qckserve.in">
       </div>
       <div class="field">
-        <label>CRM Email <small class="field-hint">only if you use an email/password account instead of a key</small></label>
+        <label>CRM Email <small>if using email login</small></label>
         <input id="p-crm-email" type="email" placeholder="you@email.com" autocomplete="email">
       </div>
       <div class="field">
         <label>CRM Password</label>
-        <div style="position:relative">
-          <input id="p-crm-pass" type="password" placeholder="••••••••••" style="padding-right:40px">
-          <button type="button" class="pw-eye" data-target="p-crm-pass" title="Show/hide" style="position:absolute;right:8px;top:50%;transform:translateY(-50%);background:none;border:none;cursor:pointer;font-size:14px;opacity:.7">👁</button>
+        <div class="input-wrap">
+          <input id="p-crm-pass" type="password" placeholder="••••••••••">
+          <button type="button" class="pw-eye" data-target="p-crm-pass" title="Show/hide">👁</button>
         </div>
       </div>
-      <div class="field">
-        <a id="p-buy" href="#" target="_blank" rel="noopener"
-           style="display:inline-block;padding:9px 14px;border-radius:9px;font-size:13px;font-weight:700;
-                  text-decoration:none;color:#fff;background:linear-gradient(135deg,#7c3aed,#6d28d9)">
-          🔓 Buy / manage your plan
-        </a>
-        <small class="field-hint" style="display:block;margin-top:6px">A paid plan is required to run the agent. Opens your checkout page.</small>
+      <a id="p-buy" href="#" target="_blank" rel="noopener" class="ghost-link">🔓 Buy / manage your plan</a>
+    </details>
+
+    <div class="form-footer">
+      <button id="btn-save-prefs" class="save-btn"><span>💾</span> Save</button>
+      <span id="ok-prefs" class="ok-badge" style="display:none">✓ Saved</span>
+    </div>
+  </div><!-- /tab-prefs -->
+
+  <!-- ════ PROFILE TAB ════ -->
+  <div id="tab-profile" class="tab-pane">
+    <div class="card">
+      <div class="card-hd">👤 Personal</div>
+      <div class="grid-2">
+        <div class="field"><label>Full Name</label><input id="f-name" type="text" placeholder="Your name" autocomplete="name"></div>
+        <div class="field"><label>Phone</label><input id="f-phone" type="tel" placeholder="+91 98765…" autocomplete="tel"></div>
       </div>
-      <div class="toggle-group">
-        <div class="toggle-row">
-          <div class="toggle-text">
-            <span class="toggle-label">AI Smart Answers</span>
-            <span class="toggle-sub">Gemini answers questions your profile can't</span>
-          </div>
-          <label class="toggle"><input id="p-ai" type="checkbox"><span class="ttrack"></span></label>
-        </div>
+      <div class="field"><label>Email</label><input id="f-email" type="email" placeholder="your@email.com" autocomplete="email"></div>
+      <div class="grid-2">
+        <div class="field"><label>Location</label><input id="f-location" type="text" placeholder="Mumbai, India"></div>
+        <div class="field"><label>PIN Code</label><input id="f-zip" type="text" placeholder="400001" autocomplete="postal-code"></div>
       </div>
-      <div class="field">
-        <label>Your Gemini API Key <small class="field-hint">your own key — usage is billed to you</small></label>
-        <div style="position:relative">
-          <input id="p-gemini" type="password" placeholder="AIza…" autocomplete="off" style="padding-right:40px">
-          <button type="button" class="pw-eye" data-target="p-gemini" title="Show/hide" style="position:absolute;right:8px;top:50%;transform:translateY(-50%);background:none;border:none;cursor:pointer;font-size:14px;opacity:.7">👁</button>
-        </div>
-        <small class="field-hint" style="display:block;margin-top:6px">
-          Free key from <span style="color:#a78bfa">aistudio.google.com/apikey</span>. Stays on your device; never sent to our servers.
-        </small>
+      <div class="field"><label>Gender</label>
+        <select id="f-gender"><option value="">Prefer not to say</option><option value="Male">Male</option><option value="Female">Female</option><option value="Other">Other</option></select>
       </div>
     </div>
 
-    <div class="section">
-      <div class="section-hd"><span>⚡</span> How the Agent Works</div>
-      <div class="info-list">
-        <div class="info-item">
-          <span class="info-ico">🎯</span>
-          <div>
-            <div class="info-title">Smart Form Filling</div>
-            <div class="info-desc">Detects 25+ question types and maps them to your profile automatically</div>
-          </div>
-        </div>
-        <div class="info-item">
-          <span class="info-ico">🔮</span>
-          <div>
-            <div class="info-title">Spotlight Mode</div>
-            <div class="info-desc">Every click is highlighted with a purple glow so you can watch live</div>
-          </div>
-        </div>
-        <div class="info-item">
-          <span class="info-ico">⏱️</span>
-          <div>
-            <div class="info-title">Human-like Speed</div>
-            <div class="info-desc">Random delays between actions — reduces bot-detection risk</div>
-          </div>
-        </div>
-        <div class="info-item">
-          <span class="info-ico">📄</span>
-          <div>
-            <div class="info-title">Multi-page Crawl</div>
-            <div class="info-desc">Automatically goes to the next page when all jobs on current page are processed</div>
-          </div>
-        </div>
+    <div class="card">
+      <div class="card-hd">💼 Professional</div>
+      <div class="grid-2">
+        <div class="field"><label>Current Title</label><input id="f-title" type="text" placeholder="Software Engineer"></div>
+        <div class="field"><label>Company</label><input id="f-company" type="text" placeholder="Company"></div>
       </div>
+      <div class="grid-3">
+        <div class="field"><label>Exp (yrs)</label><input id="f-exp" type="number" min="0" max="40" placeholder="3"></div>
+        <div class="field"><label>Current ₹</label><input id="f-curr-sal" type="text" placeholder="12 LPA"></div>
+        <div class="field"><label>Expected ₹</label><input id="f-exp-sal" type="text" placeholder="18 LPA"></div>
+      </div>
+      <div class="grid-2">
+        <div class="field"><label>Notice Period</label><input id="f-notice" type="text" placeholder="30 days"></div>
+        <div class="field"><label>Education</label><input id="f-edu" type="text" placeholder="B.Tech / MBA"></div>
+      </div>
+      <div class="field"><label>Skills <small>comma-separated</small></label><input id="f-skills" type="text" placeholder="Python, React, SQL"></div>
+      <div class="field"><label>Languages</label><input id="f-langs" type="text" placeholder="English, Hindi"></div>
+    </div>
+
+    <div class="card">
+      <div class="card-hd">📝 Cover Statement <small>for "Why apply?"</small></div>
+      <div class="field"><textarea id="f-cover" rows="3" placeholder="I bring X years of experience… excited about this role because…"></textarea></div>
     </div>
 
     <div class="form-footer">
-      <button id="btn-save-prefs" class="save-btn">
-        <span>💾</span> Save Preferences
-      </button>
-      <span id="ok-prefs" class="ok-badge" style="display:none">✓ Saved!</span>
+      <button id="btn-save-profile" class="save-btn"><span>💾</span> Save Profile</button>
+      <span id="ok-profile" class="ok-badge" style="display:none">✓ Saved</span>
     </div>
+  </div><!-- /tab-profile -->
 
-  </div><!-- /tab-prefs -->
-
-  <!-- ════════════════════════════════════════════════════════════ -->
-  <!-- HISTORY TAB                                                   -->
-  <!-- ════════════════════════════════════════════════════════════ -->
+  <!-- ════ HISTORY TAB ════ -->
   <div id="tab-history" class="tab-pane">
     <div class="hist-header">
       <span class="hist-count-wrap"><span id="hist-total">0</span> Applications</span>
