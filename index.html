@@ -313,11 +313,11 @@
 <!-- ══ View: Dashboard ══ -->
 <div id="view-dashboard" class="view">
 
-  <!-- Licence banner (regular users without an active plan) -->
+  <!-- Access-needed banner (no active key or plan yet) -->
   <div id="lic-banner" style="display:none;background:linear-gradient(135deg,rgba(245,158,11,.16),rgba(245,158,11,.05));border:1px solid rgba(245,158,11,.35);border-radius:14px;padding:18px 22px;margin-bottom:22px">
-    <div style="font-weight:700;margin-bottom:4px">🔒 A plan is required to run AutoApplier</div>
-    <div style="font-size:13px;color:var(--muted);margin-bottom:12px">You're signed in, but the agent and CRM stay locked until you buy a plan.</div>
-    <a class="btn btn-primary btn-sm" href="/checkout.html">View plans &amp; buy →</a>
+    <div style="font-weight:700;margin-bottom:4px">🔑 Enter your activation key to unlock</div>
+    <div style="font-size:13px;color:var(--muted);margin-bottom:12px">You're signed in. Paste the activation key your admin gave you in the box below to unlock the agent and CRM — or buy a plan.</div>
+    <a class="btn btn-primary btn-sm" href="/checkout.html">Buy a plan →</a>
   </div>
 
   <!-- Active-licence note (shows validity window) -->
@@ -478,27 +478,44 @@
         if (acct) acct.style.display = 'block';
         if (keyCard) keyCard.style.display = 'block';
         ap.style.display = 'none';
-        // Regular user: show the "buy a plan" banner unless they're licensed.
-        if (banner) {
-          banner.style.display = 'none';
-          const ok = document.getElementById('lic-ok'), until = document.getElementById('lic-until');
-          fetch('/api/license', { headers: { Authorization: 'Bearer ' + s.token } })
-            .then(r => r.json()).then(d => {
-              banner.style.display = d.active ? 'none' : 'block';
-              if (ok) {
-                ok.style.display = d.active ? 'block' : 'none';
-                if (d.active && until) until.textContent = d.expires_at
-                  ? 'valid until ' + new Date(d.expires_at).toLocaleDateString('en-IN', { day:'2-digit', month:'short', year:'numeric' })
-                  : 'lifetime access';
-              }
-            })
-            .catch(() => {});
-        }
+        if (typeof refreshAccess === 'function') refreshAccess(s);
       }
       // Everyone signed in gets a referral link + change-password card.
       if (typeof loadReferral === 'function') loadReferral(s);
     },
   };
+
+  // Access = an active ACTIVATION KEY (admin-issued) OR an active account plan.
+  // Checked in that order so a key the admin gave the user unlocks everything.
+  async function refreshAccess(s) {
+    const banner = document.getElementById('lic-banner');
+    const ok = document.getElementById('lic-ok'), until = document.getElementById('lic-until');
+    const fmt = iso => new Date(iso).toLocaleDateString('en-IN', { day:'2-digit', month:'short', year:'numeric' });
+    if (banner) banner.style.display = 'none';
+    if (ok) ok.style.display = 'none';
+
+    // 1) Activation key (from the card / localStorage)
+    const key = localStorage.getItem('jobbot_crm_key');
+    if (key) {
+      try {
+        const d = await fetch('/api/license-key', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ key }) }).then(r => r.json());
+        if (d.valid && d.active) {
+          if (ok) { ok.style.display = 'block'; if (until) until.textContent = d.expires_at ? 'key valid until ' + fmt(d.expires_at) : 'key active'; }
+          return;
+        }
+      } catch {}
+    }
+    // 2) Account plan (Razorpay purchase)
+    try {
+      const d = await fetch('/api/license', { headers: { Authorization: 'Bearer ' + s.token } }).then(r => r.json());
+      if (d.active) {
+        if (ok) { ok.style.display = 'block'; if (until) until.textContent = d.expires_at ? 'valid until ' + fmt(d.expires_at) : 'lifetime access'; }
+        return;
+      }
+    } catch {}
+    // 3) Neither → prompt for the activation key
+    if (banner) banner.style.display = 'block';
+  }
 
   // ── Auth ──────────────────────────────────────────────────────────────────
   const Auth = {
@@ -615,6 +632,8 @@
             ? `✓ Saved & active until ${new Date(d.expires_at).toLocaleDateString()}. Paste this same key into the extension.`
             : '✓ Saved & active. Paste this same key into the extension.')
         : (d.error || 'This key has expired');
+      // Re-check access so the "unlock" banner clears and the green note shows.
+      if (Views.session && typeof refreshAccess === 'function') refreshAccess(Views.session);
     } catch (e) { msg.style.color = ''; msg.textContent = e.message; }
   });
 
