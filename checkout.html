@@ -7,39 +7,48 @@
   <script src="https://checkout.razorpay.com/v1/checkout.js"></script>
   <style>
     :root {
-      --violet:#7c3aed; --bg:#0f0a1f; --card:#1a1230; --text:#ece9f7;
-      --muted:#a89fc8; --border:rgba(124,58,237,.25); --green:#34d399; --red:#f87171;
+      --violet:#8b5cf6; --violet2:#7c3aed; --violet-dk:#6d28d9;
+      --bg:#0b0817; --card:#161029; --card2:#1d1636; --text:#f1eefb;
+      --muted:#9d95c0; --dim:#6f6790; --border:rgba(139,92,246,.16); --border2:rgba(139,92,246,.32);
+      --green:#34d399; --red:#f87171;
     }
     *{margin:0;padding:0;box-sizing:border-box}
-    body{font-family:system-ui,-apple-system,"Segoe UI",sans-serif;background:var(--bg);color:var(--text);min-height:100vh}
-    .container{max-width:960px;margin:0 auto;padding:24px}
-    header{display:flex;align-items:center;justify-content:space-between;gap:16px;padding:8px 0 24px;flex-wrap:wrap}
-    h1{font-size:24px}h1 a{color:var(--muted);font-size:13px;text-decoration:none}
+    body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Inter,Roboto,sans-serif;background:radial-gradient(130% 55% at 50% -8%,rgba(124,58,237,.20),transparent 65%),var(--bg);color:var(--text);min-height:100vh;font-size:14px;line-height:1.5}
+    ::-webkit-scrollbar{width:10px}::-webkit-scrollbar-thumb{background:var(--border2);border-radius:8px}
+    .container{max-width:920px;margin:0 auto;padding:30px 24px 60px}
+    header{display:flex;align-items:center;justify-content:space-between;gap:16px;padding:6px 0 20px;flex-wrap:wrap}
+    h1{font-size:22px;font-weight:800;letter-spacing:-.01em}h1 a{color:var(--muted);font-size:13px;text-decoration:none;font-weight:500}h1 a:hover{color:var(--text)}
     .who{font-size:13px;color:var(--muted)}
-    .lead{color:var(--muted);margin-bottom:22px}
-    .plans{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:16px}
-    .plan{background:var(--card);border:1px solid var(--border);border-radius:16px;padding:22px;display:flex;flex-direction:column;gap:10px}
-    .plan h3{font-size:18px}
-    .price{font-size:32px;font-weight:800}
-    .price small{font-size:14px;color:var(--muted);font-weight:500}
-    .plan p{color:var(--muted);font-size:14px;flex:1}
-    .feat{list-style:none;display:flex;flex-direction:column;gap:6px;font-size:13px;color:var(--text)}
-    .feat li::before{content:"✓ ";color:var(--green);font-weight:700}
-    button{cursor:pointer;font-family:inherit}
-    .buy{background:linear-gradient(135deg,#7c3aed,#6d28d9);color:#fff;border:none;border-radius:10px;padding:12px;font-size:15px;font-weight:700;margin-top:6px}
-    .buy:hover{filter:brightness(1.1)}
-    .msg{margin-top:12px;font-size:13px;min-height:16px}.msg.err{color:var(--red)}.msg.ok{color:var(--green)}
+    .lead{color:var(--muted);margin-bottom:22px;font-size:14.5px;max-width:620px}
+    .plans{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:16px}
+    .plan{background:var(--card);border:1px solid var(--border);border-radius:18px;padding:24px 22px;display:flex;flex-direction:column;gap:10px;transition:border-color .18s,transform .18s,box-shadow .18s}
+    .plan:hover{border-color:var(--border2);transform:translateY(-3px);box-shadow:0 14px 34px rgba(124,58,237,.18)}
+    .plan h3{font-size:18px;font-weight:800}
+    .price{font-size:34px;font-weight:800;letter-spacing:-.02em;background:linear-gradient(120deg,var(--text),var(--violet));-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent}
+    .price small{font-size:13px;color:var(--muted);font-weight:600;-webkit-text-fill-color:var(--muted)}
+    .plan p{color:var(--muted);font-size:13.5px;flex:1}
+    .feat{list-style:none;display:flex;flex-direction:column;gap:7px;font-size:13px;color:var(--text)}
+    .feat li{display:flex;gap:7px;align-items:flex-start}
+    .feat li::before{content:"✓";color:var(--green);font-weight:900;flex-shrink:0}
+    button{cursor:pointer;font-family:inherit;transition:filter .12s,transform .12s}
+    .buy{background:linear-gradient(135deg,var(--violet),var(--violet-dk));color:#fff;border:none;border-radius:11px;padding:12px;font-size:14.5px;font-weight:800;margin-top:8px;box-shadow:0 6px 16px rgba(124,58,237,.32)}
+    .buy:hover{filter:brightness(1.1)}.buy:active{transform:scale(.98)}
+    .msg{margin-top:14px;font-size:13px;min-height:16px}.msg.err{color:var(--red)}.msg.ok{color:var(--green)}
     .note{margin-top:26px;font-size:13px;color:var(--muted);text-align:center}
-    .note a{color:#a78bfa}
+    .note a{color:#a78bfa;font-weight:600}
     /* modal */
-    .overlay{position:fixed;inset:0;background:rgba(6,3,15,.72);display:none;align-items:center;justify-content:center;z-index:50;padding:20px}
+    .overlay{position:fixed;inset:0;background:rgba(6,3,15,.78);backdrop-filter:blur(4px);display:none;align-items:center;justify-content:center;z-index:50;padding:20px}
     .overlay.on{display:flex}
-    .modal{width:100%;max-width:360px;background:var(--card);border:1px solid var(--border);border-radius:16px;padding:26px;text-align:center}
-    .modal h2{font-size:19px;margin-bottom:4px}
+    .modal{width:100%;max-width:360px;background:var(--card);border:1px solid var(--border2);border-radius:18px;padding:28px;text-align:center;box-shadow:0 24px 60px rgba(0,0,0,.5)}
+    .modal h2{font-size:19px;font-weight:800;margin-bottom:4px}
     .modal p{font-size:13px;color:var(--muted);margin-bottom:16px}
-    .modal input{width:100%;margin:7px 0;background:var(--bg);border:1px solid var(--border);color:var(--text);border-radius:9px;padding:12px;font-size:14px}
+    .modal input{width:100%;margin:7px 0;background:var(--bg);border:1px solid var(--border);color:var(--text);border-radius:10px;padding:12px 13px;font-size:14px;transition:border-color .15s,box-shadow .15s}
+    .modal input:focus{outline:none;border-color:var(--violet);box-shadow:0 0 0 3px rgba(124,58,237,.16)}
     .modal .buy{width:100%}
-    .x{position:absolute;top:14px;right:18px;background:none;border:none;color:var(--muted);font-size:22px;cursor:pointer}
+    .x{position:absolute;top:14px;right:18px;background:none;border:none;color:var(--muted);font-size:22px;cursor:pointer;line-height:1}
+    .x:hover{color:var(--text)}
+    #ref-code{background:var(--card);border:1px solid var(--border);color:var(--text);border-radius:10px}
+    #ref-code:focus{outline:none;border-color:var(--violet);box-shadow:0 0 0 3px rgba(124,58,237,.16)}
   </style>
 </head>
 <body>
