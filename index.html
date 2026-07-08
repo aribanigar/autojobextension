@@ -7,28 +7,34 @@
   <meta name="description" content="AutoApplier automates job applications on LinkedIn, Indeed, and Naukri — fills forms, clicks Continue, and moves through listings automatically." />
   <style>
     :root {
-      --bg:           #080810;
-      --surface:      #0e0e1a;
-      --card:         #12121e;
-      --border:       rgba(124, 58, 237, 0.14);
-      --border-hi:    rgba(124, 58, 237, 0.38);
+      --bg:           #0b0817;
+      --surface:      #110c22;
+      --card:         #161029;
+      --card2:        #1d1636;
+      --border:       rgba(139, 92, 246, 0.16);
+      --border-hi:    rgba(139, 92, 246, 0.34);
       --accent:       #7c3aed;
+      --accent-2:     #8b5cf6;
+      --accent-dk:    #6d28d9;
       --accent-light: #a78bfa;
       --accent-dim:   rgba(124, 58, 237, 0.12);
-      --text:         #f0eef9;
-      --muted:        #8b85a8;
-      --danger:       #ef4444;
-      --success:      #22c55e;
-      --warn:         #f59e0b;
+      --text:         #f1eefb;
+      --muted:        #9d95c0;
+      --dim:          #6f6790;
+      --danger:       #f87171;
+      --success:      #34d399;
+      --warn:         #fbbf24;
     }
     *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
     body {
-      font-family: system-ui, -apple-system, 'Segoe UI', sans-serif;
-      background: var(--bg);
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Inter, Roboto, sans-serif;
+      background: radial-gradient(130% 55% at 50% -8%, rgba(124,58,237,.20), transparent 65%), var(--bg);
       color: var(--text);
       min-height: 100vh;
       line-height: 1.6;
     }
+    ::-webkit-scrollbar { width: 10px; height: 10px; }
+    ::-webkit-scrollbar-thumb { background: var(--border-hi); border-radius: 8px; }
 
     /* ── Nav ─────────────────────────────────────────── */
     nav {
@@ -60,8 +66,9 @@
       cursor: pointer; border: none; text-decoration: none;
       transition: background .13s, transform .12s, box-shadow .13s;
     }
-    .btn-primary { background: var(--accent); color: #fff; }
-    .btn-primary:hover { background: #6d28d9; transform: translateY(-1px); box-shadow: 0 6px 20px rgba(124,58,237,.4); }
+    .btn-primary { background: linear-gradient(135deg, var(--accent-2), var(--accent-dk)); color: #fff; box-shadow: 0 6px 16px rgba(124,58,237,.32); }
+    .btn-primary:hover { filter: brightness(1.08); transform: translateY(-1px); box-shadow: 0 10px 26px rgba(124,58,237,.45); }
+    .btn-primary:active { transform: scale(.98); }
     .btn-ghost {
       background: transparent; color: var(--muted);
       border: 1px solid var(--border);
@@ -101,8 +108,8 @@
     }
     .hero h1 {
       font-size: clamp(30px, 3.6vw, 50px); font-weight: 800; line-height: 1.13;
-      margin-bottom: 18px;
-      background: linear-gradient(140deg, #f0eef9 30%, var(--accent-light));
+      margin-bottom: 18px; letter-spacing: -.02em;
+      background: linear-gradient(140deg, var(--text) 30%, var(--accent-light));
       -webkit-background-clip: text; background-clip: text; color: transparent;
     }
     .hero p {
@@ -146,8 +153,8 @@
       border-radius: 8px; color: var(--text); font-size: 14px; font-family: inherit;
       outline: none; transition: border-color .14s;
     }
-    .field input:focus { border-color: var(--accent); }
-    .field input::placeholder { color: rgba(139,133,168,.45); }
+    .field input:focus { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(124,58,237,.16); }
+    .field input::placeholder { color: var(--dim); }
     .ferr {
       font-size: 12px; color: var(--danger);
       margin-bottom: 10px; display: none;
@@ -176,9 +183,11 @@
     /* Install steps */
     .card {
       background: var(--card); border: 1px solid var(--border);
-      border-radius: 14px; padding: 26px; margin-bottom: 24px;
+      border-radius: 16px; padding: 26px; margin-bottom: 24px;
+      transition: border-color .15s;
     }
-    .card h3 { font-size: 15px; font-weight: 600; margin-bottom: 18px; }
+    .card:hover { border-color: var(--border-hi); }
+    .card h3 { font-size: 15px; font-weight: 700; margin-bottom: 18px; }
     .steps { display: flex; flex-direction: column; gap: 14px; }
     .step { display: flex; gap: 13px; align-items: flex-start; }
     .sn {
