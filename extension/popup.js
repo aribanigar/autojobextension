@@ -3,6 +3,7 @@
 document.addEventListener('DOMContentLoaded', async () => {
 
   // ── State ────────────────────────────────────────────────────────────────
+  const DEFAULT_CRM = 'https://jobs.qckserve.in';   // defined up-front (used by the buy link)
   let running  = false;
   let platform = null;
   let statsTimer = null;
@@ -80,17 +81,27 @@ document.addEventListener('DOMContentLoaded', async () => {
     updateBuyLink(p.preferences?.crmUrl);
   }
 
-  const DEFAULT_CRM = 'https://jobs.qckserve.in';
-
-  // Point the "Buy / manage plan" button at the checkout page (default backend
-  // if none set, so it never reopens the same tab).
-  function updateBuyLink(url) {
-    const a = document.getElementById('p-buy');
-    if (!a) return;
-    const base = ((url || '').trim() || DEFAULT_CRM).replace(/\/+$/, '');
-    a.href = `${base}/checkout.html`;
+  // The subscription-plans (checkout) URL, from the configured backend or the
+  // default. Never the extension itself.
+  function checkoutUrl() {
+    const url = (document.getElementById('p-crm-url')?.value || '').trim();
+    const base = (url || DEFAULT_CRM).replace(/\/+$/, '');
+    return `${base}/checkout.html`;
   }
-  document.getElementById('p-crm-url')?.addEventListener('input', e => updateBuyLink(e.target.value));
+  function updateBuyLink() {
+    const a = document.getElementById('p-buy');
+    if (a) a.href = checkoutUrl();
+  }
+  document.getElementById('p-crm-url')?.addEventListener('input', updateBuyLink);
+
+  // Bulletproof: open the plans page in a real browser tab on click. In a popup,
+  // chrome.tabs.create reliably opens the checkout page (an <a> can fail if the
+  // href wasn't set yet). This is what makes "Buy / manage plan" work.
+  document.getElementById('p-buy')?.addEventListener('click', (e) => {
+    e.preventDefault();
+    const url = checkoutUrl();
+    try { chrome.tabs.create({ url }); } catch { window.open(url, '_blank'); }
+  });
 
   // Save & Activate: persist the key (and everything), then verify activation.
   // Works for a license key OR an email/password account (the check tries the
