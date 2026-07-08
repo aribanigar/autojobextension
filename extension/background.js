@@ -223,6 +223,19 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
       getLicense(msg.force).then(lic => sendResponse(lic));
       return true;
 
+    case 'NOTIFY':
+      // Desktop notification so the user notices a captcha even on another tab.
+      try {
+        chrome.notifications?.create('jobbot-' + Date.now(), {
+          type: 'basic',
+          iconUrl: chrome.runtime.getURL('icons/icon128.png'),
+          title: msg.title || 'JobBot',
+          message: msg.message || '',
+          priority: 2,
+        }, () => void chrome.runtime.lastError);
+      } catch {}
+      break;
+
     case 'GEMINI_ANSWER':
       // Each user's own Gemini key: the call runs here (background worker),
       // straight to Google, so the key stays on their machine and the usage is

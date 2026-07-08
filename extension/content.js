@@ -365,6 +365,50 @@
     };
   })();
 
+  // ─── Captcha detection & human hand-off ─────────────────────────────────────
+  // We NEVER auto-solve captchas: Cloudflare Turnstile/reCAPTCHA/Arkose are
+  // built to be unsolvable by scripts (Turnstile even scores mouse movement),
+  // and faking it only raises bot suspicion and risks account bans. Instead we
+  // reliably DETECT every common captcha across LinkedIn/Indeed/Naukri, alert
+  // the user loudly (spotlight + sound + a browser notification so they notice
+  // even on another tab), then resume automatically the moment it's cleared.
+  const CAPTCHA = {
+    // Widget/iframe selectors covering the major providers + Indeed's current
+    // Cloudflare Turnstile and "press & hold" challenge, and CF interstitials.
+    SEL: 'iframe[src*="recaptcha"], iframe[title*="reCAPTCHA"], .g-recaptcha, ' +
+         'iframe[src*="hcaptcha"], iframe[title*="hCaptcha"], ' +
+         'iframe[src*="challenges.cloudflare.com"], iframe[title*="Cloudflare"], ' +
+         '.cf-turnstile, #cf-challenge-running, #challenge-stage, #challenge-form, ' +
+         'iframe[src*="arkoselabs"], iframe[src*="funcaptcha"], iframe[id*="arkose"], ' +
+         '[data-testid*="captcha"], [class*="captcha" i], [id*="captcha" i], ' +
+         'div[aria-label*="captcha" i], [class*="press-and-hold" i]',
+
+    // The element to spotlight (the captcha widget if we can find it).
+    el() { return $(this.SEL) || document.body; },
+
+    present() {
+      const w = $(this.SEL);
+      if (w && isVis(w)) return true;
+      // Full-page "verify you are human" interstitial: verification wording on a
+      // page that has no real job form (avoids false positives on job pages).
+      const txt = (document.body?.innerText || '').slice(0, 3000).toLowerCase();
+      const verifyPhrase = /verify (you are|you'?re) (a )?human|are you (a )?human|additional verification required|press ?& ?hold|press and hold|complete the (security|captcha) check|confirm you are human|unusual traffic from your|checking your browser before/;
+      if (verifyPhrase.test(txt)) {
+        const hasForm = $('input[type="text"]:not([readonly]), textarea, select, [role="combobox"]');
+        if (!hasForm) return true; // sparse verification page → treat as captcha
+      }
+      return false;
+    },
+  };
+
+  // Fire a desktop notification via the background worker (works across tabs).
+  let _lastNotify = 0;
+  function notifyUser(title, message) {
+    if (Date.now() - _lastNotify < 20000) return; // throttle
+    _lastNotify = Date.now();
+    try { chrome.runtime.sendMessage({ type: 'NOTIFY', title, message }, () => void chrome.runtime.lastError); } catch {}
+  }
+
   // ─── Learned answers ───────────────────────────────────────────────────────
   // Questions the agent couldn't answer itself, that the USER filled in
   // manually, are remembered here (durable in chrome.storage.local, so they
@@ -1252,28 +1296,36 @@
       return { cont, sub };
     }
 
-    // A reCAPTCHA the user must solve by hand. We never try to tick or solve it:
-    // a scripted click can't satisfy reCAPTCHA and only raises bot suspicion.
-    hasCaptcha() {
-      return !!$('iframe[src*="recaptcha"], iframe[title*="reCAPTCHA"], .g-recaptcha, ' +
-                 '[data-testid*="captcha"], iframe[src*="hcaptcha"]');
-    }
+    // A captcha the user must solve by hand. We never try to tick or solve it:
+    // a scripted click can't satisfy it and only raises bot suspicion. Uses the
+    // shared broad detector so Indeed's Cloudflare Turnstile / press-and-hold
+    // challenge is recognised (not just reCAPTCHA), which is what used to make
+    // the agent silently stall.
+    hasCaptcha() { return CAPTCHA.present(); }
 
-    // Pause and let the human tick the captcha; resume the moment Submit enables.
+    // Pause and let the human solve the captcha; resume the moment it clears.
     async waitForCaptcha(sub) {
-      SPOT.attention(this.hasCaptcha() ? ($('iframe[src*="recaptcha"]') || sub) : sub,
-        '🔐 Please tick the "I\'m not a robot" box — I\'ll submit automatically');
+      SPOT.attention(CAPTCHA.el() || sub,
+        '🔐 Please solve the "verify you\'re human" check — I\'ll continue automatically');
+      notifyUser('JobBot needs you', 'Solve the captcha on Indeed — the agent will continue automatically once done.');
       for (let i = 0; i < 600 && this.running; i++) { // wait up to ~10 min
         await sleep(1000);
-        const { sub: s2 } = this.findStepButtons();
-        if (this.isDone()) { SPOT.clearAttention(); return 'submitted'; }
-        if (s2 && isVis(s2) && !s2.disabled) {       // captcha solved → button live
+        // Captcha gone → resume: submit if the button is live, else let the flow continue.
+        if (!CAPTCHA.present()) {
+          const { sub: s2 } = this.findStepButtons();
+          if (this.isDone()) { SPOT.clearAttention(); return 'submitted'; }
+          if (s2 && isVis(s2) && !s2.disabled) {
+            SPOT.clearAttention();
+            await sleep(rand(500, 1100));
+            await humanClick(s2, '🎉 Submitting my application!');
+            await sleep(rand(1500, 2500));
+            return 'submitted';
+          }
           SPOT.clearAttention();
-          await sleep(rand(500, 1100));
-          await humanClick(s2, '🎉 Submitting my application!');
-          await sleep(rand(1500, 2500));
-          return 'submitted';
+          return 'continue'; // captcha cleared but no submit yet — carry on with the flow
         }
+        // Still there — re-alert every ~45s in case they missed it.
+        if (i > 0 && i % 45 === 0) notifyUser('JobBot still waiting', 'A captcha is still open on Indeed — please solve it to continue.');
       }
       SPOT.clearAttention();
       return 'blocked';
@@ -3249,6 +3301,33 @@
         });
       } catch { clearInterval(watchdog); }
     }, 5000);
+
+    // ── Global captcha watcher (all sites) ──────────────────────────────────
+    // Independent of any agent: whenever a captcha appears during a run, spotlight
+    // it + fire a desktop notification so the user solves it, and clear the alert
+    // the moment it's gone. This covers LinkedIn/Naukri too, and catches captchas
+    // that pop up outside an agent's own submit step — the old cause of silent stalls.
+    let _captchaShown = false;
+    const captchaWatch = setInterval(() => {
+      if (!contextAlive()) { clearInterval(captchaWatch); return; }
+      let running = false;
+      try {
+        chrome.storage.local.get('jobbot_running', d => {
+          if (chrome.runtime.lastError) return;
+          running = !!(d.jobbot_running && flagMatchesThisTab(d.jobbot_running));
+          const here = CAPTCHA.present();
+          if (running && here && !_captchaShown) {
+            _captchaShown = true;
+            SPOT.attention(CAPTCHA.el(), '🔐 Human check — please solve the "verify you\'re human" box; I\'ll continue automatically');
+            notifyUser('JobBot needs you', 'A captcha appeared — solve it and the agent keeps going automatically.');
+          } else if (_captchaShown && !here) {
+            _captchaShown = false;
+            SPOT.clearAttention();
+            SPOT.status('✓ Captcha cleared — continuing…', 'success');
+          }
+        });
+      } catch { clearInterval(captchaWatch); }
+    }, 2500);
   }
 
 })();
