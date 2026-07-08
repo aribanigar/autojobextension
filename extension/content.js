@@ -69,22 +69,54 @@
   // Indeed/reCAPTCHA score mouse activity; a few mousemove events before a click
   // read more like a person than an instant click at dead-center.
   let _mx = Math.random() * window.innerWidth, _my = Math.random() * window.innerHeight;
+  const _clampX = v => Math.max(0, Math.min(innerWidth - 1, v));
+  const _clampY = v => Math.max(0, Math.min(innerHeight - 1, v));
+  const _emitMove = (ex, ey) => {
+    const tgt = document.elementFromPoint(_clampX(ex), _clampY(ey));
+    (tgt || document.body)?.dispatchEvent(new MouseEvent('mousemove', {
+      bubbles: true, cancelable: true, view: window, clientX: ex, clientY: ey,
+    }));
+  };
   async function moveTo(x, y) {
-    const steps = rand(5, 11);
+    // LinkedIn / Naukri / Bayt: ORIGINAL behaviour, unchanged.
+    if (PLATFORM !== 'indeed') {
+      const steps = rand(5, 11);
+      for (let i = 1; i <= steps; i++) {
+        const t = i / steps;
+        const ex = _mx + (x - _mx) * t + (Math.random() - 0.5) * 6;
+        const ey = _my + (y - _my) * t + (Math.random() - 0.5) * 6;
+        _emitMove(ex, ey);
+        await sleep(rand(8, 22));
+      }
+      _mx = x; _my = y;
+      return;
+    }
+
+    // INDEED ONLY — stronger human-like motion (Cloudflare Turnstile scores the
+    // mouse path). Curved (quadratic Bézier) route, ease-in-out speed, micro
+    // jitter, more samples, and an occasional overshoot-and-correct near the
+    // target. Purely a movement/realism change — no apply logic is affected.
+    const dist = Math.hypot(x - _mx, y - _my);
+    const steps = Math.max(14, Math.min(40, Math.round(dist / rand(10, 18))));
+    // control point pushed perpendicular-ish so the path arcs like a real hand
+    const cx = _mx + (x - _mx) * rand(0.25, 0.55) + (Math.random() - 0.5) * Math.min(200, dist * 0.6 + 60);
+    const cy = _my + (y - _my) * rand(0.45, 0.75) + (Math.random() - 0.5) * Math.min(150, dist * 0.4 + 50);
+    const sx = _mx, sy = _my;
     for (let i = 1; i <= steps; i++) {
       const t = i / steps;
-      // ease-in-out + slight wobble
-      const ex = _mx + (x - _mx) * t + (Math.random() - 0.5) * 6;
-      const ey = _my + (y - _my) * t + (Math.random() - 0.5) * 6;
-      const tgt = document.elementFromPoint(
-        Math.max(0, Math.min(innerWidth - 1, ex)),
-        Math.max(0, Math.min(innerHeight - 1, ey))
-      );
-      (tgt || document.body)?.dispatchEvent(new MouseEvent('mousemove', {
-        bubbles: true, cancelable: true, view: window, clientX: ex, clientY: ey,
-      }));
-      await sleep(rand(8, 22));
+      const te = t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2; // ease-in-out
+      const u = 1 - te;
+      const ex = u * u * sx + 2 * u * te * cx + te * te * x + (Math.random() - 0.5) * 2.5;
+      const ey = u * u * sy + 2 * u * te * cy + te * te * y + (Math.random() - 0.5) * 2.5;
+      _emitMove(ex, ey);
+      await sleep(rand(9, 30) * (0.6 + Math.abs(0.5 - t))); // slower at the ends
     }
+    // Occasional slight overshoot, then settle onto the target — very human.
+    if (Math.random() < 0.5) {
+      _emitMove(x + (Math.random() - 0.5) * 12, y + (Math.random() - 0.5) * 12);
+      await sleep(rand(25, 70));
+    }
+    _emitMove(x, y);
     _mx = x; _my = y;
   }
 
