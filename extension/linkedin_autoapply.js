@@ -368,9 +368,43 @@
       setNativeValue(el, type === "number" || looksLikeExperience(label) ? APPLY_PROFILE.years_of_experience : APPLY_PROFILE.years_of_experience);
     });
   }
+  // Resume step — LinkedIn's "Be sure to include an updated resume" cards use
+  // unnamed radios (id="jobsDocumentCardToggle-*"), so the generic radio filler
+  // can't group/select them and the step stalls. Explicitly select a resume:
+  // keep whatever is already chosen, else pick the first card by clicking its
+  // toggle label (the reliable control), then confirm the radio fires.
+  function selectResume(scope) {
+    const root = scope || document;
+    const radios = Array.from(root.querySelectorAll('input[type="radio"][id^="jobsDocumentCardToggle-"]'));
+    const cards  = Array.from(root.querySelectorAll('.jobs-document-upload-redesign-card__container, .ui-attachment--pdf'));
+    if (!radios.length && !cards.length) return;          // not the resume step
+    if (radios.some(r => r.checked)) return;              // already selected → keep it
+
+    const firstCard = cards.find(c => visible(c)) || cards[0];
+    let target = null, radio = null;
+    if (firstCard) {
+      radio  = firstCard.querySelector('input[type="radio"]');
+      target = firstCard.querySelector('label.jobs-document-upload-redesign-card__toggle-label')
+            || (radio && radio.id && root.querySelector('label[for="' + esc(radio.id) + '"]'))
+            || radio || firstCard;
+    } else if (radios[0]) {
+      radio  = radios[0];
+      target = (radio.id && root.querySelector('label[for="' + esc(radio.id) + '"]')) || radio;
+    }
+    if (target) {
+      humanClick(target);
+      if (radio && !radio.checked) {
+        try { radio.checked = true; radio.dispatchEvent(new Event("input", { bubbles: true })); radio.dispatchEvent(new Event("change", { bubbles: true })); } catch (_) {}
+      }
+    }
+  }
+
   function fillRadios(scope) {
     const groups = {};
-    scope.querySelectorAll('input[type="radio"]').forEach(r => { (groups[r.name] = groups[r.name] || []).push(r); });
+    scope.querySelectorAll('input[type="radio"]').forEach(r => {
+      if (r.id && /^jobsDocumentCardToggle-/.test(r.id)) return;   // resume radios handled by selectResume
+      (groups[r.name] = groups[r.name] || []).push(r);
+    });
     Object.values(groups).forEach(group => {
       if (group.some(r => r.checked)) return;
       let pick = group.find(r => { const l = r.id && scope.querySelector('label[for="' + esc(r.id) + '"]'); return l && /^\s*yes\s*$/i.test(textOf(l)); }) || group[0];
@@ -386,6 +420,7 @@
   }
   function autofill(scope) {
     if (!scope || scope === document || scope === document.body) return;
+    try { selectResume(scope); } catch (_) {}   // resume step — pick a resume so it can advance
     try { fillSelects(scope); } catch (_) {}
     try { fillTextInputs(scope); } catch (_) {}
     try { fillRadios(scope); } catch (_) {}
