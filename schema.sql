@@ -91,6 +91,27 @@ create index if not exists purchases_order_idx on purchases (razorpay_order_id);
 create index if not exists purchases_sub_idx   on purchases (razorpay_subscription_id);
 create index if not exists purchases_status_idx on purchases (status);
 
+-- ── License keys (admin-issued, key-based access) ────────────────────────────
+-- The admin generates a key with a validity window. On first use the key
+-- activates (expires_at = now + validity_days); after that it's time-limited.
+-- The same key runs the extension AND logs into the CRM.
+create table if not exists license_keys (
+  id            uuid primary key default gen_random_uuid(),
+  key           text unique not null,
+  validity_days integer not null default 30,
+  label         text,                                  -- who it's for / notes
+  status        text not null default 'active',        -- active | revoked
+  activated_at  timestamptz,                           -- set on first validation
+  expires_at    timestamptz,                           -- set on first validation
+  created_at    timestamptz not null default now()
+);
+alter table license_keys enable row level security;
+create index if not exists license_keys_key_idx on license_keys (key);
+
+-- CRM rows can be owned by a license key (not just an email account).
+alter table jobs add column if not exists license_key text;
+create index if not exists jobs_license_key_idx on jobs (license_key);
+
 -- ── Referrals / discount codes ───────────────────────────────────────────────
 -- A code gives the BUYER a discount and its owner (the referrer) a reward of
 -- reward_days free access per successful purchase. owner_email is null for

@@ -43,8 +43,10 @@ function updateBadge() {
 }
 
 // ── CRM account session ──────────────────────────────────────────────────────
-// Logs in with the email/password from preferences and caches the bearer
-// token; rows synced with it are saved under that account and stay there.
+// Default backend so users only need to paste their license key (no URL setup).
+const DEFAULT_CRM = 'https://jobs.qckserve.in';
+const crmBase = prefs => (prefs.crmUrl || DEFAULT_CRM).replace(/\/+$/, '');
+
 function getPrefs() {
   return new Promise(res =>
     chrome.storage.local.get('jobbot_profile', d => res(d.jobbot_profile?.preferences || {})));
@@ -77,21 +79,38 @@ async function getCrmToken(force = false) {
 // endpoint. A definitive "not active" blocks immediately; a network error falls
 // back to the last known-good result for up to 24h so a transient outage never
 // locks out a paying user.
-let _licCache = null; // { active, is_admin, ts }
+let _licCache = null; // { active, expires_at, ts }
 async function getLicense(force = false) {
   const prefs = await getPrefs();
-  if (!prefs.crmUrl) return { active: false, reason: 'no-crm' };
+  const base = crmBase(prefs);
   if (!force && _licCache && Date.now() - _licCache.ts < 5 * 60 * 1000) return _licCache;
 
+  // ── Primary: admin-issued license KEY ──────────────────────────────────────
+  if (prefs.licenseKey) {
+    try {
+      const r = await fetch(`${base}/api/license-key`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ key: prefs.licenseKey }),
+      });
+      const d = await r.json().catch(() => ({}));
+      if (r.ok && d.valid) {
+        _licCache = { active: !!d.active, expires_at: d.expires_at, reason: d.active ? undefined : 'expired', ts: Date.now() };
+        return _licCache;
+      }
+      return { active: false, reason: 'bad-key' }; // invalid/revoked
+    } catch {
+      if (_licCache && _licCache.active && Date.now() - _licCache.ts < 24 * 3600 * 1000) return _licCache;
+      return { active: false, reason: 'offline' };
+    }
+  }
+
+  // ── Fallback: email/password account (self-serve Razorpay users) ────────────
   let token = await getCrmToken();
-  if (!token) return { active: false, reason: 'no-login' };
-  const call = t => fetch(`${prefs.crmUrl.replace(/\/+$/, '')}/api/license`, { headers: { Authorization: `Bearer ${t}` } });
+  if (!token) return { active: false, reason: 'no-key' };
+  const call = t => fetch(`${base}/api/license`, { headers: { Authorization: `Bearer ${t}` } });
   try {
     let r = await call(token);
-    if (r.status === 401) {
-      token = await getCrmToken(true); // session replaced elsewhere → re-login
-      if (token) r = await call(token);
-    }
+    if (r.status === 401) { token = await getCrmToken(true); if (token) r = await call(token); }
     if (!r.ok) throw new Error('status ' + r.status);
     const d = await r.json();
     _licCache = { active: !!d.active, is_admin: !!d.is_admin, ts: Date.now() };
@@ -157,15 +176,15 @@ async function geminiAnswer(apiKey, question, options = [], profile = {}) {
   } catch { clearTimeout(t); return null; }
 }
 
-// Real-time CRM sync under the user's account; falls back to the legacy
-// shared key if no account is configured. Re-logs in once on 401.
+// Real-time CRM sync. Prefers the license key (rows owned by that key), then
+// an email/password account, then the legacy shared key.
 async function syncToCRM(row) {
   const prefs = await getPrefs();
-  if (!prefs.crmUrl) return;
-  const url = `${prefs.crmUrl.replace(/\/+$/, '')}/api/jobs`;
+  const url = `${crmBase(prefs)}/api/jobs`;
   const post = headers =>
     fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json', ...headers }, body: JSON.stringify(row) });
   try {
+    if (prefs.licenseKey) { await post({ 'x-license-key': prefs.licenseKey }); return; }
     let token = await getCrmToken();
     if (token) {
       const r = await post({ Authorization: `Bearer ${token}` });

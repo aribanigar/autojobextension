@@ -222,6 +222,45 @@ export default async function handler(req, res) {
       return res.status(200).json({ ok: true });
     }
 
+    // ── License keys ───────────────────────────────────────────────────────
+    if (action === 'create_keys') {
+      const { validity_days = 30, label = '', count = 1 } = req.body || {};
+      const days = Math.max(1, Number(validity_days) || 30);
+      const n = Math.min(50, Math.max(1, Number(count) || 1));
+      const group = () => randomBytes(2).toString('hex').toUpperCase();
+      const rowsToInsert = [];
+      for (let i = 0; i < n; i++) {
+        rowsToInsert.push({ key: `AA-${group()}-${group()}-${group()}`, validity_days: days, label: label || null, status: 'active' });
+      }
+      const created = await sb('license_keys', { method: 'POST', body: JSON.stringify(rowsToInsert) });
+      return res.status(201).json(created);
+    }
+
+    if (action === 'list_keys') {
+      return res.status(200).json(await sb('license_keys?order=created_at.desc&limit=500'));
+    }
+
+    if (action === 'revoke_key') {
+      const { id } = req.body || {};
+      if (!id) return res.status(400).json({ error: 'id required' });
+      await sb(`license_keys?id=eq.${encodeURIComponent(id)}`, { method: 'PATCH', body: JSON.stringify({ status: 'revoked' }) });
+      return res.status(200).json({ ok: true });
+    }
+
+    if (action === 'enable_key') {
+      const { id } = req.body || {};
+      if (!id) return res.status(400).json({ error: 'id required' });
+      await sb(`license_keys?id=eq.${encodeURIComponent(id)}`, { method: 'PATCH', body: JSON.stringify({ status: 'active' }) });
+      return res.status(200).json({ ok: true });
+    }
+
+    if (action === 'delete_key') {
+      const { id } = req.body || {};
+      if (!id) return res.status(400).json({ error: 'id required' });
+      await sb(`license_keys?id=eq.${encodeURIComponent(id)}`, { method: 'DELETE' });
+      return res.status(200).json({ ok: true });
+    }
+
     return res.status(400).json({ error: 'Unknown action' });
   } catch (e) {
     return res.status(502).json({ error: String(e.message || e) });

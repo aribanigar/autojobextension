@@ -64,12 +64,18 @@
       <span id="live" class="live" style="display:none"><span class="dot"></span><span id="live-txt">live</span></span>
     </header>
 
-    <!-- Email/password gate -->
+    <!-- License key + email/password gate -->
     <div id="gate" class="gate">
-      <div style="font-size:34px">🔐</div>
-      <h2 style="margin:10px 0 4px">Log in to your CRM</h2>
-      <p>Your applications are saved to your account and stay there.</p>
+      <div style="font-size:34px">🔑</div>
+      <h2 style="margin:10px 0 4px">Enter your license key</h2>
+      <p>Paste the key you were given — it opens your CRM.</p>
       <div style="display:flex;flex-direction:column;gap:10px;align-items:center;margin-top:14px">
+        <input id="key-input" type="text" placeholder="AA-XXXX-XXXX-XXXX" autocomplete="off" style="width:280px;text-transform:uppercase;font-weight:600;letter-spacing:.04em" />
+        <button class="btn-v" id="key-btn">Open CRM</button>
+        <div id="key-err" class="err-msg"></div>
+      </div>
+      <div style="margin:18px 0 8px;color:var(--muted);font-size:12px">— or log in with an email account —</div>
+      <div style="display:flex;flex-direction:column;gap:10px;align-items:center">
         <input id="email-input" type="email" placeholder="Email" autocomplete="email" style="width:280px" />
         <div style="position:relative;width:280px">
           <input id="pass-input" type="password" placeholder="Password" autocomplete="current-password" style="width:280px;padding-right:40px;margin:0" />
@@ -116,12 +122,16 @@
     const $ = s => document.querySelector(s);
     const TOKEN_STORE = 'jobbot_crm_token';
     const EMAIL_STORE = 'jobbot_crm_email';
+    const KEY_STORE   = 'jobbot_crm_key';
     let token = localStorage.getItem(TOKEN_STORE) || '';
+    let licenseKey = localStorage.getItem(KEY_STORE) || '';
     let rows = [];
     let timer = null;
 
+    // Auth header: license key takes precedence, else the account bearer token.
+    const authHeaders = () => licenseKey ? { 'x-license-key': licenseKey } : { Authorization: 'Bearer ' + token };
     const api = (path, init = {}) =>
-      fetch(path, { ...init, headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + token, ...init.headers } })
+      fetch(path, { ...init, headers: { 'Content-Type': 'application/json', ...authHeaders(), ...init.headers } })
         .then(async r => { const d = await r.json().catch(() => ({})); if (!r.ok) throw new Error(d.error || r.status); return d; });
 
     function esc(s) { const d = document.createElement('div'); d.textContent = String(s ?? ''); return d.innerHTML; }
@@ -182,12 +192,18 @@
     }
 
     async function start() {
-      // Paywall: only accounts with an active licence may open the dashboard.
+      // Access check. License key → /api/license-key; account → /api/license.
       try {
-        const r = await fetch('/api/license', { headers: { Authorization: 'Bearer ' + token } });
-        if (r.status === 401) return logout('Session expired — log in again');
-        const lic = await r.json();
-        if (!lic.active) { location.href = '/checkout.html'; return; }
+        if (licenseKey) {
+          const r = await fetch('/api/license-key', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ key: licenseKey }) });
+          const d = await r.json().catch(() => ({}));
+          if (!r.ok || !d.valid || !d.active) return logout(d.error || 'License key invalid or expired');
+        } else {
+          const r = await fetch('/api/license', { headers: { Authorization: 'Bearer ' + token } });
+          if (r.status === 401) return logout('Session expired — log in again');
+          const lic = await r.json();
+          if (!lic.active) { location.href = '/checkout.html'; return; }
+        }
       } catch { /* if the check fails, /api/jobs still gates below */ }
 
       $('#gate').style.display = 'none'; $('#app').style.display = '';
@@ -199,11 +215,31 @@
     function logout(msg) {
       localStorage.removeItem(TOKEN_STORE);
       localStorage.removeItem(EMAIL_STORE);
-      token = '';
+      localStorage.removeItem(KEY_STORE);
+      token = ''; licenseKey = '';
       clearInterval(timer);
       $('#app').style.display = 'none'; $('#gate').style.display = '';
       $('#gate-err').textContent = msg || '';
     }
+
+    // License-key login
+    $('#key-btn').onclick = async () => {
+      const key = $('#key-input').value.trim().toUpperCase();
+      if (!key) { $('#key-err').textContent = 'Enter your license key'; return; }
+      $('#key-err').textContent = 'Checking…';
+      try {
+        const r = await fetch('/api/license-key', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ key }) });
+        const d = await r.json().catch(() => ({}));
+        if (!r.ok || !d.valid) throw new Error(d.error || 'Invalid license key');
+        if (!d.active) throw new Error(d.error || 'This key has expired');
+        licenseKey = key; token = '';
+        localStorage.setItem(KEY_STORE, key);
+        localStorage.removeItem(TOKEN_STORE);
+        $('#key-err').textContent = '';
+        start();
+      } catch (e) { $('#key-err').textContent = e.message; }
+    };
+    $('#key-input').addEventListener('keydown', e => { if (e.key === 'Enter') $('#key-btn').click(); });
 
     async function authenticate(action) {
       const email = $('#email-input').value.trim();
@@ -220,6 +256,7 @@
         token = d.token;
         localStorage.setItem(TOKEN_STORE, token);
         localStorage.setItem(EMAIL_STORE, d.email);
+        licenseKey = ''; localStorage.removeItem(KEY_STORE); // account mode
         $('#gate-err').textContent = '';
         start();
       } catch (e) { $('#gate-err').textContent = e.message; }
@@ -262,7 +299,7 @@
       catch (err) { setLive(false, 'delete failed: ' + err.message); }
     });
 
-    if (token) start();
+    if (licenseKey || token) start();
   </script>
 </body>
 </html>

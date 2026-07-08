@@ -2782,10 +2782,11 @@
       } catch { res({}); }
     });
     if (!lic.active) {
-      const msg = lic.reason === 'no-crm'   ? '🔒 Add your CRM site URL in Prefs, then buy a plan to start'
-                : lic.reason === 'no-login' ? '🔒 Enter your CRM email & password in Prefs (create an account & buy a plan)'
-                : lic.reason === 'offline'  ? '🔒 Could not verify your plan (offline). Check your connection.'
-                : '🔒 Purchase required — buy a plan on the dashboard to use JobBot';
+      const msg = lic.reason === 'no-key'  ? '🔑 Enter your license key in Prefs, then press Start'
+                : lic.reason === 'bad-key' ? '🔑 Invalid or revoked license key — check it in Prefs'
+                : lic.reason === 'expired' ? '⌛ Your license key has expired — get a new one from the admin'
+                : lic.reason === 'offline' ? '🔒 Could not verify your key (offline). Check your connection.'
+                : '🔑 Enter a valid license key in Prefs to start';
       SPOT.status(msg, 'error');
       try { chrome.storage.local.set({ jobbot_running: false }); } catch {} // stop watchdog retries
       agent = null;

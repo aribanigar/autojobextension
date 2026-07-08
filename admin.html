@@ -50,14 +50,31 @@
 
     <div id="app" style="display:none">
       <div class="tabs">
-        <button data-tab="plans" class="on">Plans</button>
+        <button data-tab="keys" class="on">License Keys</button>
+        <button data-tab="plans">Plans</button>
         <button data-tab="users">Users &amp; Access</button>
         <button data-tab="coupons">Referral Codes</button>
         <button data-tab="purchases">Purchases</button>
       </div>
 
+      <!-- LICENSE KEYS -->
+      <section id="tab-keys">
+        <div class="card">
+          <h2>Issue license keys</h2>
+          <div class="grid">
+            <div style="grid-column:span 2"><label>Name</label><input id="k-label" placeholder="e.g. John's key / Batch A" style="width:100%"></div>
+            <div><label>Validity (days)</label><input id="k-days" type="number" min="1" placeholder="30" style="width:100%"></div>
+            <div><label>How many keys</label><input id="k-count" type="number" min="1" max="50" placeholder="1" style="width:100%"></div>
+          </div>
+          <div style="font-size:12px;color:var(--muted);margin-top:4px">The validity clock starts when the key is first used in the extension or CRM. Give the key to your customer — they paste it and the agent runs for that many days.</div>
+          <button class="btn-v" id="k-create" style="margin-top:10px">＋ Generate key(s)</button>
+          <div id="k-msg" class="msg"></div>
+        </div>
+        <div id="keys-list"></div>
+      </section>
+
       <!-- PLANS -->
-      <section id="tab-plans">
+      <section id="tab-plans" style="display:none">
         <div class="card">
           <h2>Create a plan</h2>
           <div class="grid">
@@ -157,11 +174,54 @@
 
     document.querySelectorAll('.tabs button').forEach(b=>b.onclick=()=>{
       document.querySelectorAll('.tabs button').forEach(x=>x.classList.remove('on')); b.classList.add('on');
-      ['plans','users','coupons','purchases'].forEach(t=>$('#tab-'+t).style.display = t===b.dataset.tab?'':'none');
+      ['keys','plans','users','coupons','purchases'].forEach(t=>$('#tab-'+t).style.display = t===b.dataset.tab?'':'none');
+      if(b.dataset.tab==='keys') loadKeys();
+      if(b.dataset.tab==='plans') loadPlans();
       if(b.dataset.tab==='users') loadUsers();
       if(b.dataset.tab==='coupons') loadCoupons();
       if(b.dataset.tab==='purchases') loadPurchases();
     });
+
+    // LICENSE KEYS
+    $('#k-create').onclick = async () => {
+      const validity_days = parseInt($('#k-days').value||'30',10);
+      const count = parseInt($('#k-count').value||'1',10);
+      try {
+        const created = await adminPost({ action:'create_keys', validity_days, count, label:$('#k-label').value.trim() });
+        $('#k-msg').className='msg ok';
+        $('#k-msg').textContent = `Created ${created.length} key(s): ` + created.map(k=>k.key).join(', ');
+        $('#k-label').value='';
+        loadKeys();
+      } catch(e){ $('#k-msg').className='msg err'; $('#k-msg').textContent=e.message; }
+    };
+    async function loadKeys() {
+      try {
+        const rows = await adminPost({ action:'list_keys' });
+        $('#keys-list').innerHTML = `<table><thead><tr><th>Key</th><th>Validity</th><th>Status</th><th>Expires</th><th>Label</th><th></th></tr></thead><tbody>${
+          rows.map(k=>{
+            const expired = k.expires_at && new Date(k.expires_at).getTime() < Date.now();
+            const state = k.status==='revoked' ? 'revoked' : (!k.expires_at ? 'unused' : (expired ? 'expired' : 'active'));
+            const cls = (state==='active'||state==='unused') ? 'on' : 'off';
+            return `<tr>
+              <td style="font-family:monospace;font-weight:700">${esc(k.key)}</td>
+              <td>${k.validity_days} days</td>
+              <td><span class="pill ${cls}">${state}</span></td>
+              <td style="color:var(--muted)">${k.expires_at?new Date(k.expires_at).toLocaleDateString():'—'}</td>
+              <td style="color:var(--muted)">${esc(k.label||'')}</td>
+              <td style="white-space:nowrap">
+                <button class="mini" data-copy="${esc(k.key)}">Copy</button>
+                ${k.status==='revoked'
+                  ? `<button class="mini" data-enable="${k.id}">Enable</button>`
+                  : `<button class="mini" data-revoke="${k.id}">Revoke</button>`}
+                <button class="mini" data-delk="${k.id}">✕</button>
+              </td></tr>`;
+          }).join('')}</tbody></table>`;
+        $('#keys-list').querySelectorAll('[data-copy]').forEach(b=>b.onclick=()=>{ navigator.clipboard?.writeText(b.dataset.copy); b.textContent='Copied'; setTimeout(()=>b.textContent='Copy',1200); });
+        $('#keys-list').querySelectorAll('[data-revoke]').forEach(b=>b.onclick=async()=>{ await adminPost({action:'revoke_key',id:b.dataset.revoke}); loadKeys(); });
+        $('#keys-list').querySelectorAll('[data-enable]').forEach(b=>b.onclick=async()=>{ await adminPost({action:'enable_key',id:b.dataset.enable}); loadKeys(); });
+        $('#keys-list').querySelectorAll('[data-delk]').forEach(b=>b.onclick=async()=>{ if(confirm('Delete this key?')){ await adminPost({action:'delete_key',id:b.dataset.delk}); loadKeys(); } });
+      } catch(e){ $('#keys-list').innerHTML='<p class="msg err">'+esc(e.message)+'</p>'; }
+    }
 
     // COUPONS
     $('#c-create').onclick = async () => {
@@ -282,7 +342,7 @@
       } catch(e){ $('#purchases-list').innerHTML='<p class="msg err">'+esc(e.message)+'</p>'; }
     }
 
-    function boot(){ $('#gate').style.display='none'; $('#app').style.display=''; loadPlans(); }
+    function boot(){ $('#gate').style.display='none'; $('#app').style.display=''; loadKeys(); }
     if (token) boot();
   </script>
 </body>

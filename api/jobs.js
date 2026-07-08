@@ -38,11 +38,25 @@ export default async function handler(req, res) {
       error: 'Backend not configured: set SUPABASE_URL and SUPABASE_SERVICE_KEY in Vercel environment variables',
     });
   }
-  // Who is calling? Bearer token → that account's data only.
-  // Legacy x-api-key (CRM_API_KEY) → admin, sees everything.
-  let user = null, isAdmin = false;
-  const bearer = (req.headers.authorization || '').match(/^Bearer (.+)$/i);
-  if (bearer) {
+  // Who is calling?
+  //   x-license-key    → an admin-issued key; rows are owned by that key.
+  //   Bearer <token>   → an email/password account (must have an active licence).
+  //   x-api-key        → legacy admin key, sees everything.
+  let user = null, isAdmin = false, licenseKey = null;
+
+  const rawKey = (req.headers['x-license-key'] || '').trim().toUpperCase();
+  if (rawKey) {
+    const now = new Date().toISOString();
+    const lk = await sb(`license_keys?key=eq.${encodeURIComponent(rawKey)}&select=key,status,expires_at`).catch(() => []);
+    if (!lk.length || lk[0].status === 'revoked') return res.status(401).json({ error: 'Invalid license key' });
+    if (lk[0].expires_at && lk[0].expires_at < now) return res.status(402).json({ error: 'License key expired' });
+    licenseKey = lk[0].key;
+  }
+
+  const bearer = licenseKey ? null : (req.headers.authorization || '').match(/^Bearer (.+)$/i);
+  if (licenseKey) {
+    // Already validated above — rows are scoped to this key below.
+  } else if (bearer) {
     const rows = await sb(`users?token=eq.${encodeURIComponent(bearer[1])}&select=email,is_admin`).catch(() => []);
     if (!rows.length) return res.status(401).json({ error: 'Session expired – log in again' });
     user = rows[0].email;
@@ -61,7 +75,8 @@ export default async function handler(req, res) {
   } else if (!process.env.CRM_API_KEY || (req.headers['x-api-key'] || '') !== process.env.CRM_API_KEY) {
     return res.status(401).json({ error: 'Log in required' });
   }
-  const own = user ? `&user_email=eq.${encodeURIComponent(user)}` : '';
+  const own = licenseKey ? `&license_key=eq.${encodeURIComponent(licenseKey)}`
+            : user ? `&user_email=eq.${encodeURIComponent(user)}` : '';
 
   try {
     if (req.method === 'GET') {
@@ -78,7 +93,7 @@ export default async function handler(req, res) {
       if (!platform) return res.status(400).json({ error: 'platform required' });
       const rows = await sb(TABLE, {
         method: 'POST',
-        body: JSON.stringify([{ platform, title, company, url, status, fit_score, notes, user_email: user }]),
+        body: JSON.stringify([{ platform, title, company, url, status, fit_score, notes, user_email: user, license_key: licenseKey }]),
       });
       return res.status(201).json(rows[0]);
     }

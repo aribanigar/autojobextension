@@ -71,6 +71,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     c('p-relocate', p.preferences?.willingToRelocate);
     c('p-easyonly', p.preferences?.onlyEasyApply !== false);
     c('p-auth',     p.preferences?.workAuth !== false);
+    s('p-license',   p.preferences?.licenseKey);
     s('p-crm-url',   p.preferences?.crmUrl);
     s('p-crm-email', p.preferences?.crmEmail);
     s('p-crm-pass',  p.preferences?.crmPassword);
@@ -79,14 +80,42 @@ document.addEventListener('DOMContentLoaded', async () => {
     updateBuyLink(p.preferences?.crmUrl);
   }
 
-  // Point the "Buy / manage plan" button at the user's checkout page.
+  const DEFAULT_CRM = 'https://jobs.qckserve.in';
+
+  // Point the "Buy / manage plan" button at the checkout page (default backend
+  // if none set, so it never reopens the same tab).
   function updateBuyLink(url) {
     const a = document.getElementById('p-buy');
     if (!a) return;
-    const base = (url || '').trim().replace(/\/+$/, '');
-    a.href = base ? `${base}/checkout.html` : '#';
+    const base = ((url || '').trim() || DEFAULT_CRM).replace(/\/+$/, '');
+    a.href = `${base}/checkout.html`;
   }
   document.getElementById('p-crm-url')?.addEventListener('input', e => updateBuyLink(e.target.value));
+
+  // Live license-key check: paste a key → tells you if it's valid + expiry.
+  const licNote = document.getElementById('p-license-note');
+  let licTimer = null;
+  document.getElementById('p-license')?.addEventListener('input', e => {
+    const key = e.target.value.trim().toUpperCase();
+    clearTimeout(licTimer);
+    if (!key) { if (licNote) licNote.textContent = ''; return; }
+    if (licNote) { licNote.style.color = ''; licNote.textContent = 'Checking…'; }
+    licTimer = setTimeout(async () => {
+      const base = ((document.getElementById('p-crm-url').value || '').trim() || DEFAULT_CRM).replace(/\/+$/, '');
+      try {
+        const r = await fetch(`${base}/api/license-key`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ key }) });
+        const d = await r.json().catch(() => ({}));
+        if (!licNote) return;
+        if (r.ok && d.valid && d.active) {
+          licNote.style.color = '#34d399';
+          licNote.textContent = d.expires_at ? `✓ Valid — active until ${new Date(d.expires_at).toLocaleDateString()}` : '✓ Valid';
+        } else {
+          licNote.style.color = '#f87171';
+          licNote.textContent = d.error || (d.valid ? 'Key expired' : 'Invalid key');
+        }
+      } catch { if (licNote) { licNote.style.color = '#f87171'; licNote.textContent = 'Could not verify (offline?)'; } }
+    }, 600);
+  });
 
   // Show/hide toggles for password-type fields
   document.querySelectorAll('.pw-eye').forEach(btn => {
@@ -126,6 +155,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         willingToRelocate: c('p-relocate'),
         onlyEasyApply:     c('p-easyonly'),
         workAuth:          c('p-auth'),
+        licenseKey:        v('p-license').toUpperCase(),
         crmUrl:            v('p-crm-url').replace(/\/+$/, ''),
         crmEmail:          v('p-crm-email'),
         crmPassword:       v('p-crm-pass'),

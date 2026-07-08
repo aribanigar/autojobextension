@@ -231,15 +231,27 @@
     </div>
 
     <div class="section">
-      <div class="section-hd"><span>🛰️</span> CRM &amp; AI
-        <span class="badge-pill">syncs every application to your backend</span>
+      <div class="section-hd"><span>🔑</span> License Key
+        <span class="badge-pill">paste your key, then Start</span>
       </div>
       <div class="field">
-        <label>CRM Endpoint <small class="field-hint">your Vercel site URL</small></label>
-        <input id="p-crm-url" type="url" placeholder="https://autojobextension.vercel.app">
+        <label>License Key <small class="field-hint">issued by the admin — unlocks the agent</small></label>
+        <div style="position:relative">
+          <input id="p-license" type="text" placeholder="AA-XXXX-XXXX-XXXX" autocomplete="off" style="padding-right:40px;text-transform:uppercase;letter-spacing:.04em;font-weight:600">
+          <button type="button" class="pw-eye" data-target="p-license" title="Show/hide" style="position:absolute;right:8px;top:50%;transform:translateY(-50%);background:none;border:none;cursor:pointer;font-size:14px;opacity:.7">👁</button>
+        </div>
+        <small id="p-license-note" class="field-hint" style="display:block;margin-top:6px"></small>
+      </div>
+
+      <div class="section-hd" style="margin-top:14px"><span>🛰️</span> Advanced
+        <span class="badge-pill">optional</span>
       </div>
       <div class="field">
-        <label>CRM Email <small class="field-hint">your CRM account (create one on the dashboard)</small></label>
+        <label>Backend URL <small class="field-hint">leave blank to use the default</small></label>
+        <input id="p-crm-url" type="url" placeholder="https://jobs.qckserve.in">
+      </div>
+      <div class="field">
+        <label>CRM Email <small class="field-hint">only if you use an email/password account instead of a key</small></label>
         <input id="p-crm-email" type="email" placeholder="you@email.com" autocomplete="email">
       </div>
       <div class="field">
