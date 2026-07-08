@@ -1,42 +1,32 @@
 // extension/linkedin_autoapply.js
 //
 // ============================================================================
-// INDEPENDENT FEATURE — "LinkedIn Auto Apply (v2)"
+// INDEPENDENT FEATURE — "LinkedIn Bulk Auto Apply" (mirrors the proven engine)
 // ============================================================================
-// This file is COMPLETELY self-contained. It does NOT import, call, read, or
-// modify content.js, background.js, popup.js, or any of their functions/state.
-// It has its OWN singleton guard, its OWN DOM namespace (`jbla-`), its OWN
-// floating button, and its OWN end-to-end LinkedIn Easy Apply flow. Nothing
-// here shares state with the rest of the extension, so it cannot break any
-// existing feature (the LOCKED LinkedInAgent, tick system, licensing, etc.).
+// COMPLETELY self-contained. Does NOT import, call, read, or modify content.js,
+// background.js, popup.js, or any of their functions/state. Own singleton guard
+// (__jobbotLinkedInAutoApplyV2), own DOM namespace (`jbla-`), own floating
+// button, own end-to-end apply flow. Cannot break any existing feature.
 //
-// It only READS two things from chrome.storage.local (never writes/alters):
-//   - jobbot_profile  → to answer application questions with the user's data
-//   - the licenseKey inside it → to gate the feature behind the paywall
-//
-// Flow:
-//   1. On a LinkedIn jobs results page, mount an "⚡ Auto Apply (LinkedIn)"
-//      floating button (distinct colour/position from the existing UI).
-//   2. Click → license-gate → walk the left rail of job cards. For each:
-//      click the card → find the IN-APP Easy Apply control (never the external
-//      "Apply on company website") → open the modal → autofill every step from
-//      the user's profile → Next/Review/Submit → decline post-submit upsells.
-//   3. Human-paced gaps, stray-popup sweeping, captcha/checkpoint abort.
+// This is a faithful port of a working LinkedIn Easy Apply engine. The only
+// changes vs. that engine: namespace/branding, and answers are pulled from the
+// user's saved profile (jobbot_profile, read-only) merged over sensible
+// defaults. The apply logic, selectors, click escalation, stray-modal handling,
+// and timing are kept as-is because they are proven to work on the 2026
+// LinkedIn SDUI.
 //
 // Anti-bot: read-only DOM, no LinkedIn internal APIs, human pointer-sequence
-// clicks, human-paced delays, aborts on checkpoint/captcha. We NEVER auto-solve
-// captchas and never click a card's "Dismiss" control.
+// clicks, aborts on captcha/checkpoint, never clicks a card's Dismiss control.
 // ============================================================================
 (function () {
   if (window.__jobbotLinkedInAutoApplyV2) return;   // singleton
   window.__jobbotLinkedInAutoApplyV2 = true;
 
   const TAG = "[JobBot · LinkedIn AutoApply]";
-  const DEFAULT_BACKEND = "https://jobs.qckserve.in";
 
   // ───────────────────────── helpers ─────────────────────────
-  const sleep = ms => new Promise(r => setTimeout(r, ms));
-  const rand  = (min, max) => min + Math.random() * (max - min);
+  function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
+  function rand(min, max) { return min + Math.random() * (max - min); }
 
   function onJobsResultsPage() {
     return /^\/jobs\/(search-results|collections|search)\//.test(location.pathname)
@@ -44,69 +34,11 @@
   }
   function isCheckpoint() {
     return /\/checkpoint\//.test(location.pathname)
-        || /\/uas\/captcha-submit/.test(location.pathname)
-        || !!document.querySelector('iframe[src*="challenges.cloudflare.com"], iframe[src*="recaptcha"], iframe[src*="arkoselabs"]');
+        || /\/uas\/captcha-submit/.test(location.pathname);
   }
-  function visible(el) {
-    if (!el) return false;
-    const r = el.getBoundingClientRect();
-    return r.width > 0 && r.height > 0;
-  }
-  const textOf = el => (el && (el.textContent || "")).replace(/\s+/g, " ").trim();
-  const esc = s => (window.CSS && CSS.escape ? CSS.escape(s) : s);
-
-  // ─────────────────── user profile (read-only) ──────────────
-  // Loaded from the existing jobbot_profile so answers use the user's real
-  // data. Never written back. Sensible fallbacks until loaded.
-  let PROFILE = {};
-  function loadProfile() {
-    try {
-      chrome.storage.local.get("jobbot_profile", d => {
-        if (d && d.jobbot_profile) PROFILE = d.jobbot_profile;
-      });
-    } catch (_) {}
-  }
-  loadProfile();
-  try { chrome.storage.onChanged?.addListener(ch => { if (ch.jobbot_profile) PROFILE = ch.jobbot_profile.newValue || {}; }); } catch (_) {}
-
-  const per = () => PROFILE.personal || {};
-  const pro = () => PROFILE.professional || {};
-  const prf = () => PROFILE.preferences || {};
-
-  // Map a question label → an answer from the user's profile. Specific first.
-  function answerForLabel(rawLabel) {
-    const l = (rawLabel || "").toLowerCase().replace(/\s+/g, " ").trim();
-    if (!l) return null;
-    const P = pro(), R = per(), F = prf();
-    const exp = String(P.experience || "3");
-    if (/years.*experience|how many years|total experience|relevant experience|years of work/.test(l)) return exp;
-    if (/notice period|available to (join|start)|when can you (join|start)/.test(l)) return P.noticePeriod || "30 days";
-    if (/expected (salary|ctc|compensation)|salary expectation|desired salary/.test(l)) return (P.expectedSalary || "").replace(/[^\d]/g, "") || P.expectedSalary || "";
-    if (/current (salary|ctc|compensation)|present salary/.test(l)) return (P.currentSalary || "").replace(/[^\d]/g, "") || P.currentSalary || "";
-    if (/willing to relocate|open to relocat|relocation/.test(l)) return F.willingToRelocate ? "Yes" : "No";
-    if (/authori[sz]ed to work|right to work|work authori|legally authorized/.test(l)) return F.workAuth !== false ? "Yes" : "No";
-    if (/sponsorship|require .* visa|visa sponsor|need sponsorship/.test(l)) return "No";
-    if (/current (company|employer|organi[sz]ation)/.test(l)) return P.currentCompany || "";
-    if (/current (title|role|designation|position)/.test(l)) return P.currentTitle || "";
-    if (/(mobile|phone|contact).*(number|no)|phone/.test(l)) return R.phone || "";
-    if (/email/.test(l)) return R.email || "";
-    if (/(city|location|based)/.test(l)) return R.location || "";
-    if (/(postal|zip|pin).?code|pincode/.test(l)) return R.postalCode || "";
-    if (/first name/.test(l)) return (R.name || "").split(" ")[0] || "";
-    if (/last name|surname/.test(l)) return (R.name || "").split(" ").slice(1).join(" ") || "";
-    if (/full name|your name/.test(l)) return R.name || "";
-    if (/gender/.test(l)) return R.gender || "Prefer not to say";
-    if (/highest (qualification|education|degree)|education level/.test(l)) return P.education || "Bachelor's Degree";
-    if (/skills?/.test(l)) return P.skills || "";
-    if (/languages?/.test(l)) return P.languages || "English";
-    if (/cover letter|why (do you want|are you interested|should we)/.test(l)) {
-      return P.coverLetter || `I bring ${exp} years of experience and am excited to contribute to your team.`;
-    }
-    if (/linkedin.*url|linkedin profile/.test(l)) return "";
-    // generic yes/no comfort questions
-    if (/^(are you |can you |do you |will you |have you )/.test(l) && /\?$/.test(l)) return "Yes";
-    return null;
-  }
+  function visible(el) { if (!el) return false; const r = el.getBoundingClientRect(); return r.width > 0 && r.height > 0; }
+  function textOf(el) { return (el && (el.textContent || "")).replace(/\s+/g, " ").trim(); }
+  function esc(s) { return (window.CSS && CSS.escape ? CSS.escape(s) : s); }
 
   // ──────────────────── humanised clicking ───────────────────
   function spotlight(el, holdMs) {
@@ -116,12 +48,12 @@
       el.style.setProperty("outline-offset", "3px", "important");
       el.style.setProperty("box-shadow", "0 0 0 6px rgba(124,58,237,0.25), 0 0 24px rgba(124,58,237,0.55)", "important");
       el.style.setProperty("animation", "jbla-pulse-ring 0.9s ease-in-out infinite", "important");
-      el.setAttribute("data-jbla-spot", "1");
+      el.setAttribute("data-jbla-spotlight", "true");
       setTimeout(() => {
         try {
           el.style.removeProperty("outline"); el.style.removeProperty("outline-offset");
           el.style.removeProperty("box-shadow"); el.style.removeProperty("animation");
-          el.removeAttribute("data-jbla-spot");
+          el.removeAttribute("data-jbla-spotlight");
         } catch (_) {}
       }, holdMs || 1500);
     } catch (_) {}
@@ -173,32 +105,21 @@
   function collectJobCards() {
     const seen = new Set(); const cards = [];
     document.querySelectorAll('button[aria-label^="Dismiss "][aria-label$=" job"]').forEach(btn => {
-      const card = btn.closest('div[role="button"][componentkey]') || btn.closest('div[role="button"]') || btn.closest("li");
+      const card = btn.closest('div[role="button"][componentkey]') || btn.closest('div[role="button"]');
       if (!card) return;
       const key = card.getAttribute("componentkey") || (btn.getAttribute("aria-label") || "");
       if (!key || seen.has(key)) return;
       seen.add(key);
       cards.push({ key, el: card, title: (btn.getAttribute("aria-label") || "").replace(/^Dismiss\s+/i, "").replace(/\s+job$/i, "").trim() });
     });
-    // Fallback for layouts without a Dismiss button: anchor on job-view links.
-    if (!cards.length) {
-      document.querySelectorAll('a[href*="/jobs/view/"]').forEach(a => {
-        const card = a.closest("li, div[role='listitem'], div[componentkey]");
-        if (!card) return;
-        const key = (a.getAttribute("href") || "").match(/\/jobs\/view\/(\d+)/)?.[1];
-        if (!key || seen.has(key)) return;
-        seen.add(key); cards.push({ key, el: card, title: textOf(a).slice(0, 60) });
-      });
-    }
     return cards;
   }
   function cardElForKey(key) {
     try { return document.querySelector('div[role="button"][componentkey="' + esc(key) + '"]'); } catch (_) { return null; }
   }
   function listScroller() {
-    const btn = document.querySelector('button[aria-label^="Dismiss "][aria-label$=" job"]')
-             || document.querySelector('a[href*="/jobs/view/"]');
-    let el = btn ? (btn.closest('div[role="button"]') || btn.closest("li")) : null;
+    const btn = document.querySelector('button[aria-label^="Dismiss "][aria-label$=" job"]');
+    let el = btn ? btn.closest('div[role="button"]') : null;
     while (el && el !== document.body) {
       try { const s = getComputedStyle(el); if (/(auto|scroll)/.test(s.overflowY) && el.scrollHeight > el.clientHeight + 24) return el; } catch (_) {}
       el = el.parentElement;
@@ -211,18 +132,19 @@
   // ─────────────── in-app Easy Apply control ─────────────────
   function findInAppApply() {
     const root = document.querySelector(
-      ".jobs-search__job-details, .jobs-search__job-details--container, .scaffold-layout__detail, " +
-      ".jobs-details, .job-view-layout, .jobs-details__main-content, " +
+      ".jobs-search__job-details, .jobs-search__job-details--container, .jobs-search__job-details--wrapper, " +
+      ".scaffold-layout__detail, .jobs-details, .job-view-layout, .jobs-details__main-content, " +
       ".job-details-jobs-unified-top-card__container--two-pane"
     ) || document.querySelector("main") || document;
 
-    const inForbidden = el =>
+    const inForbiddenSubtree = (el) =>
          !!el.closest("footer, [role='contentinfo']")
       || !!el.closest(".jobs-search-results-list, .jobs-search-results, .scaffold-layout__list, ul[role='list']")
-      || !!el.closest("[class*='global-footer'], [class*='page-footer']")
-      || !!el.closest(".artdeco-toast-item");
+      || !!el.closest(".global-footer, .footer, [class*='global-footer'], [class*='page-footer']")
+      || !!el.closest("[data-test-modal-id='collection-banner-modal'], .artdeco-toast-item")
+      || !!el.closest(".jbla-job-apply-row");
 
-    const isExternal = el => {
+    const isExternal = (el) => {
       const t = textOf(el).toLowerCase();
       const a = (el.getAttribute("aria-label") || "").toLowerCase();
       if (a.includes("company website") || /apply on company website/i.test(t)) return true;
@@ -231,7 +153,7 @@
       if (href && /\/safety\/go\?|linkedin\.com\/safety\/go/.test(href)) return true;
       return false;
     };
-    const isInApp = el => {
+    const isInAppApply = (el) => {
       const aria = (el.getAttribute("aria-label") || "").toLowerCase();
       const href = (el.getAttribute("href") || "").toLowerCase();
       if (/easy apply|linkedin apply/i.test(aria)) return true;
@@ -239,13 +161,15 @@
       if (el.closest && el.closest(".jobs-apply-button__container, [class*='jobs-apply-button']")) return true;
       if (/(^|linkedin\.com)\/jobs\/view\/\d+\/apply/i.test(href)) return true;
       if (el.querySelector && el.querySelector("svg#linkedin-bug-medium, svg[id^='linkedin-bug']")) return true;
-      if (/^easy apply$/i.test(textOf(el))) return true;
       return false;
     };
+
     for (const el of Array.from(root.querySelectorAll("button, a"))) {
       if (!visible(el)) continue;
       if (el.disabled || el.getAttribute("aria-disabled") === "true") continue;
-      if (inForbidden(el) || isExternal(el) || !isInApp(el)) continue;
+      if (inForbiddenSubtree(el)) continue;
+      if (isExternal(el)) continue;
+      if (!isInAppApply(el)) continue;
       return el;
     }
     return null;
@@ -269,13 +193,15 @@
   function applyFormPresent() {
     const dialogs = Array.from(document.querySelectorAll('div[role="dialog"], .artdeco-modal'));
     for (const d of dialogs) if (visible(d) && isEasyApplyDialog(d)) return true;
-    return !!(document.querySelector('[aria-label*="job application progress" i][role="region"]') ||
+    return !!(
+      document.querySelector('[aria-label*="job application progress" i][role="region"]') ||
       document.querySelector(
         "button[data-easy-apply-next-button],button[data-live-test-easy-apply-next-button]," +
         'button[aria-label="Continue to next step"],button[data-live-test-easy-apply-submit-button],' +
         'button[aria-label="Submit application"],button[data-live-test-easy-apply-review-button],' +
         'button[aria-label="Review your application"]'
-      ));
+      )
+    );
   }
   function applyFormScope() {
     const modal = document.querySelector(
@@ -293,12 +219,12 @@
     if (btn) { const c = btn.closest("form, .artdeco-modal, div[role='dialog'], .jobs-easy-apply-modal"); if (c && visible(c)) return c; }
     return null;
   }
+  function qDoc(sels) { for (const s of sels) { const e = document.querySelector(s); if (e && visible(e) && !e.disabled) return e; } return null; }
   function easyApplyDialogEl() {
     const dialogs = Array.from(document.querySelectorAll('div[role="dialog"], .artdeco-modal'));
     for (const d of dialogs) if (visible(d) && isEasyApplyDialog(d)) return d;
     return document;
   }
-  function qDoc(sels) { for (const s of sels) { const e = document.querySelector(s); if (e && visible(e) && !e.disabled) return e; } return null; }
   function findActionByText(re) {
     const scope = easyApplyDialogEl();
     for (const b of Array.from(scope.querySelectorAll("button, [role='button']"))) {
@@ -309,9 +235,9 @@
     }
     return null;
   }
-  const nextButton   = () => qDoc(["button[data-easy-apply-next-button]","button[data-live-test-easy-apply-next-button]",'button[aria-label="Continue to next step"]','button[aria-label*="Continue to next" i]']) || findActionByText(/^(next|continue to next step|continue|next step)$/i);
-  const reviewButton = () => qDoc(["button[data-live-test-easy-apply-review-button]",'button[aria-label="Review your application"]','button[aria-label*="Review your" i]']) || findActionByText(/^(review|review your application|review application)$/i);
-  const submitButton = () => qDoc(["button[data-live-test-easy-apply-submit-button]",'button[aria-label="Submit application"]','button[aria-label*="Submit application" i]']) || findActionByText(/^(submit|submit application|send|send application)$/i);
+  function nextButton() { return qDoc(["button[data-easy-apply-next-button]","button[data-live-test-easy-apply-next-button]",'button[aria-label="Continue to next step"]','button[aria-label*="Continue to next" i]']) || findActionByText(/^(next|continue to next step|continue|next step)$/i); }
+  function reviewButton() { return qDoc(["button[data-live-test-easy-apply-review-button]",'button[aria-label="Review your application"]','button[aria-label*="Review your" i]']) || findActionByText(/^(review|review your application|review application)$/i); }
+  function submitButton() { return qDoc(["button[data-live-test-easy-apply-submit-button]",'button[aria-label="Submit application"]','button[aria-label*="Submit application" i]']) || findActionByText(/^(submit|submit application|send|send application)$/i); }
 
   function escalateClick(btn) {
     if (!btn) return;
@@ -324,10 +250,7 @@
         let fiber = btn[fKey];
         for (let depth = 0; fiber && depth < 8; fiber = fiber.return, depth++) {
           const onClick = (fiber.memoizedProps && fiber.memoizedProps.onClick) || (fiber.pendingProps && fiber.pendingProps.onClick);
-          if (typeof onClick === "function") {
-            onClick({ type: "click", bubbles: true, cancelable: true, isTrusted: true, target: btn, currentTarget: btn, preventDefault: () => {}, stopPropagation: () => {}, nativeEvent: { isTrusted: true } });
-            break;
-          }
+          if (typeof onClick === "function") { onClick({ type: "click", bubbles: true, cancelable: true, isTrusted: true, target: btn, currentTarget: btn, preventDefault: () => {}, stopPropagation: () => {}, nativeEvent: { isTrusted: true } }); break; }
         }
       }
     } catch (_) {}
@@ -339,6 +262,72 @@
     );
     return ((m || document).innerText || "").trim();
   }
+
+  // ─────────────── apply profile (user data + defaults) ──────
+  let APPLY_PROFILE = {
+    years_of_experience: "3", notice_period_days: "30 days",
+    expected_salary: "", current_salary: "",
+    willing_to_relocate: "Yes", authorized_to_work: "Yes", require_sponsorship: "No",
+    gender: "Prefer not to say", full_name: "", first_name: "", last_name: "",
+    email: "", phone: "", location: "", postal_code: "",
+    current_company: "", current_title: "", education: "Bachelor's Degree",
+    skills: "", languages: "English", cover_letter: "",
+  };
+  function loadApplyProfile() {
+    try {
+      chrome.storage.local.get(["jobbot_profile"], (res) => {
+        const p = res && res.jobbot_profile; if (!p) return;
+        const per = p.personal || {}, pro = p.professional || {}, prf = p.preferences || {};
+        APPLY_PROFILE = Object.assign({}, APPLY_PROFILE, {
+          years_of_experience: String(pro.experience || "3"),
+          notice_period_days: pro.noticePeriod || "30 days",
+          expected_salary: pro.expectedSalary || "",
+          current_salary: pro.currentSalary || "",
+          willing_to_relocate: prf.willingToRelocate ? "Yes" : "No",
+          authorized_to_work: prf.workAuth !== false ? "Yes" : "No",
+          gender: per.gender || "Prefer not to say",
+          full_name: per.name || "", first_name: (per.name || "").split(" ")[0] || "",
+          last_name: (per.name || "").split(" ").slice(1).join(" ") || "",
+          email: per.email || "", phone: per.phone || "", location: per.location || "",
+          postal_code: per.postalCode || "",
+          current_company: pro.currentCompany || "", current_title: pro.currentTitle || "",
+          education: pro.education || "Bachelor's Degree",
+          skills: pro.skills || "", languages: pro.languages || "English",
+          cover_letter: pro.coverLetter || "",
+        });
+      });
+    } catch (_) {}
+  }
+  loadApplyProfile();
+
+  function answerForLabel(rawLabel) {
+    const l = (rawLabel || "").toLowerCase().replace(/\s+/g, " ").trim();
+    if (!l) return null;
+    const A = APPLY_PROFILE;
+    if (/years.*experience|how many years|total experience|relevant experience|years of work/.test(l)) return A.years_of_experience;
+    if (/notice period|available to (join|start)|when can you (join|start)/.test(l)) return A.notice_period_days;
+    if (/expected (salary|ctc|compensation)|salary expectation|desired salary/.test(l)) return A.expected_salary;
+    if (/current (salary|ctc|compensation)|present salary/.test(l)) return A.current_salary;
+    if (/willing to relocate|open to relocat|relocation/.test(l)) return A.willing_to_relocate;
+    if (/authori[sz]ed to work|right to work|work authori|legally authorized/.test(l)) return A.authorized_to_work;
+    if (/sponsorship|require .* visa|visa sponsor|need sponsorship/.test(l)) return A.require_sponsorship;
+    if (/current (company|employer|organi[sz]ation)/.test(l)) return A.current_company;
+    if (/current (title|role|designation|position)/.test(l)) return A.current_title;
+    if (/(mobile|phone|contact).*(number|no)|^phone/.test(l)) return A.phone;
+    if (/email/.test(l)) return A.email;
+    if (/(city|location|based)/.test(l)) return A.location;
+    if (/(postal|zip|pin).?code|pincode/.test(l)) return A.postal_code;
+    if (/first name/.test(l)) return A.first_name;
+    if (/last name|surname/.test(l)) return A.last_name;
+    if (/full name|your name/.test(l)) return A.full_name;
+    if (/gender/.test(l)) return A.gender;
+    if (/highest (qualification|education|degree)|education level/.test(l)) return A.education;
+    if (/skills?/.test(l)) return A.skills;
+    if (/languages?/.test(l)) return A.languages;
+    if (/cover letter|why (do you want|are you interested)/.test(l)) return A.cover_letter || ("I bring " + A.years_of_experience + " years of experience and am excited to contribute.");
+    return null;
+  }
+  function looksLikeExperience(str) { return /experien|years|how many|number of|notice period|salary|ctc|expected/i.test(str || ""); }
 
   // ─────────────────── form autofill ─────────────────────────
   function labelForField(scope, el) {
@@ -356,12 +345,12 @@
       if (cur && cur !== "Select an option") return;
       const opts = Array.from(sel.options).filter(o => { const v = (o.value || "").trim(); return v && v !== "Select an option"; });
       if (!opts.length) return;
-      const ans = (answerForLabel(labelForField(scope, sel)) || "").toString().toLowerCase();
+      const profileAns = (answerForLabel(labelForField(scope, sel)) || "").toString().toLowerCase();
       const byText = t => opts.find(o => (o.textContent || "").trim().toLowerCase() === t);
       const byContains = t => opts.find(o => (o.textContent || "").trim().toLowerCase().includes(t));
       const pick = opts.find(o => /@/.test(o.value || o.textContent))
-        || opts.find(o => /\(\+91\)|india/i.test(o.value || o.textContent) && per().phone)
-        || (ans && (byText(ans) || byContains(ans)))
+        || opts.find(o => /India \(\+91\)/i.test(o.value || o.textContent))
+        || (profileAns && (byText(profileAns) || byContains(profileAns)))
         || byText("yes") || opts[0];
       if (pick) setNativeValue(sel, pick.value);
     });
@@ -375,9 +364,8 @@
       const label = labelForField(scope, el);
       const fromProfile = answerForLabel(label);
       if (fromProfile != null && fromProfile !== "") { setNativeValue(el, fromProfile); return; }
-      if (!required) return; // don't fill optional unknown fields
-      // required but unknown → a numeric default so the step still advances
-      setNativeValue(el, type === "number" ? (pro().experience || "3") : (pro().experience || "3"));
+      if (!required) return;
+      setNativeValue(el, type === "number" || looksLikeExperience(label) ? APPLY_PROFILE.years_of_experience : APPLY_PROFILE.years_of_experience);
     });
   }
   function fillRadios(scope) {
@@ -404,7 +392,6 @@
     try { checkRequiredBoxes(scope); } catch (_) {}
     try { untickFollowCompany(scope); } catch (_) {}
   }
-
   function detailPaneIsClosedJob() {
     const root = document.querySelector(".jobs-search__job-details, .scaffold-layout__detail, .jobs-details, .job-view-layout") || document;
     return /no longer accepting applications|this job is no longer|applications are closed/i.test((root.innerText || "").toLowerCase());
@@ -422,8 +409,8 @@
     return closed;
   }
   let _strayTimer = null;
-  const startStrayWatcher = () => { if (!_strayTimer) _strayTimer = setInterval(() => { try { closeStrayModals(); } catch (_) {} }, 250); };
-  const stopStrayWatcher  = () => { if (_strayTimer) { clearInterval(_strayTimer); _strayTimer = null; } };
+  function startStrayWatcher() { if (!_strayTimer) _strayTimer = setInterval(() => { try { closeStrayModals(); } catch (_) {} }, 250); }
+  function stopStrayWatcher() { if (_strayTimer) { clearInterval(_strayTimer); _strayTimer = null; } }
 
   function dismissModal() {
     const x = document.querySelector('button[aria-label="Dismiss"][data-test-modal-close-btn],button[aria-label="Dismiss"]');
@@ -456,7 +443,6 @@
     return false;
   }
 
-  // Walk the multi-step Easy Apply form. Returns "applied" | "skipped".
   async function runApplyModal() {
     const t0 = Date.now();
     while (Date.now() - t0 < 12000) { if (applyFormPresent()) break; try { closeStrayModals(); } catch (_) {} await sleep(300); }
@@ -468,7 +454,6 @@
       if (state.cancel) { await discardAndClose(); return "skipped"; }
       if (isCheckpoint()) return "skipped";
       if (!applyFormPresent()) return "skipped";
-
       const scope = applyFormScope();
       if (!scope) { await discardAndClose(); return "skipped"; }
       autofill(scope);
@@ -505,7 +490,6 @@
     return "skipped";
   }
 
-  // ─────────────── per-job flow ──────────────────────────────
   async function applyToCard(card) {
     if (isCheckpoint()) return "challenge";
     const el = (card.el && document.contains(card.el)) ? card.el : cardElForKey(card.key);
@@ -531,35 +515,12 @@
     return await runApplyModal();
   }
 
-  // ─────────────── license gate (self-contained) ─────────────
-  async function isLicensed() {
-    const prefs = await new Promise(res => { try { chrome.storage.local.get("jobbot_profile", d => res(d.jobbot_profile?.preferences || {})); } catch (_) { res({}); } });
-    const base = ((prefs.crmUrl || DEFAULT_BACKEND) + "").replace(/\/+$/, "");
-    const key = (prefs.licenseKey || "").trim();
-    if (!key) return { ok: false, reason: "no-key" };
-    try {
-      const r = await fetch(base + "/api/license-key", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ key }) });
-      const d = await r.json().catch(() => ({}));
-      if (r.ok && d.valid && d.active) return { ok: true };
-      return { ok: false, reason: d.error || (d.valid ? "expired" : "invalid") };
-    } catch (_) { return { ok: false, reason: "offline" }; }
-  }
-
   // ─────────────── main loop ─────────────────────────────────
   const state = { running: false, cancel: false, applied: 0, skipped: 0 };
 
   async function run() {
     if (state.running) return;
-    setLabel("Checking license…");
-    const lic = await isLicensed();
-    if (!lic.ok) {
-      const msg = lic.reason === "no-key" ? "🔒 Add your license key in the extension Prefs"
-        : lic.reason === "expired" ? "🔒 License expired — get a new key"
-        : lic.reason === "offline" ? "🔒 Can't verify license (offline)"
-        : "🔒 Invalid license key";
-      banner(msg); resetLabel(); return;
-    }
-
+    loadApplyProfile();
     state.running = true; state.cancel = false; state.applied = state.skipped = 0;
     setLabel("Scanning jobs…");
     try { startStrayWatcher(); } catch (_) {}
@@ -575,9 +536,7 @@
           await sleep(rand(900, 1500));
           if (listScrollTop() === before) {
             const nextPage = document.querySelector('button[data-testid="pagination-controls-next-button-visible"], button[aria-label="View next page"]');
-            if (nextPage && !nextPage.disabled && visible(nextPage)) {
-              setLabel("Loading next page…"); humanClick(nextPage); await sleep(rand(2600, 4200)); processed.clear(); idle = 0; continue;
-            }
+            if (nextPage && !nextPage.disabled && visible(nextPage)) { setLabel("Loading next page…"); humanClick(nextPage); await sleep(rand(2600, 4200)); processed.clear(); idle = 0; continue; }
             break;
           }
           if (++idle > 60) break;
@@ -593,7 +552,7 @@
         else state.skipped++;
         if (applyFormPresent()) { try { await discardAndClose(); } catch (_) {} }
         try { closeStrayModals(); } catch (_) {}
-        await sleep(rand(2500, 5000)); // human-paced gap between jobs
+        await sleep(rand(1200, 2600)); // brief human gap between jobs
         try { closeStrayModals(); } catch (_) {}
         setLabel("Next job · " + state.applied + " applied");
       }
@@ -610,13 +569,13 @@
   let btnEl = null;
   const BTN_ID = "jbla-autoapply-button";
   function setLabel(text) { if (!btnEl) return; const lab = btnEl.querySelector(".jbla-text"); if (lab) lab.textContent = text; btnEl.classList.toggle("jbla-running", state.running); }
-  function resetLabel() { setLabel("⚡ Auto Apply (LinkedIn)"); }
+  function resetLabel() { setLabel("⚡ Auto Apply LinkedIn"); }
   function mountButton() {
     if (btnEl || !document.body) return;
     btnEl = document.createElement("button");
     btnEl.id = BTN_ID; btnEl.type = "button";
     btnEl.style.cssText = [
-      "position:fixed", "right:26px", "bottom:140px", "z-index:2147483645",
+      "position:fixed", "right:26px", "bottom:150px", "z-index:2147483645",
       "background:linear-gradient(135deg,#7c3aed 0%,#6d28d9 100%)", "color:#fff", "border:none",
       "border-radius:999px", "padding:11px 20px 11px 16px",
       "font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Inter,sans-serif",
@@ -624,7 +583,7 @@
       "box-shadow:0 8px 22px rgba(124,58,237,.4)", "cursor:pointer", "user-select:none",
       "display:inline-flex", "align-items:center", "gap:8px",
     ].join(";");
-    btnEl.innerHTML = '<span class="jbla-dot" style="width:8px;height:8px;border-radius:50%;background:#fff;display:inline-block;flex-shrink:0"></span><span class="jbla-text">⚡ Auto Apply (LinkedIn)</span>';
+    btnEl.innerHTML = '<span class="jbla-dot" style="width:8px;height:8px;border-radius:50%;background:#fff;display:inline-block;flex-shrink:0"></span><span class="jbla-text">⚡ Auto Apply LinkedIn</span>';
     btnEl.addEventListener("click", e => { e.preventDefault(); e.stopPropagation(); if (state.running) cancel(); else run(); });
     document.body.appendChild(btnEl);
     const style = document.createElement("style");
