@@ -92,6 +92,34 @@ document.addEventListener('DOMContentLoaded', async () => {
   }
   document.getElementById('p-crm-url')?.addEventListener('input', e => updateBuyLink(e.target.value));
 
+  // Save & Activate: persist the key (and everything), then verify activation.
+  // Works for a license key OR an email/password account (the check tries the
+  // key first, then falls back to the account).
+  document.getElementById('p-activate')?.addEventListener('click', async () => {
+    const note = document.getElementById('p-license-note');
+    await persistProfile(readForm());               // save the key + all prefs
+    if (note) { note.style.color = ''; note.textContent = 'Activating…'; }
+    const lic = await new Promise(res => {
+      try { chrome.runtime.sendMessage({ type: 'GET_LICENSE', force: true }, r => { void chrome.runtime.lastError; res(r || {}); }); }
+      catch { res({}); }
+    });
+    if (!note) return;
+    if (lic.active) {
+      note.style.color = '#34d399';
+      note.textContent = lic.expires_at
+        ? `✓ Activated — valid until ${new Date(lic.expires_at).toLocaleDateString()}`
+        : '✓ Activated — you can Start the agent now';
+    } else {
+      note.style.color = '#f87171';
+      note.textContent =
+        lic.reason === 'expired' ? 'This key has expired — ask the admin for a new one'
+      : lic.reason === 'bad-key' ? 'Invalid or revoked key — check it and try again'
+      : lic.reason === 'no-key'  ? 'Enter a license key above (or an email/password in Advanced)'
+      : lic.reason === 'offline' ? 'Could not reach the server — check your connection'
+      : 'Could not activate — check your key or account';
+    }
+  });
+
   // Live license-key check: paste a key → tells you if it's valid + expiry.
   const licNote = document.getElementById('p-license-note');
   let licTimer = null;
