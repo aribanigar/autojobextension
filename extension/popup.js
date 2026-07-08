@@ -60,8 +60,10 @@ document.addEventListener('DOMContentLoaded', async () => {
     s('f-title',    p.professional?.currentTitle);
     s('f-company',  p.professional?.currentCompany);
     s('f-exp',      p.professional?.experience);
+    s('f-currency', p.professional?.currency != null ? p.professional.currency : '₹');
     s('f-curr-sal', p.professional?.currentSalary);
     s('f-exp-sal',  p.professional?.expectedSalary);
+    updateCurrencyHints();
     s('f-notice',   p.professional?.noticePeriod);
     s('f-edu',      p.professional?.education);
     s('f-skills',   p.professional?.skills);
@@ -93,6 +95,15 @@ document.addEventListener('DOMContentLoaded', async () => {
     if (a) a.href = checkoutUrl();
   }
   document.getElementById('p-crm-url')?.addEventListener('input', updateBuyLink);
+
+  // Salary currency: reflect the chosen symbol in the two salary field labels.
+  function updateCurrencyHints() {
+    const cur = document.getElementById('f-currency')?.value ?? '₹';
+    const txt = cur ? `(${cur})` : '';
+    const a = document.getElementById('cur-sym-1'); if (a) a.textContent = txt;
+    const b = document.getElementById('cur-sym-2'); if (b) b.textContent = txt;
+  }
+  document.getElementById('f-currency')?.addEventListener('change', updateCurrencyHints);
 
   // Bulletproof: open the plans page in a real browser tab on click. In a popup,
   // chrome.tabs.create reliably opens the checkout page (an <a> can fail if the
@@ -180,6 +191,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         currentTitle:   v('f-title'),
         currentCompany: v('f-company'),
         experience:     v('f-exp') || '3',
+        currency:       document.getElementById('f-currency')?.value ?? '₹',
         currentSalary:  v('f-curr-sal'),
         expectedSalary: v('f-exp-sal'),
         noticePeriod:   v('f-notice') || '30 days',

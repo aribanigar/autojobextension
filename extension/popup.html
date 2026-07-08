@@ -142,10 +142,25 @@
         <div class="field"><label>Current Title</label><input id="f-title" type="text" placeholder="Software Engineer"></div>
         <div class="field"><label>Company</label><input id="f-company" type="text" placeholder="Company"></div>
       </div>
-      <div class="grid-3">
-        <div class="field"><label>Exp (yrs)</label><input id="f-exp" type="number" min="0" max="40" placeholder="3"></div>
-        <div class="field"><label>Current ₹</label><input id="f-curr-sal" type="text" placeholder="12 LPA"></div>
-        <div class="field"><label>Expected ₹</label><input id="f-exp-sal" type="text" placeholder="18 LPA"></div>
+      <div class="grid-2">
+        <div class="field"><label>Experience (yrs)</label><input id="f-exp" type="number" min="0" max="40" placeholder="3"></div>
+        <div class="field"><label>Salary Currency</label>
+          <select id="f-currency">
+            <option value="₹">₹ INR — Rupee</option>
+            <option value="$">$ USD — Dollar</option>
+            <option value="€">€ EUR — Euro</option>
+            <option value="£">£ GBP — Pound</option>
+            <option value="AED">AED — Dirham</option>
+            <option value="SGD">SGD — Sing. Dollar</option>
+            <option value="A$">A$ AUD</option>
+            <option value="C$">C$ CAD</option>
+            <option value="">No symbol (number only)</option>
+          </select>
+        </div>
+      </div>
+      <div class="grid-2">
+        <div class="field"><label>Current Salary <small id="cur-sym-1">(₹)</small></label><input id="f-curr-sal" type="text" placeholder="370000"></div>
+        <div class="field"><label>Expected Salary <small id="cur-sym-2">(₹)</small></label><input id="f-exp-sal" type="text" placeholder="400000"></div>
       </div>
       <div class="grid-2">
         <div class="field"><label>Notice Period</label><input id="f-notice" type="text" placeholder="30 days"></div>
