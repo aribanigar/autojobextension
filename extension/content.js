@@ -365,6 +365,55 @@
     };
   })();
 
+  // ─── Learned answers ───────────────────────────────────────────────────────
+  // Questions the agent couldn't answer itself, that the USER filled in
+  // manually, are remembered here (durable in chrome.storage.local, so they
+  // survive cross-site navigation and browser restarts). Next time the same
+  // question appears — on any site — the agent auto-fills the saved answer, so
+  // the user never has to answer it twice.
+  const learnedAnswers = (() => {
+    let store = {};
+    let resolveReady; const ready = new Promise(r => (resolveReady = r));
+    const norm = q => String(q || '').toLowerCase()
+      .replace(/[*:?()\[\].,<>/\\]/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 140);
+    try {
+      chrome.storage.local.get('jobbot_learned', d => { if (d.jobbot_learned) store = d.jobbot_learned; resolveReady(); });
+    } catch { resolveReady(); }
+    const persist = () => { try { chrome.storage.local.set({ jobbot_learned: store }); } catch {} };
+    return {
+      ready,
+      get: q => { const k = norm(q); return k && k.length >= 4 ? (store[k] || null) : null; },
+      set: (q, a) => {
+        const k = norm(q); const v = String(a == null ? '' : a).trim();
+        if (!k || k.length < 4 || !v || v.length > 600) return;
+        if (store[k] === v) return;
+        store[k] = v; persist();
+      },
+    };
+  })();
+
+  // Capture the user's manual answer to a field the agent couldn't fill, keyed
+  // by its question label, so it's remembered for next time.
+  function learnFromField(el, question) {
+    if (!el || !question || el._jbLearn) return;
+    el._jbLearn = true;
+    const grab = () => {
+      let val = '';
+      try {
+        if (el.matches && el.matches('input[type="radio"],input[type="checkbox"]')) {
+          if (el.checked) val = (el.closest('label')?.textContent || el.value || '').trim();
+        } else if (el.isContentEditable) {
+          val = (el.textContent || '').trim();
+        } else {
+          val = (el.value || '').trim();
+        }
+      } catch {}
+      if (val) learnedAnswers.set(question, val);
+    };
+    el.addEventListener('change', grab);
+    el.addEventListener('blur', grab);
+  }
+
   // ─── Smart Form Filler ────────────────────────────────────────────────────
   class Filler {
     constructor(p) {
@@ -441,6 +490,11 @@
     }
 
     map(q) {
+      // A previously-learned manual answer wins — the user already told us how
+      // to answer this exact question, so never re-ask or re-guess it.
+      const learned = learnedAnswers.get(q);
+      if (learned) return learned;
+
       const t = String(q).toLowerCase().replace(/[*?()\[\]]/g, '').trim();
       const p = this.p;
       const pro = p.professional || {};
@@ -596,6 +650,10 @@
           target.dispatchEvent(new Event('change', { bubbles: true }));
           await sleep(rand(80, 180));
         }
+
+        // Agent was unsure (no confident match) → attach learners AFTER its own
+        // guess so that if the user corrects the choice, we remember it.
+        if (!chosen && question) radios.forEach(r => learnFromField(r, question));
       }
     }
 
@@ -612,6 +670,9 @@
           SPOT.pulse(inp, `Filling: "${label.substring(0, 48)}"`);
           await typeInto(inp, ans);
           await sleep(rand(100, 250));
+        } else if (label) {
+          // Couldn't answer — remember whatever the user types here for next time.
+          learnFromField(inp, label);
         }
       }
     }
@@ -625,7 +686,7 @@
           const optTexts = $$('option', sel).map(o => o.textContent.trim()).filter(t => t && !/^select/i.test(t));
           ans = await this.aiAnswer(label, optTexts);  // AI picks from the real options
         }
-        if (!ans) continue;
+        if (!ans) { if (label) learnFromField(sel, label); continue; }
         const opt = $$('option', sel).find(o => o.textContent.toLowerCase().includes(ans.toLowerCase()));
         if (opt) {
           SPOT.pulse(sel, `Dropdown: "${opt.textContent.trim()}"`);
@@ -641,7 +702,7 @@
       for (const cb of cbs) {
         const label = this.labelFor(cb);
         const ans   = this.map(label);
-        if (!ans) continue;
+        if (!ans) { if (label) learnFromField(cb, label); continue; }
 
         cb.click();
         await sleep(rand(400, 700)); // FIX: wait for options to render
@@ -2806,6 +2867,7 @@
     // Wait for the durable seen-jobs memory before scanning, so a job applied
     // just before this navigation is never picked again.
     try { await appliedSet.ready; } catch {}
+    try { await learnedAnswers.ready; } catch {} // learned manual answers ready before filling
 
     // setStore: chrome.* throws once the extension is reloaded ("context
     // invalidated") – never let that kill the page or the run loop.
