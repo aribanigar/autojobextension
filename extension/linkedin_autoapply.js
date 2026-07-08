@@ -370,43 +370,12 @@
   }
   function fillRadios(scope) {
     const groups = {};
-    scope.querySelectorAll('input[type="radio"]').forEach(r => {
-      if (r.id && /^jobsDocumentCardToggle-/.test(r.id)) return;   // resume radios → selectResume()
-      (groups[r.name] = groups[r.name] || []).push(r);
-    });
+    scope.querySelectorAll('input[type="radio"]').forEach(r => { (groups[r.name] = groups[r.name] || []).push(r); });
     Object.values(groups).forEach(group => {
       if (group.some(r => r.checked)) return;
       let pick = group.find(r => { const l = r.id && scope.querySelector('label[for="' + esc(r.id) + '"]'); return l && /^\s*yes\s*$/i.test(textOf(l)); }) || group[0];
       if (pick) { const l = pick.id && scope.querySelector('label[for="' + esc(pick.id) + '"]'); humanClick(l || pick); }
     });
-  }
-
-  // Resume step — "Be sure to include an updated resume". The cards use unnamed
-  // radios (id="jobsDocumentCardToggle-*"). A SYNTHETIC click on the label does
-  // NOT toggle the radio (untrusted events don't fire the label→control default
-  // action, and LinkedIn's Ember handler ignores them), which is why the step
-  // stalled. Use NATIVE .click() — it checks the radio AND fires Ember/React
-  // onChange — escalating radio → label → card, then a force-check fallback.
-  function selectResume(scope) {
-    const root = scope || document;
-    const cards  = Array.from(root.querySelectorAll('.jobs-document-upload-redesign-card__container, .ui-attachment--pdf')).filter(visible);
-    const radios = Array.from(root.querySelectorAll('input[type="radio"][id^="jobsDocumentCardToggle-"]'));
-    if (!cards.length && !radios.length) return;          // not the resume step
-    if (radios.some(r => r.checked)) return;              // keep an already-selected resume
-
-    const firstCard = cards[0];
-    const radio = firstCard ? firstCard.querySelector('input[type="radio"]') : radios[0];
-    const label = firstCard
-      ? firstCard.querySelector('label.jobs-document-upload-redesign-card__toggle-label')
-      : (radio && radio.id && root.querySelector('label[for="' + esc(radio.id) + '"]'));
-    const done = () => radio && radio.checked;
-
-    try { if (radio) radio.click(); } catch (_) {}                 // native → checks + fires onChange
-    try { if (!done() && label) label.click(); } catch (_) {}      // native label click toggles radio
-    try { if (!done() && firstCard) firstCard.click(); } catch (_) {} // card is a "Select this resume" target
-    if (radio && !radio.checked) {                                 // last-resort force-check
-      try { radio.checked = true; radio.dispatchEvent(new Event("input", { bubbles: true })); radio.dispatchEvent(new Event("change", { bubbles: true })); } catch (_) {}
-    }
   }
   function checkRequiredBoxes(scope) {
     scope.querySelectorAll('input[type="checkbox"]').forEach(cb => {
@@ -415,9 +384,26 @@
       if (required && !cb.checked) { const l = cb.id && scope.querySelector('label[for="' + esc(cb.id) + '"]'); humanClick(l || cb); }
     });
   }
+  // ── Resume step (the ONLY new addition) ──────────────────────────────────
+  // "Be sure to include an updated resume" cards use unnamed radios
+  // (id="jobsDocumentCardToggle-*"). A synthetic click can't check them, so the
+  // step stalled. If a resume is already selected, keep it; otherwise select the
+  // first one with a NATIVE .click() (checks the radio AND fires LinkedIn's
+  // onChange). Purely additive — nothing else in the working flow is changed.
+  function selectResume(scope) {
+    const root = scope || document;
+    const radios = root.querySelectorAll('input[type="radio"][id^="jobsDocumentCardToggle-"]');
+    if (!radios.length) return;                        // not the resume step
+    for (const r of radios) if (r.checked) return;     // already selected → keep it
+    const r = radios[0];
+    try { r.click(); } catch (_) {}                    // native → checks + fires onChange
+    if (!r.checked) { const lab = r.id && root.querySelector('label[for="' + esc(r.id) + '"]'); if (lab) { try { lab.click(); } catch (_) {} } }
+    if (!r.checked) { try { r.checked = true; r.dispatchEvent(new Event("change", { bubbles: true })); } catch (_) {} }
+  }
+
   function autofill(scope) {
     if (!scope || scope === document || scope === document.body) return;
-    try { selectResume(scope); } catch (_) {}   // resume step — native-click a resume so it advances
+    try { selectResume(scope); } catch (_) {}   // NEW: pick a resume so the resume step can advance
     try { fillSelects(scope); } catch (_) {}
     try { fillTextInputs(scope); } catch (_) {}
     try { fillRadios(scope); } catch (_) {}
