@@ -20,7 +20,7 @@
 //   update_plan { id, ...fields }          → edit a plan
 //   delete_plan { id }                     → remove a plan
 import { createHash, scryptSync, randomBytes } from 'crypto';
-import { sb, backendConfigured, rzp, razorpayConfigured } from './_lib.js';
+import { sb, backendConfigured, rzp, razorpayConfigured, issueKeyForEmail } from './_lib.js';
 
 // .trim() guards against a trailing space/newline accidentally saved in the
 // Vercel env value — the most common cause of "my correct password won't work".
@@ -223,6 +223,32 @@ export default async function handler(req, res) {
     }
 
     // ── License keys ───────────────────────────────────────────────────────
+    // Issue a key FOR AN EMAIL (free lifetime or limited access). Optionally
+    // create/set the account password so the admin can hand over ready-to-use
+    // credentials; the user can change the password later.
+    if (action === 'issue_key') {
+      const { email: kEmail, validity_days = 30, lifetime = false, password, label = '' } = req.body || {};
+      const em = String(kEmail || '').trim().toLowerCase();
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(em)) return res.status(400).json({ error: 'Valid email required' });
+
+      // Ensure the account exists (create with the admin-set password if given).
+      const existing = await sb(`users?email=eq.${encodeURIComponent(em)}&select=id`);
+      if (!existing.length) {
+        if (password && String(password).length < 6) return res.status(400).json({ error: 'Password must be at least 6 characters' });
+        const pw = password || randomBytes(6).toString('hex'); // random if admin didn't set one
+        await sb('users', { method: 'POST', body: JSON.stringify([{ email: em, password_hash: hashPassword(String(pw)), token: randomBytes(32).toString('hex') }]) });
+      } else if (password) {
+        if (String(password).length < 6) return res.status(400).json({ error: 'Password must be at least 6 characters' });
+        await sb(`users?id=eq.${existing[0].id}`, { method: 'PATCH', body: JSON.stringify({ password_hash: hashPassword(String(password)) }) });
+      }
+
+      const key = await issueKeyForEmail(em, {
+        validity_days: lifetime ? 0 : Math.max(1, Number(validity_days) || 30),
+        lifetime: !!lifetime, label: label || 'admin grant',
+      });
+      return res.status(201).json({ key: key.key, email: em, lifetime: !!lifetime, expires_at: key.expires_at });
+    }
+
     if (action === 'create_keys') {
       const { validity_days = 30, label = '', count = 1 } = req.body || {};
       const days = Math.max(1, Number(validity_days) || 30);

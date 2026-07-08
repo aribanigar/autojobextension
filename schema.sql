@@ -98,15 +98,27 @@ create index if not exists purchases_status_idx on purchases (status);
 create table if not exists license_keys (
   id            uuid primary key default gen_random_uuid(),
   key           text unique not null,
+  email         text,                                  -- account this key belongs to
   validity_days integer not null default 30,
+  lifetime      boolean not null default false,        -- never expires
   label         text,                                  -- who it's for / notes
   status        text not null default 'active',        -- active | revoked
   activated_at  timestamptz,                           -- set on first validation
   expires_at    timestamptz,                           -- set on first validation
+  purchase_id   uuid,                                  -- the purchase that created it
   created_at    timestamptz not null default now()
 );
 alter table license_keys enable row level security;
-create index if not exists license_keys_key_idx on license_keys (key);
+create index if not exists license_keys_key_idx   on license_keys (key);
+
+-- Add to existing installs (safe to re-run)
+alter table license_keys add column if not exists email       text;
+alter table license_keys add column if not exists lifetime    boolean not null default false;
+alter table license_keys add column if not exists purchase_id uuid;
+create index if not exists license_keys_email_idx on license_keys (email);
+
+-- Every purchase records the key it generated (idempotency + lookup).
+alter table purchases add column if not exists license_key text;
 
 -- CRM rows can be owned by a license key (not just an email account).
 alter table jobs add column if not exists license_key text;

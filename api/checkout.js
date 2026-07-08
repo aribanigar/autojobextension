@@ -6,7 +6,7 @@
 import {
   cors, sb, backendConfigured, getUserByToken,
   rzp, razorpayConfigured, verifyHmac,
-  validateCoupon, applyReferral,
+  validateCoupon, applyReferral, syncPurchaseKey,
 } from './_lib.js';
 
 export default async function handler(req, res) {
@@ -58,7 +58,10 @@ export default async function handler(req, res) {
       };
       await sb(`purchases?id=eq.${encodeURIComponent(purchase_id)}`, { method: 'PATCH', body: JSON.stringify(patch) });
       await applyReferral(purchase_id); // bump code use + reward referrer (idempotent)
-      return res.status(200).json({ ok: true });
+      // Auto-generate the activation key for this purchase (validity = plan).
+      const fresh = (await sb(`purchases?id=eq.${encodeURIComponent(purchase_id)}&select=*`).catch(() => []))[0];
+      const key = fresh ? await syncPurchaseKey(fresh) : null;
+      return res.status(200).json({ ok: true, key });
     }
 
     // ── Step 1: create the order/subscription for the chosen plan ────────────
@@ -96,7 +99,9 @@ export default async function handler(req, res) {
         }]),
       });
       await applyReferral(rows[0].id);
-      return res.status(200).json({ free: true });
+      const fresh = (await sb(`purchases?id=eq.${encodeURIComponent(rows[0].id)}&select=*`).catch(() => []))[0];
+      const key = fresh ? await syncPurchaseKey(fresh) : null;
+      return res.status(200).json({ free: true, key });
     }
 
     let order_id = null, subscription_id = null;

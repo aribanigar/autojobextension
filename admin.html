@@ -60,7 +60,18 @@
       <!-- LICENSE KEYS -->
       <section id="tab-keys">
         <div class="card">
-          <h2>Issue license keys</h2>
+          <h2>Give access to an email <span style="font-size:12px;color:var(--muted);font-weight:400">(free lifetime or limited)</span></h2>
+          <div class="grid">
+            <div style="grid-column:span 2"><label>User email</label><input id="ik-email" type="email" placeholder="user@email.com" style="width:100%"></div>
+            <div><label>Access</label><select id="ik-life" style="width:100%"><option value="false">Limited (days)</option><option value="true">Lifetime</option></select></div>
+            <div><label>Validity (days)</label><input id="ik-days" type="number" min="1" placeholder="30" style="width:100%"></div>
+            <div style="grid-column:span 2"><label>Set password <span style="color:var(--muted)">(optional — user can change later)</span></label><input id="ik-pass" type="text" placeholder="starter password" style="width:100%"></div>
+          </div>
+          <button class="btn-v" id="ik-create" style="margin-top:10px">Grant access &amp; generate key</button>
+          <div id="ik-msg" class="msg"></div>
+        </div>
+        <div class="card">
+          <h2>Issue blank keys <span style="font-size:12px;color:var(--muted);font-weight:400">(no email — activate on first use)</span></h2>
           <div class="grid">
             <div style="grid-column:span 2"><label>Name</label><input id="k-label" placeholder="e.g. John's key / Batch A" style="width:100%"></div>
             <div><label>Validity (days)</label><input id="k-days" type="number" min="1" placeholder="30" style="width:100%"></div>
@@ -182,7 +193,21 @@
       if(b.dataset.tab==='purchases') loadPurchases();
     });
 
-    // LICENSE KEYS
+    // LICENSE KEYS — issue for an email (lifetime/limited + optional password)
+    $('#ik-create').onclick = async () => {
+      const lifetime = $('#ik-life').value === 'true';
+      try {
+        const d = await adminPost({ action:'issue_key',
+          email:$('#ik-email').value.trim(), lifetime,
+          validity_days: parseInt($('#ik-days').value||'30',10),
+          password: $('#ik-pass').value || undefined });
+        $('#ik-msg').className='msg ok';
+        $('#ik-msg').textContent = `Key for ${d.email}: ${d.key}  (${lifetime?'lifetime':'expires '+new Date(d.expires_at).toLocaleDateString()})`;
+        $('#ik-email').value=$('#ik-days').value=$('#ik-pass').value='';
+        loadKeys();
+      } catch(e){ $('#ik-msg').className='msg err'; $('#ik-msg').textContent=e.message; }
+    };
+
     $('#k-create').onclick = async () => {
       const validity_days = parseInt($('#k-days').value||'30',10);
       const count = parseInt($('#k-count').value||'1',10);
@@ -197,17 +222,19 @@
     async function loadKeys() {
       try {
         const rows = await adminPost({ action:'list_keys' });
-        $('#keys-list').innerHTML = `<table><thead><tr><th>Key</th><th>Validity</th><th>Status</th><th>Expires</th><th>Label</th><th></th></tr></thead><tbody>${
+        $('#keys-list').innerHTML = `<table><thead><tr><th>Key</th><th>Email</th><th>Validity</th><th>Status</th><th>Expires</th><th></th></tr></thead><tbody>${
           rows.map(k=>{
-            const expired = k.expires_at && new Date(k.expires_at).getTime() < Date.now();
-            const state = k.status==='revoked' ? 'revoked' : (!k.expires_at ? 'unused' : (expired ? 'expired' : 'active'));
-            const cls = (state==='active'||state==='unused') ? 'on' : 'off';
+            const expired = !k.lifetime && k.expires_at && new Date(k.expires_at).getTime() < Date.now();
+            const state = k.status==='revoked' ? 'revoked'
+              : k.lifetime ? 'lifetime'
+              : (!k.expires_at ? 'unused' : (expired ? 'expired' : 'active'));
+            const cls = ['active','unused','lifetime'].includes(state) ? 'on' : 'off';
             return `<tr>
               <td style="font-family:monospace;font-weight:700">${esc(k.key)}</td>
-              <td>${k.validity_days} days</td>
+              <td style="color:var(--muted)">${esc(k.email||k.label||'—')}</td>
+              <td>${k.lifetime?'lifetime':k.validity_days+' days'}</td>
               <td><span class="pill ${cls}">${state}</span></td>
-              <td style="color:var(--muted)">${k.expires_at?new Date(k.expires_at).toLocaleDateString():'—'}</td>
-              <td style="color:var(--muted)">${esc(k.label||'')}</td>
+              <td style="color:var(--muted)">${k.lifetime?'never':(k.expires_at?new Date(k.expires_at).toLocaleDateString():'—')}</td>
               <td style="white-space:nowrap">
                 <button class="mini" data-copy="${esc(k.key)}">Copy</button>
                 ${k.status==='revoked'

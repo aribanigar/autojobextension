@@ -494,6 +494,18 @@
     if (banner) banner.style.display = 'none';
     if (ok) ok.style.display = 'none';
 
+    // 0) Auto-fetch a key issued to this account (purchase or admin grant), so
+    //    the user doesn't have to hunt for it — prefill the card + save it.
+    if (!localStorage.getItem('jobbot_crm_key')) {
+      try {
+        const mk = await fetch('/api/my-key', { headers: { Authorization: 'Bearer ' + s.token } }).then(r => r.json());
+        if (mk && mk.key) {
+          localStorage.setItem('jobbot_crm_key', mk.key);
+          const inp = document.getElementById('ak-input'); if (inp) inp.value = mk.key;
+        }
+      } catch {}
+    }
+
     // 1) Activation key (from the card / localStorage)
     const key = localStorage.getItem('jobbot_crm_key');
     if (key) {

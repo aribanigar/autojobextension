@@ -22,22 +22,22 @@ export default async function handler(req, res) {
     if (lk.status === 'revoked') return res.status(403).json({ valid: false, error: 'This key has been revoked' });
 
     const now = Date.now();
+    const lifetime = !!lk.lifetime;
     let expires_at = lk.expires_at;
 
-    // First use → activate and start the validity clock.
-    if (!expires_at) {
-      const exp = new Date(now + (lk.validity_days || 30) * 864e5).toISOString();
+    // First use of a time-limited, not-yet-activated key → start the clock.
+    if (!lifetime && !expires_at && !lk.activated_at) {
+      expires_at = new Date(now + (lk.validity_days || 30) * 864e5).toISOString();
       await sb(`license_keys?id=eq.${encodeURIComponent(lk.id)}`, {
         method: 'PATCH',
-        body: JSON.stringify({ activated_at: new Date(now).toISOString(), expires_at: exp }),
+        body: JSON.stringify({ activated_at: new Date(now).toISOString(), expires_at }),
       });
-      expires_at = exp;
     }
 
-    const active = new Date(expires_at).getTime() > now;
+    const active = lifetime || (!!expires_at && new Date(expires_at).getTime() > now);
     return res.status(200).json({
-      valid: true, active, expires_at,
-      validity_days: lk.validity_days, label: lk.label || null,
+      valid: true, active, lifetime, expires_at: lifetime ? null : expires_at,
+      validity_days: lk.validity_days, label: lk.label || null, email: lk.email || null,
       error: active ? undefined : 'This key has expired',
     });
   } catch (e) {

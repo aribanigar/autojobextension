@@ -4,7 +4,7 @@
 // in RAZORPAY_WEBHOOK_SECRET, subscribing to: order.paid, payment.captured,
 // subscription.charged, subscription.activated, subscription.halted,
 // subscription.cancelled, subscription.completed.
-import { sb, backendConfigured, verifyHmac, readRawBody, applyReferral } from './_lib.js';
+import { sb, backendConfigured, verifyHmac, readRawBody, applyReferral, syncPurchaseKey } from './_lib.js';
 
 // Vercel must NOT pre-parse the body — signature is over the raw bytes.
 export const config = { api: { bodyParser: false } };
@@ -47,6 +47,8 @@ export default async function handler(req, res) {
           body: JSON.stringify({ status: 'paid', starts_at: now.toISOString(), razorpay_payment_id: payment?.id || null, expires_at }),
         }).catch(() => {});
         await applyReferral(p.id); // reward referrer (idempotent)
+        const fresh = (await sb(`purchases?id=eq.${encodeURIComponent(p.id)}&select=*`).catch(() => []))[0];
+        if (fresh) await syncPurchaseKey(fresh); // auto-generate/sync the activation key
       }
     }
 
@@ -62,9 +64,16 @@ export default async function handler(req, res) {
           method: 'PATCH',
           body: JSON.stringify({ status: 'active', starts_at: now.toISOString(), expires_at: end.toISOString() }),
         }).catch(() => []);
-        if (Array.isArray(updated) && updated[0]) await applyReferral(updated[0].id);
+        if (Array.isArray(updated) && updated[0]) {
+          await applyReferral(updated[0].id);
+          const fresh = (await sb(`purchases?id=eq.${encodeURIComponent(updated[0].id)}&select=*`).catch(() => []))[0];
+          if (fresh) await syncPurchaseKey(fresh); // create/extend the key each cycle
+        }
       } else if (type === 'subscription.halted' || type === 'subscription.cancelled' || type === 'subscription.completed') {
         await patchPurchase(filter, { status: 'expired' });
+        // Expire the linked key too.
+        const rows = await sb(`purchases?${filter}&select=license_key`).catch(() => []);
+        if (rows[0]?.license_key) await sb(`license_keys?key=eq.${encodeURIComponent(rows[0].license_key)}`, { method: 'PATCH', body: JSON.stringify({ expires_at: now.toISOString(), lifetime: false }) }).catch(() => {});
       }
     }
 

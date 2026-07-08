@@ -1,7 +1,59 @@
 // api/_lib.js – shared helpers for the JobBot backend.
 // Underscore prefix keeps Vercel from routing this as an HTTP endpoint.
 
-import { createHmac, timingSafeEqual } from 'crypto';
+import { createHmac, timingSafeEqual, randomBytes } from 'crypto';
+
+// A fresh license-key string: AA-XXXX-XXXX-XXXX.
+export function newKeyString() {
+  const g = () => randomBytes(2).toString('hex').toUpperCase();
+  return `AA-${g()}-${g()}-${g()}`;
+}
+
+// Issue a PRE-ACTIVATED key for an email (used by purchases and admin grants).
+// The validity clock starts now. lifetime → never expires.
+export async function issueKeyForEmail(email, { validity_days = 30, lifetime = false, label = null, purchase_id = null } = {}) {
+  const now = new Date();
+  const expires_at = lifetime ? null : new Date(now.getTime() + (validity_days || 30) * 864e5).toISOString();
+  const rows = await sb('license_keys', {
+    method: 'POST',
+    body: JSON.stringify([{
+      key: newKeyString(), email: email ? String(email).trim().toLowerCase() : null,
+      validity_days: lifetime ? 0 : (validity_days || 30), lifetime, label,
+      status: 'active', activated_at: now.toISOString(), expires_at, purchase_id,
+    }]),
+  });
+  return rows[0];
+}
+
+// Ensure a purchase has a linked license key whose expiry matches the purchase.
+// Idempotent: creates the key once, then keeps its expiry in sync on renewals.
+export async function syncPurchaseKey(purchase) {
+  if (!purchase || !purchase.user_email) return null;
+  const lifetime = !purchase.expires_at; // null expiry = lifetime
+  if (purchase.license_key) {
+    // Renewal — extend the existing key to the purchase's new expiry.
+    await sb(`license_keys?key=eq.${encodeURIComponent(purchase.license_key)}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ expires_at: purchase.expires_at || null, lifetime, status: 'active' }),
+    }).catch(() => {});
+    return purchase.license_key;
+  }
+  const now = new Date();
+  const rows = await sb('license_keys', {
+    method: 'POST',
+    body: JSON.stringify([{
+      key: newKeyString(), email: String(purchase.user_email).toLowerCase(),
+      validity_days: purchase.duration_days || 0, lifetime,
+      label: 'purchase', status: 'active',
+      activated_at: now.toISOString(), expires_at: purchase.expires_at || null,
+      purchase_id: purchase.id,
+    }]),
+  });
+  await sb(`purchases?id=eq.${encodeURIComponent(purchase.id)}`, {
+    method: 'PATCH', body: JSON.stringify({ license_key: rows[0].key }),
+  }).catch(() => {});
+  return rows[0].key;
+}
 
 export function cors(res, methods = 'GET,POST,PATCH,DELETE,OPTIONS') {
   res.setHeader('Access-Control-Allow-Origin', '*');
