@@ -57,6 +57,10 @@ document.addEventListener('DOMContentLoaded', async () => {
     s('f-location', p.personal?.location);
     s('f-zip',      p.personal?.postalCode);
     s('f-gender',   p.personal?.gender);
+    s('f-dob',         p.personal?.dateOfBirth);
+    s('f-nationality', p.personal?.nationality);
+    s('f-marital',     p.personal?.maritalStatus);
+    s('f-linkedin',    p.personal?.linkedin);
     s('f-title',    p.professional?.currentTitle);
     s('f-company',  p.professional?.currentCompany);
     s('f-exp',      p.professional?.experience);
@@ -186,6 +190,10 @@ document.addEventListener('DOMContentLoaded', async () => {
         location: v('f-location'),
         postalCode: v('f-zip'),
         gender:   v('f-gender'),
+        dateOfBirth:   v('f-dob'),
+        nationality:   v('f-nationality'),
+        maritalStatus: v('f-marital'),
+        linkedin:      v('f-linkedin'),
       },
       professional: {
         currentTitle:   v('f-title'),

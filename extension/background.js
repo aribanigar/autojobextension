@@ -1,7 +1,7 @@
 // background.js – JobBot service worker
 
 const DEFAULT_PROFILE = {
-  personal: { name: '', email: '', phone: '', location: '', postalCode: '', gender: '' },
+  personal: { name: '', email: '', phone: '', location: '', postalCode: '', gender: '', dateOfBirth: '', nationality: '', maritalStatus: '', linkedin: '' },
   professional: {
     currentTitle: '', currentCompany: '', experience: '3',
     currentSalary: '', expectedSalary: '', noticePeriod: '30 days',
@@ -129,7 +129,14 @@ function profileSummary(p = {}) {
   const per = p.personal || {}, pro = p.professional || {}, prf = p.preferences || {};
   return [
     per.name && `Name: ${per.name}`,
+    per.email && `Email: ${per.email}`,
+    per.phone && `Phone: ${per.phone}`,
     per.location && `Location: ${per.location}`,
+    per.gender && `Gender: ${per.gender}`,
+    per.dateOfBirth && `Date of birth: ${per.dateOfBirth}`,
+    per.nationality && `Nationality: ${per.nationality}`,
+    per.maritalStatus && `Marital status: ${per.maritalStatus}`,
+    per.linkedin && `LinkedIn: ${per.linkedin}`,
     pro.currentTitle && `Current title: ${pro.currentTitle} at ${pro.currentCompany || 'current company'}`,
     pro.experience && `Experience: ${pro.experience} years`,
     pro.skills && `Skills: ${pro.skills}`,

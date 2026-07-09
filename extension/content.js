@@ -20,6 +20,26 @@
   // ─── Utilities ────────────────────────────────────────────────────────────
   const sleep    = ms => new Promise(r => setTimeout(r, ms));
   const rand     = (lo, hi) => lo + Math.floor(Math.random() * (hi - lo));
+
+  // Compute age (whole years) from a date-of-birth string in common formats:
+  // "1998-05-20", "20/05/1998", "20-05-1998", "May 20 1998", "20 May 1998".
+  // Returns null if it can't be parsed sensibly.
+  function ageFromDob(dob) {
+    if (!dob) return null;
+    const s = String(dob).trim();
+    let d = null;
+    let m = s.match(/^(\d{4})[-/.](\d{1,2})[-/.](\d{1,2})$/);         // YYYY-MM-DD
+    if (m) d = new Date(+m[1], +m[2] - 1, +m[3]);
+    if (!d) { m = s.match(/^(\d{1,2})[-/.](\d{1,2})[-/.](\d{4})$/);    // DD-MM-YYYY
+      if (m) d = new Date(+m[3], +m[2] - 1, +m[1]); }
+    if (!d) { const p = Date.parse(s); if (!isNaN(p)) d = new Date(p); } // fallback (named months)
+    if (!d || isNaN(d.getTime())) return null;
+    const now = new Date();
+    let age = now.getFullYear() - d.getFullYear();
+    const md = now.getMonth() - d.getMonth();
+    if (md < 0 || (md === 0 && now.getDate() < d.getDate())) age--;
+    return (age > 0 && age < 100) ? age : null;
+  }
   const $        = (sel, root = document) => root ? root.querySelector(sel) : null;
   const $$       = (sel, root = document) => root ? [...root.querySelectorAll(sel)] : [];
   const isVis    = el => !!el && !el.disabled && el.offsetWidth > 0 && el.offsetHeight > 0
@@ -629,6 +649,10 @@
       if (/\b(postal|zip|pin)\s*.?code\b|pincode/i.test(t))   return per.postalCode || '';
       if (/\b(city|location|based.in|current.location)\b/i.test(t))  return per.location || '';
       if (/\bwilling.*(relocat|move)\b/i.test(t))             return prf.willingToRelocate ? 'Yes' : 'No';
+      // Visa sponsorship must be checked BEFORE the work-authorization rule below
+      // (which matches "visa"): an authorised applicant does NOT need sponsorship.
+      if (/\b(require|need|requiring|needing|request|seeking?)\b.*\b(sponsor|sponsorship|visa\s+support)\b|\bsponsorship\b.*\b(require|need)\b/i.test(t))
+        return prf.workAuth !== false ? 'No' : 'Yes';
       if (/\b(authoriz|authoris|eligible.to.work|work.permit|visa|right.to.work)\b/i.test(t)) return 'Yes';
       if (/\btravel\b/i.test(t))                              return prf.travelPercentage || '25';
       if (/\blanguage\b/i.test(t))                            return pro.languages || 'English, Hindi';
@@ -643,6 +667,11 @@
       if (/\b(designation|current.role|current.title|current.position)\b/i.test(t)) return pro.currentTitle || '';
       if (/\bskill\b/i.test(t))                               return pro.skills || '';
       if (/\bfresher\b/i.test(t))                             return parseInt(pro.experience || '0') === 0 ? 'Yes' : 'No';
+      // First / middle / last name split from the full name (checked before the
+      // generic name rule so "First name" doesn't get the whole name).
+      if (/\b(first|given)\s*name\b/i.test(t)) { const n = (per.name || '').trim().split(/\s+/); return n[0] || per.name || ''; }
+      if (/\b(last|sur)\s*name|surname|family\s*name\b/i.test(t)) { const n = (per.name || '').trim().split(/\s+/); return n.length > 1 ? n[n.length - 1] : ''; }
+      if (/\bmiddle\s*name\b/i.test(t)) { const n = (per.name || '').trim().split(/\s+/); return n.length > 2 ? n.slice(1, -1).join(' ') : ''; }
       if (/\bname\b/i.test(t) && !/company|employer/i.test(t)) return per.name || '';
       if (/\bemail\b/i.test(t))                               return per.email || '';
       // Naukri chatbot phrasings (additive – evaluated after all the above)
@@ -669,6 +698,87 @@
 
       // Disability / veteran self-identification (common US/IN EEOC questions)
       if (/\b(disability|disabled|veteran|differently.?abled)\b/i.test(t)) return 'No';
+
+      // ── Extended self-answering (all additive; only fire for questions none of
+      //    the rules above already answered) ─────────────────────────────────────
+
+      // Nationality / citizenship
+      if (/\b(nationality|citizenship|citizen\s+of|country\s+of\s+(origin|citizenship))\b/i.test(t))
+        return per.nationality || '';
+
+      // Date of birth (a plain DOB field)
+      if (/\b(date\s*of\s*birth|d\.?o\.?b\.?|birth\s*date|born\s+on)\b/i.test(t))
+        return per.dateOfBirth || '';
+
+      // Numeric age — computed from DOB when possible (eligibility yes/no is
+      // already handled above, so this only catches a plain "Age" field).
+      if (/\bage\b/i.test(t) && !/(manage|package|average|usage|language|agency|agenda)/i.test(t)) {
+        const a = ageFromDob(per.dateOfBirth);
+        return a ? String(a) : '';
+      }
+
+      // Marital status
+      if (/\bmarital\s*status\b|\bmarried\b/i.test(t)) return per.maritalStatus || '';
+
+      // LinkedIn / profile URL
+      if (/\blinked\s*in\b|\blinkedin\s*(profile|url|link)\b/i.test(t)) return per.linkedin || '';
+
+      // Work authorization ("Are you authorized/eligible to work?") — the existing
+      // rule above only catches "visa"/"work permit"/"right to work"; add the
+      // authorised/eligible phrasings here (sponsorship is handled earlier).
+      if (/\b(authoriz|authoris|eligible|permitted|entitled|legally)\w*\b.*\bwork\b|\bwork\s+authoriz|\bright\s+to\s+work\b/i.test(t))
+        return 'Yes';
+
+      // Start date / earliest availability → immediate or the notice period.
+      if (/\b(start\s*date|when.*(start|join|begin)|earliest.*(start|join|availab)|how\s+soon.*join|availab.*(to|start|join))\b/i.test(t)) {
+        const days = parseInt((pro.noticePeriod || '30').match(/\d+/)?.[0] || '30', 10);
+        return days <= 3 ? 'Immediately' : (pro.noticePeriod || '30 days');
+      }
+
+      // Preferred / desired job location, hometown, current address → their city.
+      if (/\b(preferred|desired|current)\s*(job\s*)?(location|city|address)\b|\b(home\s*town|hometown|native\s*place|permanent\s*address|mailing\s*address|residential\s*address)\b/i.test(t))
+        return per.location || '';
+
+      // References available
+      if (/\breference[s]?\b.*(available|provide|on\s+request|willing)|(can\s+you|will\s+you).*\breference[s]?\b/i.test(t))
+        return 'Available on request';
+
+      // "How did you hear about us / this role / this job"
+      if (/\bhow\s+did\s+you\s+(hear|find|learn|come\s+to\s+know)\b|\b(source|referral\s+source|where\s+did\s+you\s+(hear|find))\b/i.test(t))
+        return 'LinkedIn';
+
+      // Willingness to work weekends / nights / shifts / overtime / holidays / rotational
+      if (/\b(willing|able|comfortable|open|okay|ok|prepared)\b.*\b(weekend|night\s*shift|rotational|rotating|shift|overtime|holiday|extra\s*hours|flexible\s*hours|on\s*call)\b/i.test(t))
+        return 'Yes';
+      if (/\b(weekend|night\s*shift|rotational|rotating\s*shift|shift\s*work|overtime|extra\s*hours)\b.*\b(work|available|okay|fine|comfortable)\b/i.test(t))
+        return 'Yes';
+
+      // Generic "do you have experience / knowledge / familiarity with …" → Yes.
+      if (/\bdo\s+you\s+have\b.*\b(experience|knowledge|hands.?on|familiar|expertise|exposure|proficien)\b/i.test(t))
+        return 'Yes';
+      if (/\b(are|do)\s+you\b.*\b(familiar|proficient|experienced|skilled)\b.*\bwith\b/i.test(t))
+        return 'Yes';
+
+      // Consent / agree / acknowledge / terms
+      if (/\b(agree|consent|acknowledge|accept)\b.*\b(terms|conditions|policy|privacy|process|share|data)\b|\bi\s+(agree|consent|confirm|certify|acknowledge)\b/i.test(t))
+        return 'Yes';
+      if (/\b(certify|confirm)\b.*\b(true|accurate|correct|information)\b/i.test(t)) return 'Yes';
+
+      // Have you applied to / worked here before → No
+      if (/\b(have|did)\s+you\s+(ever\s+)?(applied|worked|been\s+employed)\b.*(before|previously|with\s+us|here|this\s+(company|organi))\b/i.test(t))
+        return 'No';
+
+      // Are you a fresher/experienced already covered; generic "willing to" → Yes.
+      if (/\b(are\s+you\s+)?willing\s+to\b/i.test(t)) return 'Yes';
+      if (/\bcan\s+you\s+(join|start|work|commit|attend)\b/i.test(t)) return 'Yes';
+
+      // Reason for change / leaving → a neutral, professional line.
+      if (/\breason\b.*\b(change|leaving|switch|looking|move|job\s*change)\b|\bwhy\b.*\b(leav|chang|switch)\b/i.test(t))
+        return 'Seeking new challenges and growth opportunities that align with my career goals.';
+
+      // Highest / total experience phrasings not caught above.
+      if (/\b(experience|exp)\b/i.test(t) && /\b(how\s+many|years?|yrs?|duration|total|overall)\b/i.test(t))
+        return pro.experience || '3';
 
       return null;
     }
