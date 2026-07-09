@@ -69,6 +69,7 @@
   // Indeed/reCAPTCHA score mouse activity; a few mousemove events before a click
   // read more like a person than an instant click at dead-center.
   let _mx = Math.random() * window.innerWidth, _my = Math.random() * window.innerHeight;
+  let _moving = false; // true while a moveTo glide is running (ambient drift yields to it)
   const _clampX = v => Math.max(0, Math.min(innerWidth - 1, v));
   const _clampY = v => Math.max(0, Math.min(innerHeight - 1, v));
   const _emitMove = (ex, ey) => {
@@ -77,6 +78,21 @@
       bubbles: true, cancelable: true, view: window, clientX: ex, clientY: ey,
     }));
   };
+  // Indeed: richer emit — pointermove + mousemove with movementX/Y deltas, which
+  // is closer to what a real device produces and what behavioural scorers read.
+  const _emitRich = (ex, ey) => {
+    const cx = _clampX(ex), cy = _clampY(ey);
+    const dx = cx - _mx, dy = cy - _my;
+    const tgt = document.elementFromPoint(cx, cy) || document.body;
+    const o = { bubbles: true, cancelable: true, view: window, clientX: cx, clientY: cy,
+                screenX: cx, screenY: cy, movementX: dx, movementY: dy };
+    try { tgt.dispatchEvent(new PointerEvent('pointermove', { ...o, pointerId: 1, pointerType: 'mouse', isPrimary: true, width: 1, height: 1, pressure: 0 })); } catch {}
+    tgt.dispatchEvent(new MouseEvent('mousemove', o));
+    _mx = cx; _my = cy;
+  };
+  // smootherstep — natural acceleration then deceleration (Ken Perlin)
+  const _smoother = t => t * t * t * (t * (t * 6 - 15) + 10);
+
   async function moveTo(x, y) {
     // LinkedIn / Naukri / Bayt: ORIGINAL behaviour, unchanged.
     if (PLATFORM !== 'indeed') {
@@ -92,32 +108,60 @@
       return;
     }
 
-    // INDEED ONLY — stronger human-like motion (Cloudflare Turnstile scores the
-    // mouse path). Curved (quadratic Bézier) route, ease-in-out speed, micro
-    // jitter, more samples, and an occasional overshoot-and-correct near the
-    // target. Purely a movement/realism change — no apply logic is affected.
-    const dist = Math.hypot(x - _mx, y - _my);
-    const steps = Math.max(14, Math.min(40, Math.round(dist / rand(10, 18))));
-    // control point pushed perpendicular-ish so the path arcs like a real hand
-    const cx = _mx + (x - _mx) * rand(0.25, 0.55) + (Math.random() - 0.5) * Math.min(200, dist * 0.6 + 60);
-    const cy = _my + (y - _my) * rand(0.45, 0.75) + (Math.random() - 0.5) * Math.min(150, dist * 0.4 + 50);
-    const sx = _mx, sy = _my;
-    for (let i = 1; i <= steps; i++) {
-      const t = i / steps;
-      const te = t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2; // ease-in-out
-      const u = 1 - te;
-      const ex = u * u * sx + 2 * u * te * cx + te * te * x + (Math.random() - 0.5) * 2.5;
-      const ey = u * u * sy + 2 * u * te * cy + te * te * y + (Math.random() - 0.5) * 2.5;
-      _emitMove(ex, ey);
-      await sleep(rand(9, 30) * (0.6 + Math.abs(0.5 - t))); // slower at the ends
-    }
-    // Occasional slight overshoot, then settle onto the target — very human.
-    if (Math.random() < 0.5) {
-      _emitMove(x + (Math.random() - 0.5) * 12, y + (Math.random() - 0.5) * 12);
-      await sleep(rand(25, 70));
-    }
-    _emitMove(x, y);
-    _mx = x; _my = y;
+    // ── INDEED ONLY — professional human-motion model ────────────────────────
+    // Cloudflare Turnstile scores mouse dynamics, so we mimic a real hand:
+    //   • cubic Bézier path (two control points → gentle S-curve, never straight)
+    //   • smootherstep velocity (accelerate out, decelerate in)
+    //   • low-frequency tremor (two sine waves + tiny random walk, NOT white noise)
+    //   • occasional mid-flight hesitation pause
+    //   • overshoot then settle onto the target
+    //   • pointermove + mousemove with real movement deltas
+    // No apply logic touched — this only changes how the cursor travels.
+    _moving = true;
+    try {
+      const sx = _mx, sy = _my;
+      const dist = Math.hypot(x - sx, y - sy) || 1;
+      const steps = Math.max(18, Math.min(55, Math.round(dist / rand(7, 12))));
+      // two control points, offset perpendicular-ish for a natural arc
+      const nx = -(y - sy) / dist, ny = (x - sx) / dist; // unit normal
+      const bow1 = (Math.random() - 0.5) * Math.min(160, dist * 0.5 + 40);
+      const bow2 = (Math.random() - 0.5) * Math.min(120, dist * 0.35 + 30);
+      const c1x = sx + (x - sx) * 0.32 + nx * bow1, c1y = sy + (y - sy) * 0.32 + ny * bow1;
+      const c2x = sx + (x - sx) * 0.68 + nx * bow2, c2y = sy + (y - sy) * 0.68 + ny * bow2;
+      // tremor params (per-move so it varies)
+      const trAmp = 0.6 + Math.random() * 1.6, trF1 = 3 + Math.random() * 5, trF2 = 7 + Math.random() * 9;
+      const trP1 = Math.random() * 6.28, trP2 = Math.random() * 6.28;
+      let walkX = 0, walkY = 0;
+      const hesitateAt = Math.random() < 0.22 ? Math.floor(steps * (0.3 + Math.random() * 0.4)) : -1;
+      for (let i = 1; i <= steps; i++) {
+        const t = _smoother(i / steps);
+        const u = 1 - t;
+        // cubic Bézier
+        let ex = u*u*u*sx + 3*u*u*t*c1x + 3*u*t*t*c2x + t*t*t*x;
+        let ey = u*u*u*sy + 3*u*u*t*c1y + 3*u*t*t*c2y + t*t*t*y;
+        // hand tremor (fades near the target so we land cleanly)
+        const fade = Math.sin(Math.PI * (i / steps));
+        walkX += (Math.random() - 0.5) * 0.7; walkX *= 0.85;
+        walkY += (Math.random() - 0.5) * 0.7; walkY *= 0.85;
+        ex += (Math.sin(t * trF1 * 6.28 + trP1) * trAmp + walkX) * fade;
+        ey += (Math.sin(t * trF2 * 6.28 + trP2) * trAmp + walkY) * fade;
+        _emitRich(ex, ey);
+        // velocity: fast in the middle, slow at the ends
+        let dwell = rand(7, 20) * (0.5 + Math.abs(0.5 - (i / steps)) * 1.3);
+        if (i === hesitateAt) dwell += rand(80, 220); // brief human hesitation
+        await sleep(dwell);
+      }
+      // overshoot then settle (humans rarely stop dead on target)
+      if (Math.random() < 0.6) {
+        const os = 4 + Math.random() * 10, ang = Math.random() * 6.28;
+        _emitRich(x + Math.cos(ang) * os, y + Math.sin(ang) * os);
+        await sleep(rand(30, 90));
+        _emitRich(x + (Math.random() - 0.5) * 3, y + (Math.random() - 0.5) * 3);
+        await sleep(rand(20, 60));
+      }
+      _emitRich(x, y);
+      _mx = x; _my = y;
+    } finally { _moving = false; }
   }
 
   // Full pointer/mouse event sequence – React buttons (Indeed) often ignore bare .click()
@@ -3360,6 +3404,53 @@
         });
       } catch { clearInterval(captchaWatch); }
     }, 2500);
+
+    // ── Ambient human hand-movement (INDEED ONLY) ───────────────────────────
+    // Between the agent's clicks, a real person's cursor is never perfectly
+    // still — it drifts, twitches, and rests. Cloudflare Turnstile scores that
+    // continuous micro-activity. During an active Indeed run (and only then),
+    // emit gentle, low-amplitude drift movements so there's lifelike mouse
+    // activity even while the agent is reading/waiting. Yields to real glides
+    // (_moving) and never clicks anything — pure mousemove, zero apply impact.
+    // Gated to Indeed: LinkedIn/Naukri/Bayt are completely unaffected.
+    if (PLATFORM === 'indeed') {
+      let _ambientRunning = false;
+      const ambientTick = async () => {
+        if (_ambientRunning || _moving) return;
+        let active = false;
+        try {
+          active = await new Promise(res => {
+            chrome.storage.local.get('jobbot_running', d => {
+              if (chrome.runtime.lastError) return res(false);
+              res(!!(d.jobbot_running && flagMatchesThisTab(d.jobbot_running)) && !CAPTCHA.present());
+            });
+          });
+        } catch { return; }
+        if (!active || _moving) return;
+        _ambientRunning = true;
+        try {
+          // small settle-drift near the current position: a short curved wander
+          const tx = _clampX(_mx + (Math.random() - 0.5) * rand(20, 90));
+          const ty = _clampY(_my + (Math.random() - 0.5) * rand(16, 70));
+          const sx = _mx, sy = _my, n = rand(4, 9);
+          const cxp = sx + (tx - sx) * 0.5 + (Math.random() - 0.5) * 30;
+          const cyp = sy + (ty - sy) * 0.5 + (Math.random() - 0.5) * 24;
+          for (let i = 1; i <= n && !_moving; i++) {
+            const t = _smoother(i / n), u = 1 - t;
+            const ex = u * u * sx + 2 * u * t * cxp + t * t * tx;
+            const ey = u * u * sy + 2 * u * t * cyp + t * t * ty;
+            _emitRich(ex, ey);
+            await sleep(rand(18, 45));
+          }
+        } catch {} finally { _ambientRunning = false; }
+      };
+      // Irregular cadence (humans aren't metronomic): re-arm with a random gap.
+      const scheduleAmbient = () => {
+        if (!contextAlive()) return;
+        setTimeout(async () => { try { await ambientTick(); } catch {} scheduleAmbient(); }, rand(900, 2600));
+      };
+      scheduleAmbient();
+    }
   }
 
 })();
