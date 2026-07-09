@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "JobBot – Auto Apply Agent",
-  "version": "1.1.5",
+  "version": "1.1.6",
   "description": "Automated job application agent for LinkedIn, Indeed, and Naukri. Fills forms, clicks Continue, and moves through jobs like a pro.",
   "permissions": [
     "activeTab",
@@ -16,6 +16,8 @@
     "https://apply.indeed.com/*",
     "https://*.naukri.com/*",
     "https://*.bayt.com/*",
+    "https://jobs.qckserve.in/*",
+    "https://*.qckserve.in/*",
     "https://generativelanguage.googleapis.com/*"
   ],
   "background": {
