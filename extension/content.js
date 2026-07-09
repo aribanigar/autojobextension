@@ -1382,25 +1382,41 @@
     // Pause and let the human solve the captcha; resume the moment it clears.
     async waitForCaptcha(sub) {
       SPOT.attention(CAPTCHA.el() || sub,
-        '🔐 Please solve the "verify you\'re human" check — I\'ll continue automatically');
-      notifyUser('JobBot needs you', 'Solve the captcha on Indeed — the agent will continue automatically once done.');
+        '🔐 Please solve the "verify you\'re human" check — I\'ll submit automatically');
+      notifyUser('JobBot needs you', 'Solve the captcha on Indeed — the agent will submit automatically once done.');
+      const isOk = el => el && isVis(el) && el.getAttribute('aria-disabled') !== 'true' && !el.disabled;
       for (let i = 0; i < 600 && this.running; i++) { // wait up to ~10 min
         await sleep(1000);
-        // Captcha gone → resume: submit if the button is live, else let the flow continue.
-        if (!CAPTCHA.present()) {
-          const { sub: s2 } = this.findStepButtons();
-          if (this.isDone()) { SPOT.clearAttention(); return 'submitted'; }
-          if (s2 && isVis(s2) && !s2.disabled) {
-            SPOT.clearAttention();
-            await sleep(rand(500, 1100));
-            await humanClick(s2, '🎉 Submitting my application!');
-            await sleep(rand(1500, 2500));
-            return 'submitted';
-          }
+        if (this.isDone()) { SPOT.clearAttention(); return 'submitted'; }
+
+        // The RELIABLE "captcha solved" signal is the Submit/Continue button
+        // going live again — Cloudflare Turnstile enables it once the token is
+        // issued. The widget iframe often LINGERS in the DOM after solving, so
+        // we must NOT wait for it to disappear; we watch the buttons instead.
+        const { cont: c2, sub: s2 } = this.findStepButtons();
+        if (isOk(s2)) {                    // Submit your application is now clickable
           SPOT.clearAttention();
-          return 'continue'; // captcha cleared but no submit yet — carry on with the flow
+          await sleep(rand(500, 1100));
+          await humanClick(s2, '🎉 Submitting my application!');
+          await sleep(rand(1500, 2500));
+          // Confirm it went through; if the button is still there, click once more.
+          if (!this.isDone()) {
+            const { sub: s3 } = this.findStepButtons();
+            if (isOk(s3)) { await humanClick(s3, '🎉 Submitting my application!'); await sleep(rand(1500, 2500)); }
+          }
+          return 'submitted';
         }
-        // Still there — re-alert every ~45s in case they missed it.
+        if (isOk(c2)) {                    // a Continue/Review step appeared after the captcha
+          SPOT.clearAttention();
+          await humanClick(c2, '✨ Continuing after captcha…');
+          await sleep(rand(1200, 2000));
+          return 'continue';
+        }
+        // Captcha widget truly gone and no button live yet → hand back to the
+        // main loop, which waits for Submit to enable and clicks it.
+        if (!CAPTCHA.present()) { SPOT.clearAttention(); return 'continue'; }
+
+        // Still waiting — re-alert every ~45s in case they missed it.
         if (i > 0 && i % 45 === 0) notifyUser('JobBot still waiting', 'A captcha is still open on Indeed — please solve it to continue.');
       }
       SPOT.clearAttention();
