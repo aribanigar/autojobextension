@@ -2973,6 +2973,52 @@
   const flagMatchesThisTab = flag =>
     !!flag && (flag === true || MY_TAB === null || flag === MY_TAB);
 
+  // ─── Background keep-alive ──────────────────────────────────────────────────
+  // When the user switches to another tab, Chrome throttles this tab's timers
+  // (after ~5 min it clamps setTimeout/setInterval to roughly once per minute),
+  // which stalls the agent's human-like sleep() loops so it appears to stop.
+  // A tab that is "playing audio" is exempt from this intensive throttling, so
+  // while a run is active we keep a permanently-inaudible Web-Audio tone going.
+  // It produces no perceptible sound (gain ~0.0001, sub-audible frequency) and
+  // is fully torn down on Stop. Everything is wrapped so a blocked AudioContext
+  // (autoplay policy) can NEVER affect the run itself. Top frame only.
+  const KeepAlive = (() => {
+    let ctx = null, osc = null, gain = null, resumer = null, on = false;
+    function start() {
+      if (on || !IS_TOP) return;
+      on = true;
+      try {
+        const AC = window.AudioContext || window.webkitAudioContext;
+        if (!AC) return;
+        ctx = new AC();
+        gain = ctx.createGain();
+        gain.gain.value = 0.0001;          // real output, but inaudible
+        osc = ctx.createOscillator();
+        osc.type = 'sine';
+        osc.frequency.value = 30;          // sub-audible tone
+        osc.connect(gain).connect(ctx.destination);
+        osc.start();
+        const kick = () => { try { if (ctx && ctx.state === 'suspended') ctx.resume(); } catch {} };
+        kick();
+        // Autoplay policy may leave the context suspended until a gesture / focus
+        // change — keep (re)starting it whenever the page gets a chance.
+        resumer = () => kick();
+        document.addEventListener('visibilitychange', resumer, true);
+        document.addEventListener('pointerdown', resumer, true);
+      } catch {}
+    }
+    function stop() {
+      on = false;
+      try { document.removeEventListener('visibilitychange', resumer, true); } catch {}
+      try { document.removeEventListener('pointerdown', resumer, true); } catch {}
+      resumer = null;
+      try { if (osc) osc.stop(); } catch {}
+      try { if (ctx) ctx.close(); } catch {}
+      osc = gain = ctx = null;
+    }
+    return { start, stop };
+  })();
+
   async function startAgent(profile) {
     if (agent?.running) return;
     if (!['linkedin', 'indeed', 'naukri', 'bayt'].includes(PLATFORM)) {
@@ -2997,6 +3043,10 @@
       agent = null;
       return;
     }
+
+    // Run is going ahead — keep the tab un-throttled while it works in the
+    // background (idempotent; safe to call on every watchdog/resume restart).
+    KeepAlive.start();
 
     const f = new Filler(profile);
     if      (PLATFORM === 'linkedin') agent = new LinkedInAgent(f);
@@ -3068,6 +3118,7 @@
 
   function stopAgent() {
     if (agent) { agent.stop(); agent = null; }
+    KeepAlive.stop();
     try { chrome.storage.local.set({ jobbot_running: false }); } catch {}
     SPOT.clearAttention();
     SPOT.status('Agent stopped', 'warning');
@@ -3375,6 +3426,7 @@
       if (!contextAlive()) {
         clearInterval(watchdog);
         if (agent) agent.stop();
+        KeepAlive.stop();
         SPOT.hide();
         return;
       }
