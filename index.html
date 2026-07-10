@@ -354,7 +354,21 @@
     <a class="btn btn-primary btn-lg" href="/jobbot-extension.zip" download="jobs-extension.zip">
       Download Extension (.zip)
     </a>
+    <p id="ext-ver" class="dl-ver" style="margin-top:14px;font-size:13px;color:#9ca3af;letter-spacing:.01em;">&nbsp;</p>
   </div>
+  <script>
+    // Show the current extension name + version (read live from the manifest so
+    // it always matches the downloadable build) under the download button.
+    (function () {
+      fetch('/extension/manifest.json', { cache: 'no-store' })
+        .then(function (r) { return r.ok ? r.json() : null; })
+        .then(function (m) {
+          var el = document.getElementById('ext-ver');
+          if (el && m && m.version) el.textContent = '📦 ' + (m.name || 'Extension') + ' · v' + m.version;
+        })
+        .catch(function () {});
+    })();
+  </script>
 
   <!-- Install & Activate -->
   <div class="card">
