@@ -200,7 +200,9 @@
         'button[aria-label="Continue to next step"],button[data-live-test-easy-apply-submit-button],' +
         'button[aria-label="Submit application"],button[data-live-test-easy-apply-review-button],' +
         'button[aria-label="Review your application"]'
-      )
+      ) ||
+      // New SDUI apply step: a <footer> Next/Review/Submit button (hashed classes).
+      sduiApplyStepButton()
     );
   }
   function applyFormScope() {
@@ -217,6 +219,9 @@
       'button[aria-label="Continue to next step"],button[aria-label="Submit application"],button[aria-label="Review your application"]'
     );
     if (btn) { const c = btn.closest("form, .artdeco-modal, div[role='dialog'], .jobs-easy-apply-modal"); if (c && visible(c)) return c; }
+    // New SDUI apply step: scope is the panel that holds the <footer> step button.
+    const sdui = sduiApplyPanel();
+    if (sdui && visible(sdui)) return sdui;
     return null;
   }
   function qDoc(sels) { for (const s of sels) { const e = document.querySelector(s); if (e && visible(e) && !e.disabled) return e; } return null; }
@@ -235,9 +240,47 @@
     }
     return null;
   }
-  function nextButton() { return qDoc(["button[data-easy-apply-next-button]","button[data-live-test-easy-apply-next-button]",'button[aria-label="Continue to next step"]','button[aria-label*="Continue to next" i]']) || findActionByText(/^(next|continue to next step|continue|next step)$/i); }
-  function reviewButton() { return qDoc(["button[data-live-test-easy-apply-review-button]",'button[aria-label="Review your application"]','button[aria-label*="Review your" i]']) || findActionByText(/^(review|review your application|review application)$/i); }
-  function submitButton() { return qDoc(["button[data-live-test-easy-apply-submit-button]",'button[aria-label="Submit application"]','button[aria-label*="Submit application" i]']) || findActionByText(/^(submit|submit application|send|send application)$/i); }
+  function nextButton() { return qDoc(["button[data-easy-apply-next-button]","button[data-live-test-easy-apply-next-button]",'button[aria-label="Continue to next step"]','button[aria-label*="Continue to next" i]']) || findActionByText(/^(next|continue to next step|continue|next step)$/i) || sduiFooterButton(/^(next|continue|continue to next step|next step)$/i); }
+  function reviewButton() { return qDoc(["button[data-live-test-easy-apply-review-button]",'button[aria-label="Review your application"]','button[aria-label*="Review your" i]']) || findActionByText(/^(review|review your application|review application)$/i) || sduiFooterButton(/^(review|review your application|review application)$/i); }
+  function submitButton() { return qDoc(["button[data-live-test-easy-apply-submit-button]",'button[aria-label="Submit application"]','button[aria-label*="Submit application" i]']) || findActionByText(/^(submit|submit application|send|send application)$/i) || sduiFooterButton(/^(submit|submit application|send|send application)$/i); }
+
+  // ── New LinkedIn SDUI apply flow (2026 job-details refresh) ─────────────────
+  // The refreshed UI renders each apply step with obfuscated, hashed class names
+  // and a plain <footer> holding the step button (Next / Review / Submit) with
+  // NO data-easy-apply-* hooks and no aria-label — only visible TEXT. Detect the
+  // flow by that footer button so the existing step loop can drive it. Purely
+  // additive: the classic easy-apply-modal path is left exactly as-is.
+  function sduiFooterButton(re) {
+    for (const f of Array.from(document.querySelectorAll("footer"))) {
+      if (!visible(f)) continue;
+      for (const b of Array.from(f.querySelectorAll("button"))) {
+        if (!visible(b) || b.disabled || b.getAttribute("aria-disabled") === "true") continue;
+        const t = (b.innerText || b.textContent || "").replace(/\s+/g, " ").trim();
+        const a = b.getAttribute("aria-label") || "";
+        if (re.test(t) || re.test(a)) return b;
+      }
+    }
+    return null;
+  }
+  function sduiApplyStepButton() {
+    return sduiFooterButton(/^(next|continue|continue to next step|next step|review|review your application|review application|submit|submit application|send|send application)$/i);
+  }
+  function sduiApplyPanel() {
+    const b = sduiApplyStepButton();
+    if (!b) return null;
+    const foot = b.closest("footer");
+    // The step panel is the block that holds the footer AND the fields above it.
+    let scope = (foot && foot.parentElement) || b.closest("div[role='dialog'], section, form");
+    // If that block has no fields, climb one level to reach the panel that does.
+    try {
+      if (scope && scope.querySelectorAll("input, select, textarea, [role='radio'], [role='combobox']").length === 0
+          && scope.parentElement && scope.parentElement !== document.body
+          && scope.parentElement.querySelectorAll("input, select, textarea, [role='radio'], [role='combobox']").length) {
+        scope = scope.parentElement;
+      }
+    } catch (_) {}
+    return scope || null;
+  }
 
   function escalateClick(btn) {
     if (!btn) return;
