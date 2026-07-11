@@ -221,6 +221,33 @@
     return true;
   }
 
+  // Pre-submit "human review" (INDEED ONLY). Cloudflare Turnstile almost always
+  // fires at the FINAL submit, where it scores the interaction that led up to
+  // that protected action. Before clicking Submit we spend a human-variable
+  // moment: drift the cursor around the form and do a small read-scroll, so the
+  // behavioural score reads like a person reviewing their application rather
+  // than an instant, low-activity bot submit. Purely additive — it does NOT
+  // change which button is clicked or how; it only adds lifelike activity and
+  // dwell right before the existing submit click. No-op on other platforms.
+  async function indeedPreSubmit() {
+    if (PLATFORM !== 'indeed') return;
+    try {
+      const wander = async () => {
+        const tx = _clampX(_mx + (Math.random() - 0.5) * rand(140, 420));
+        const ty = _clampY(_my + (Math.random() - 0.5) * rand(100, 320));
+        await moveTo(tx, ty);
+      };
+      await sleep(rand(500, 1200));
+      await wander();
+      await sleep(rand(400, 900));
+      try { window.scrollBy(0, rand(60, 180)); } catch {}   // glance down the summary
+      await sleep(rand(500, 1300));
+      try { window.scrollBy(0, -rand(40, 120)); } catch {}  // back up toward Submit
+      await sleep(rand(400, 1000));
+      if (Math.random() < 0.7) { await wander(); await sleep(rand(400, 1100)); }
+    } catch {}
+  }
+
   // ─── LeadsLoft / other-extension coexistence ─────────────────────────────
   // Both extensions inject into the same pages. The two risks:
   //   1) LeadsLoft locks the pointer on the same element JobBot is about to
@@ -1551,6 +1578,7 @@
 
       if (sub && isOk(sub)) {
         try { sub.focus(); } catch {}
+        await indeedPreSubmit(); // human review dwell before the protected submit
         await humanClick(sub, '🎉 Submitting my application!');
         await sleep(rand(1500, 2500));
         return 'submitted';
@@ -1566,6 +1594,7 @@
           const { sub: s2 } = this.findStepButtons();
           if (s2 && isOk(s2)) {
             try { s2.focus(); } catch {}
+            await indeedPreSubmit(); // human review dwell before the protected submit
             await humanClick(s2, '🎉 Submitting my application!');
             await sleep(rand(1500, 2500));
             return 'submitted';
@@ -3629,6 +3658,52 @@
       };
       scheduleAmbient();
     }
+  }
+
+  // ── Ambient hand-movement INSIDE the Indeed apply iframe ────────────────────
+  // The apply form AND Cloudflare Turnstile live in a cross-origin iframe
+  // (apply.indeed.com / indeedapply / smartapply). The top-frame ambient loop
+  // above never reaches that document, so Turnstile there would otherwise read a
+  // dead cursor between our discrete pre-click glides — a strong automation tell
+  // exactly at the submit step, which is where captchas fire. Mirror the same
+  // gentle drift here so the iframe's Turnstile sees continuous, human-like
+  // micro-activity. Indeed-only, drift-only (never clicks), yields to real
+  // glides (_moving) and pauses while a captcha is present.
+  if (!IS_TOP && PLATFORM === 'indeed') {
+    let _iAmb = false;
+    const iframeAmbientTick = async () => {
+      if (_iAmb || _moving) return;
+      let active = false;
+      try {
+        active = await new Promise(res => {
+          chrome.storage.local.get('jobbot_running', d => {
+            if (chrome.runtime.lastError) return res(false);
+            res(!!(d.jobbot_running && flagMatchesThisTab(d.jobbot_running)) && !CAPTCHA.present());
+          });
+        });
+      } catch { return; }
+      if (!active || _moving) return;
+      _iAmb = true;
+      try {
+        const tx = _clampX(_mx + (Math.random() - 0.5) * rand(20, 90));
+        const ty = _clampY(_my + (Math.random() - 0.5) * rand(16, 70));
+        const sx = _mx, sy = _my, n = rand(4, 9);
+        const cxp = sx + (tx - sx) * 0.5 + (Math.random() - 0.5) * 30;
+        const cyp = sy + (ty - sy) * 0.5 + (Math.random() - 0.5) * 24;
+        for (let i = 1; i <= n && !_moving; i++) {
+          const t = _smoother(i / n), u = 1 - t;
+          const ex = u * u * sx + 2 * u * t * cxp + t * t * tx;
+          const ey = u * u * sy + 2 * u * t * cyp + t * t * ty;
+          _emitRich(ex, ey);
+          await sleep(rand(18, 45));
+        }
+      } catch {} finally { _iAmb = false; }
+    };
+    const scheduleIframeAmbient = () => {
+      if (!contextAlive()) return;
+      setTimeout(async () => { try { await iframeAmbientTick(); } catch {} scheduleIframeAmbient(); }, rand(900, 2600));
+    };
+    scheduleIframeAmbient();
   }
 
 })();
