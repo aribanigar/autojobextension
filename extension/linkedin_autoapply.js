@@ -139,8 +139,26 @@
     }
     return null;
   }
-  function listScrollTop() { const s = listScroller(); return s ? Math.round(s.scrollTop) : Math.round(window.scrollY); }
-  function scrollListDown() { const s = listScroller(); if (s) { s.scrollBy(0, Math.round(s.clientHeight * 0.8)); return true; } return false; }
+  // Combine the inner scroller position with the window scroll so ANY movement
+  // is detected — the run loop uses this to decide the list is exhausted.
+  function listScrollTop() { const s = listScroller(); return (s ? Math.round(s.scrollTop) : 0) + Math.round(window.scrollY); }
+  function scrollListDown() {
+    const s = listScroller();
+    if (s) { s.scrollBy(0, Math.round(s.clientHeight * 0.8)); return true; }
+    // No inner scroll container (2026 SDUI: the job list scrolls with the
+    // window). Bring the last card into view and nudge the window so the lazy
+    // list renders the next batch — otherwise the loop can't advance and wrongly
+    // paginates after the first screenful. Additive: the inner-scroller path
+    // above is unchanged, so older layouts behave exactly as before.
+    try {
+      const cards = collectJobCards();
+      if (cards.length && cards[cards.length - 1].el) {
+        cards[cards.length - 1].el.scrollIntoView({ block: "end", behavior: "instant" });
+      }
+    } catch (_) {}
+    window.scrollBy(0, Math.round(window.innerHeight * 0.8));
+    return true;
+  }
 
   // ─────────────── in-app Easy Apply control ─────────────────
   function findInAppApply() {
