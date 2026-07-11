@@ -112,6 +112,19 @@
       seen.add(key);
       cards.push({ key, el: card, title: (btn.getAttribute("aria-label") || "").replace(/^Dismiss\s+/i, "").replace(/\s+job$/i, "").trim() });
     });
+    // Fallback (2026 SDUI): job cards render as a role="button" div whose
+    // componentkey is "job-card-component-ref-<id>". Collect these directly so a
+    // card is still picked up even when its Dismiss control isn't matched — this
+    // keeps the apply loop flowing on the new layout. Additive only: deduped
+    // against the pass above by the same componentkey.
+    document.querySelectorAll('div[role="button"][componentkey^="job-card-component-ref-"]').forEach(card => {
+      const key = card.getAttribute("componentkey");
+      if (!key || seen.has(key)) return;
+      seen.add(key);
+      let title = "";
+      try { const t = card.querySelector("p span"); if (t) title = (t.textContent || "").replace(/\s+/g, " ").trim(); } catch (_) {}
+      cards.push({ key, el: card, title });
+    });
     return cards;
   }
   function cardElForKey(key) {
