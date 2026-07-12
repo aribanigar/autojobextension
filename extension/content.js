@@ -2052,17 +2052,27 @@
       btn.scrollIntoView({ behavior: 'smooth', block: 'center' });
       await sleep(rand(600, 900));
       await humanClick(btn, '🎯 Clicking APPLY…');
+      // Native-click fallback: some Naukri React buttons ignore a synthetic
+      // click. Only fire it if the chatbot hasn't already opened, so a working
+      // click is never double-fired. Also nudge the inner text span some builds
+      // bind the handler to. Additive — humanClick above is unchanged.
+      await sleep(rand(150, 350));
+      if (!this.chatbot() && !this.isApplied()) {
+        try { btn.click(); } catch {}
+        try { const inner = btn.querySelector('span, div'); if (inner) inner.click(); } catch {}
+      }
 
       // Success = the question drawer opens OR an instant-apply toast fires.
       // Naukri's button can swallow early clicks while JS hydrates – retry twice.
       for (let i = 0; i < 14; i++) {
         await sleep(700);
         if (this.chatbot() || this.isApplied()) return true;
-        // Retry at 3s and 7s if the button is still there
+        // Retry at 3s and 7s if the button is still there — synthetic + native.
         if ((i === 4 || i === 9) && btn.isConnected && isVis(btn)
             && !/already applied|applied/i.test(btn.textContent)) {
           SPOT.pulse(btn, '🎯 Re-clicking APPLY…');
           await humanClick(btn, '🎯 Re-clicking APPLY…');
+          try { btn.click(); } catch {} // native fallback for React buttons
         }
       }
       return !!(this.chatbot() || this.isApplied());
