@@ -1941,6 +1941,18 @@
       return !!bar && !$('.srp-jobtuple-wrapper');
     }
 
+    // Naukri's post-apply success page. After a successful apply the tab lands on
+    //   /myapply/saveApply?strJobsarr=[<jobId>]&applytype=single&resId=…
+    // ("Applied to <role>" + interview-360 + recommendations). This is NEITHER a
+    // /job-listings- detail page NOR the search list, so it must be handled on
+    // its own — otherwise the run strands here ("Page complete – rescanning…").
+    isAppliedConfirmationPage() {
+      if (/\/myapply\/(saveApply|applyRedirect|apply)/i.test(location.pathname)) return true;
+      const acp = $('.acp-container, .applied-job-content, #interview-360[data-section-name="interview-360"]');
+      return !!acp && $$('h1, h2, [role="heading"], [class*="title"]')
+        .some(el => isVis(el) && /^\s*applied to\b/i.test(el.textContent));
+    }
+
     cardLink(card) {
       // Recommended-jobs tiles render the title as <p class="title">, not an anchor
       return $('a.title, a[class*="title"], a[class*="jobTitle"], a[href*="/job-listings-"], h2 a', card)
@@ -2404,6 +2416,32 @@
 
     async run() {
       this.running = true;
+
+      // ── Post-apply confirmation page (Naukri /myapply/saveApply) ───────────
+      // A job just got applied. Record it (its id is in strJobsarr=[…]) and
+      // navigate STRAIGHT back to the saved search-results list to apply the
+      // next job. This is the step that was stranding the run on the "Applied
+      // to …" page. We never self-stop: only the user's Stop clears the flag,
+      // and every exit here returns 'nav' so the watchdog keeps the run alive.
+      if (this.isAppliedConfirmationPage()) {
+        let jid = null;
+        try { const m = decodeURIComponent(location.href).match(/strJobsarr=\D*(\d+)/); if (m) jid = 'nk:' + m[1]; } catch {}
+        if (!jid || !appliedSet.has(jid)) {              // guard against a double count on refresh
+          if (jid) appliedSet.add(jid);
+          this.applied++;
+          report({ type: 'JOB_APPLIED', platform: 'naukri', title: document.title, url: location.href });
+        }
+        SPOT.status(`✓ Applied on Naukri! (${this.applied} total) – returning to job list…`, 'success');
+        await sleep(rand(1200, 2200));
+        const listUrl = await new Promise(res => {
+          try { chrome.storage.local.get('jobbot_naukri_list', d => { void chrome.runtime.lastError; res(d?.jobbot_naukri_list || ''); }); }
+          catch { res(''); }
+        });
+        if (listUrl && !/\/myapply\//i.test(listUrl)) { try { location.assign(listUrl); } catch { history.back(); } }
+        else history.back();
+        await sleep(rand(2500, 3500));
+        return 'nav'; // keep the run flag alive → watchdog continues the run
+      }
 
       // ── Detail page (resumed via full-page navigation mid-run) ─────────────
       // Apply, go back, return 'nav' → watchdog restarts us on the list page.
