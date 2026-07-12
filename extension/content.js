@@ -2291,27 +2291,23 @@
         }
       }
 
-      // 5) Click Save – a <div class="sendMsg"> or <button>; DISABLED until the
-      //    answer registers, so wait for it to enable, then spotlight + click.
-      // Prefer real buttons, then known sendMsg nodes, then generic divs –
-      // and only ever a VISIBLE candidate (hidden sendMsg nodes used to
-      // shadow the actual bottom Save button).
-      const saveText = b => /^(save|send|submit|next|continue|apply|done|ok|confirm)$/i.test(b.textContent.trim());
-      // The Naukri chatbot Save button (div.sendMsg) lives in a
-      // sendMsgbtn_container that is a SIBLING of the message drawer — BOTH sit
-      // inside .chatbot_right, so the Save is NOT inside `drawer`. Searching only
-      // the drawer never finds it, so typed answers were never submitted and the
-      // flow stalled on any job that asks questions. Search the whole chatbot
-      // root instead. The sendMsg/sendMsgbtn selectors are chatbot-specific, so
-      // this never matches the page-level "Save job" bookmark button.
-      const chatRoot = drawer.closest('[class*="chatbot_right"]') || drawer.parentElement || document;
+      // 5) Click the chatbot's Save. STRICT: the Naukri chatbot Save is a
+      //    <div class="sendMsg">Save</div> inside a sendMsgbtn_container / .send
+      //    (a SIBLING of the message drawer). It is NOT a <button>. The job page
+      //    has its OWN "Save job" bookmark <button class="…save-job-button…">Save
+      //    </button> right next to Apply — clicking THAT is the bug in the report.
+      //    So we ONLY ever match the chatbot's div.sendMsg and explicitly exclude
+      //    anything inside a <button> or a save-job/bookmark node. Never a generic
+      //    button/div with the text "Save".
+      const saveOk = el =>
+        isVis(el)
+        && /^(save|send|submit)$/i.test((el.textContent || '').trim())
+        && !el.closest('button, [class*="save-job" i], [class*="saveJob" i], [class*="bookmark" i], [id*="save-job" i]');
       const findSave = () => [
-        ...$$('div.sendMsg, [id^="sendMsgbtn_container"] .sendMsg, [class*="sendMsgbtn"] .sendMsg', chatRoot).filter(isVis),
-        ...$$('button', chatRoot).filter(saveText),
-        ...$$('div[role="button"], div[tabindex]', chatRoot).filter(saveText),
-        ...$$('[class*="sendMsg"], [class*="send-btn"], [class*="saveBtn"]', chatRoot).filter(isVis),
-        ...$$('div', drawer).filter(saveText),
-      ].find(isVis) || null;
+        ...$$('div.sendMsg'),
+        ...$$('[id^="sendMsgbtn_container"] .sendMsg, [id^="sendMsgbtn_container"] div[tabindex], [class*="sendMsgbtn"] .sendMsg'),
+        ...$$('[id^="sendMsg__"], [class*="sendMsgbtn"] .send'),
+      ].filter(saveOk).find(el => el) || null;
       const looksDisabled = el =>
         el.disabled || el.getAttribute('aria-disabled') === 'true'
         || /\bdisabled\b/i.test(el.className)
@@ -2384,6 +2380,16 @@
         // sequence instead of hammering one that didn't register – and walks
         // away after 3 failed tries rather than looping forever.
         const sig = this.chatQuestion(drawer);
+
+        // The chatbot opens with a greeting/instruction and a "typing…" dots
+        // indicator BEFORE the first real question loads. Don't answer or Save
+        // that greeting (that's when the wrong button used to get clicked) —
+        // wait for the actual question to appear, then handle it.
+        if (!sig || /thank you for showing interest|answer all (of )?the recruiter'?s? questions|kindly answer all/i.test(sig)) {
+          await sleep(rand(900, 1600));
+          return 'continue';
+        }
+
         this._qTries = this._qTries || new Map();
         const attempt = (this._qTries.get(sig) || 0) + 1;
         this._qTries.set(sig, attempt);
