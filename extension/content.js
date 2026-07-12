@@ -2113,6 +2113,10 @@
     async answerChat(drawer, attempt = 1) {
       const question = this.chatQuestion(drawer);
 
+      // Consent / agreement / declaration questions → always answer Yes / agree
+      // / tick and continue (per the user's request).
+      const isConsent = /\b(agree|consent|accept|acknowledg|declare|authori[sz]e|abide|comply|terms|conditions|privacy|hereby|declaration|willing to (proceed|share|provide|comply))\b/i.test(question);
+
       // Notice-period buckets: profile stores free text ("30 days") but Naukri
       // offers ranges - parse the days and pick the right bucket directly.
       const noticeIdx = (labels) => {
@@ -2129,6 +2133,11 @@
       // Resolve which option to pick: deterministic mapping → profile → AI →
       // "Skip this question" (never silently submit a wrong guess).
       const choose = async (labels) => {
+        // Consent → pick the affirmative option (Yes / Agree / Accept …).
+        if (isConsent) {
+          const yi = labels.findIndex(l => /\b(yes|agree|i agree|accept|i accept|ok(ay)?|sure|proceed|confirm|allow)\b/i.test(l));
+          return yi >= 0 ? yi : 0;
+        }
         let idx = noticeIdx(labels);
         if (idx >= 0) return idx;
         let pick = this.f.bestOption(question, labels);
@@ -2141,8 +2150,9 @@
         if (pick) return labels.findIndex(o => o === pick);
         const skip = labels.findIndex(l => /skip this question/i.test(l));
         if (skip >= 0) return skip;
-        // Retry of the same question → the first guess didn't take; rotate
-        return (attempt - 1) % labels.length;
+        // No confident answer and no "skip" option → signal the caller to hand
+        // this question to the human (-1) instead of guessing wrong.
+        return -1;
       };
 
       // Naukri's chat textbox often validates numbers-only (CTC in lakhs,
@@ -2230,6 +2240,7 @@
       }
       if (radioWraps.length) {
         const idx = await choose(radioWraps.map(r => r.label));
+        if (idx < 0) return 'needhuman';               // can't answer → buzz the user
         const r = radioWraps[idx] || radioWraps[0];
         await humanClick(r.input.closest('label') || r.input, `🔘 Selecting: "${r.label.slice(0, 40)}"`);
         realClick(r.input); // the input itself must register, not just the label
@@ -2250,7 +2261,9 @@
 
         if (optEls.length) {
           const opts = optEls.map(c => c.textContent.trim());
-          const el = optEls[await choose(opts)] || optEls[0];
+          const idx = await choose(opts);
+          if (idx < 0) return 'needhuman';             // can't answer → buzz the user
+          const el = optEls[idx] || optEls[0];
           await humanClick(el, `🔘 Selecting: "${el.textContent.trim().slice(0, 40)}"`);
           await sleep(rand(300, 600));
         } else {
@@ -2262,11 +2275,14 @@
             'input:not([type="radio"]):not([type="checkbox"]):not([type="submit"]):not([type="button"])',
             drawer);
           if (input && isVis(input)) {
-            // On a retry the profile answer clearly didn't fit – ask the AI first
-            let ans = attempt > 1
-              ? (await this.f.aiAnswer(question) || this.f.map(question))
-              : (this.f.map(question) || await this.f.aiAnswer(question));
-            if (!ans) ans = this.f.p.professional?.coverLetter || 'Yes';
+            // Consent → "Yes". Otherwise map → AI (AI first on a retry). If we
+            // still have no answer, hand it to the human instead of guessing.
+            let ans = isConsent ? 'Yes'
+              : (attempt > 1
+                  ? (await this.f.aiAnswer(question) || this.f.map(question))
+                  : (this.f.map(question) || await this.f.aiAnswer(question)));
+            if (!ans && !isConsent) return 'needhuman'; // can't answer → buzz the user
+            if (!ans) ans = 'Yes';
             ans = fitAnswer(input, ans);
             SPOT.pulse(input, `⌨️ Answering: "${question.slice(0, 40)}"`);
             await typeChat(input, ans);
@@ -2334,6 +2350,29 @@
       return false;
     }
 
+    // A question we can't answer confidently → hand it to the human. Spotlight
+    // the drawer + fire a desktop buzz, and resume automatically the moment the
+    // user answers (the question changes), the drawer closes, or the apply
+    // succeeds. The 90s auto-skip timer is disarmed so the user isn't rushed;
+    // only a ~10-min no-response window falls through to a skip.
+    async waitForHumanAnswer(question) {
+      this._disarmJobTimer();
+      const drawer = this.chatbot();
+      SPOT.attention(drawer || document.body,
+        `❓ Please answer this question — I'll continue automatically once you do:  "${(question || '').slice(0, 70)}"`);
+      notifyUser('JobBot needs you', `A Naukri question needs your answer: "${(question || '').slice(0, 90)}". Type it and I'll continue.`);
+      for (let i = 0; i < 600 && this.running; i++) { // wait up to ~10 min
+        await sleep(1000);
+        if (this.isApplied()) { SPOT.clearAttention(); return 'done'; }
+        const d2 = this.chatbot();
+        if (!d2) { SPOT.clearAttention(); return 'continue'; }                     // drawer closed → moved on
+        if (this.chatQuestion(d2) !== question) { SPOT.clearAttention(); return 'continue'; } // answered → next question
+        if (i > 0 && i % 45 === 0) notifyUser('JobBot still waiting', 'A Naukri question is still open — please answer it and I\'ll continue.');
+      }
+      SPOT.clearAttention();
+      return 'stuck';
+    }
+
     async handleForm() {
       if (this.isApplied()) return 'done';
 
@@ -2354,7 +2393,15 @@
         }
         if (attempt === 1 && sig) SPOT.status(`❓ Q${this._qTries.size}: ${sig.slice(0, 60)}`, 'applying');
 
-        await this.answerChat(drawer, attempt);
+        const ansRes = await this.answerChat(drawer, attempt);
+        // Couldn't answer confidently → buzz the user and wait for their answer.
+        if (ansRes === 'needhuman') {
+          const hr = await this.waitForHumanAnswer(sig);
+          if (hr === 'done')  return 'done';
+          if (hr === 'stuck') return 'stuck';
+          this._armJobTimer(); // human answered → resume normal per-job timeout
+          return 'continue';
+        }
 
         // Wait for progression: next question appears, drawer closes, or the
         // success toast fires. This is what carries multi-question flows.
@@ -3414,6 +3461,33 @@
           a.running = true;
           agent = a;
           a.runApplication().catch(() => {}).finally(() => { agent = null; });
+        }
+      }
+      // Naukri may open a job / apply flow in a NEW tab (the run flag lives in
+      // the original list tab). Apply here, then CLOSE this tab — the list tab
+      // carries on with the next job. Normal Naukri runs are same-tab, so this
+      // only fires for a genuine spawned tab and never touches the main flow.
+      if (IS_TOP && PLATFORM === 'naukri') {
+        const a = new NaukriAgent(new Filler(data.jobbot_profile));
+        const closeThisTab = async (m) => {
+          SPOT.status(m || 'Application finished – closing this tab…', 'success');
+          await sleep(rand(1000, 1800));
+          try { chrome.runtime.sendMessage({ type: 'CLOSE_TAB' }); } catch {}
+        };
+        if (a.isAppliedConfirmationPage()) {
+          // The apply already completed in this tab → record it and close.
+          try { const m = decodeURIComponent(location.href).match(/strJobsarr=\D*(\d+)/); if (m) appliedSet.add('nk:' + m[1]); } catch {}
+          try { report({ type: 'JOB_APPLIED', platform: 'naukri', title: document.title, url: location.href }); } catch {}
+          closeThisTab('✓ Applied on Naukri – closing this tab…');
+        } else if (a.onDetailPage()) {
+          a.running = true;
+          agent = a;
+          (async () => {
+            try { a._armJobTimer(); await a.applyHere(); a._disarmJobTimer(); } catch {}
+            // Instant apply with no navigation → close now. If it navigated to
+            // /myapply/saveApply, the reloaded tab closes via the branch above.
+            if (!a.isAppliedConfirmationPage()) await closeThisTab();
+          })().catch(() => {}).finally(() => { agent = null; });
         }
       }
       return;
