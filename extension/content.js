@@ -1959,14 +1959,26 @@
       const link = this.cardLink(card);
       if (!link) return false;
       SPOT.pulse(link, `Opening: ${link.textContent.trim().substring(0, 60)}`);
-      if (link.tagName === 'A') link.setAttribute('target', '_self'); // same tab so the run can resume
       await sleep(rand(300, 700));
       const before = location.href;
-      realClick(link);
-      await sleep(rand(2000, 3000));
+      // Drive the CURRENT tab straight to the job URL. Naukri's job anchors carry
+      // an onclick that opens the job in a NEW tab (which the run can't follow, so
+      // nothing applies and the loop stalls). Navigating via location.assign
+      // bypasses that handler and guarantees the apply → history.back() → next-job
+      // sequence stays in ONE tab. Falls back to a click for recommended tiles
+      // that have no real href.
+      const href = link.tagName === 'A' ? (link.href || link.getAttribute('href') || '') : '';
+      if (href && !/^javascript:/i.test(href)) {
+        try { link.setAttribute('target', '_self'); } catch {}
+        try { location.assign(href); } catch { realClick(link); }
+        await sleep(rand(2000, 3000));
+        return true;
+      }
       // Recommended-job tiles put the click handler on the card, not the
       // <p class="title"> – if nothing happened, click the card itself.
-      if (location.href === before && link.tagName !== 'A') {
+      realClick(link);
+      await sleep(rand(2000, 3000));
+      if (location.href === before) {
         realClick(card);
         await sleep(rand(1800, 2600));
       }
@@ -2418,7 +2430,17 @@
           SPOT.status('Skipping – returning to job list…', 'warning');
           await sleep(rand(800, 1400));
         }
-        history.back();
+        // Return to the ORIGINAL search-results list. After a Naukri apply the
+        // page sits on an "Applied to …" confirmation / recommendations screen
+        // where history.back() is unreliable, so navigate straight to the saved
+        // list URL when we have it — this is what makes the run leave the apply
+        // page and continue with the next job in sequence.
+        const listUrl = await new Promise(res => {
+          try { chrome.storage.local.get('jobbot_naukri_list', d => { void chrome.runtime.lastError; res(d?.jobbot_naukri_list || ''); }); }
+          catch { res(''); }
+        });
+        if (listUrl && listUrl !== location.href) { try { location.assign(listUrl); } catch { history.back(); } }
+        else { history.back(); }
         await sleep(rand(2500, 3500));
         return 'nav'; // keep the run flag alive
       }
@@ -2432,6 +2454,12 @@
       outer: while (this.running) {
         const cards = await waitForCards(() => this.jobCards(), 8, 1500);
         SPOT.status(`${cards.length} jobs on page`, 'info');
+
+        // Remember THIS search-results URL. After an apply, Naukri lands on an
+        // "Applied to …" confirmation / recommendations page, and history.back()
+        // from there is unreliable — so the detail flow navigates straight back
+        // to this saved list URL to continue with the next job in sequence.
+        if (cards.length) { try { chrome.storage.local.set({ jobbot_naukri_list: location.href }); } catch {} }
 
         if (!cards.length) {
           const churn = pageChurn.get() + 1;
