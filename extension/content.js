@@ -233,18 +233,38 @@
     if (PLATFORM !== 'indeed') return;
     try {
       const wander = async () => {
-        const tx = _clampX(_mx + (Math.random() - 0.5) * rand(140, 420));
-        const ty = _clampY(_my + (Math.random() - 0.5) * rand(100, 320));
+        const tx = _clampX(_mx + (Math.random() - 0.5) * rand(140, 460));
+        const ty = _clampY(_my + (Math.random() - 0.5) * rand(100, 340));
         await moveTo(tx, ty);
       };
-      await sleep(rand(500, 1200));
+      // A person reviewing their application before submitting: read-scroll,
+      // pause, drift, and hover over the actual form controls (Turnstile scores
+      // continuous, near-content pointer activity + dwell time, not just empty
+      // space). Longer, more varied dwell than a bot's instant submit.
+      await sleep(rand(600, 1400));
       await wander();
-      await sleep(rand(400, 900));
-      try { window.scrollBy(0, rand(60, 180)); } catch {}   // glance down the summary
-      await sleep(rand(500, 1300));
-      try { window.scrollBy(0, -rand(40, 120)); } catch {}  // back up toward Submit
       await sleep(rand(400, 1000));
-      if (Math.random() < 0.7) { await wander(); await sleep(rand(400, 1100)); }
+      try { window.scrollBy(0, rand(80, 220)); } catch {}   // glance down the summary
+      await sleep(rand(700, 1600));                          // reading pause
+      await wander();
+      try { window.scrollBy(0, -rand(50, 160)); } catch {}  // back up toward Submit
+      await sleep(rand(500, 1300));
+      // Hover a real form control so there's lifelike pointer activity over the
+      // application (moveTo only emits mousemove — it never clicks anything).
+      try {
+        const fields = $$('input:not([type="hidden"]), textarea, select, button, [role="button"]')
+          .filter(el => isVis(el)).slice(0, 10);
+        if (fields.length) {
+          const f = fields[rand(0, fields.length)];
+          const r = f.getBoundingClientRect();
+          if (r.width && r.height) {
+            await moveTo(r.left + r.width * (0.3 + Math.random() * 0.4), r.top + r.height / 2);
+            await sleep(rand(300, 900));
+          }
+        }
+      } catch {}
+      if (Math.random() < 0.8) { await wander(); await sleep(rand(400, 1200)); }
+      await sleep(rand(500, 1400)); // final settle before the submit click
     } catch {}
   }
 
