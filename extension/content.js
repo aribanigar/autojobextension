@@ -2102,19 +2102,31 @@
       return btns.length > 0;
     }
 
-    // Read the current question: the LAST bot bubble (li.botItem), text in .botMsg span
+    // Read the CURRENT question = the last REAL bot message. Works on both the
+    // old drawer (li.botItem / .botMsg) and the 2026 SDUI drawer
+    // (chatbot_MessageContainer > ul.list#chatList > li). Skips the "typing…"
+    // dots indicator and the user's own answer bubbles, so the answer engine
+    // always maps the actual question text (not dots / greeting / an old answer).
     chatQuestion(drawer) {
-      const items = $$('li.botItem, li[class*="botItem"]', drawer).filter(isVis);
-      const last = items[items.length - 1];
-      if (last) {
-        const span = $('div.botMsg span, .botMsg', last);
-        const txt = (span || last).textContent.trim();
-        if (txt.length > 3) return txt;
-      }
-      // Fallback for older drawer markup
-      const msgs = $$('[class*="botMsg"], [class*="MessageContainer"] [class*="msg"]', drawer)
-        .filter(el => isVis(el) && el.textContent.trim().length > 3);
-      return msgs.length ? msgs[msgs.length - 1].textContent.trim() : '';
+      const clean = el => (el.textContent || '').replace(/\s+/g, ' ').trim();
+      // A typing indicator or timestamp is not a question.
+      const isNoise = t => !t || t.length < 3 || /^[.•·…•·●\s]+$/.test(t)
+                        || /^\d+\s*(sec|min|hour|day)/i.test(t);
+      const isUser = el => /\b(usr|user|self|right|my-?msg|userItem|sent|reply|answer)\b/i
+                             .test(el.getAttribute('class') || '');
+
+      const box = $('[class*="MessageContainer"], ul[id*="chatList"], ul[id*="Messages"]', drawer) || drawer;
+
+      // 1) Explicit bot bubbles first (old + new class names).
+      let bubbles = $$('li.botItem, li[class*="botItem"], [class*="botMsg"]', box).filter(isVis);
+      // 2) Otherwise every message row that isn't the user's own answer.
+      if (!bubbles.length) bubbles = $$('li', box).filter(el => isVis(el) && !isUser(el));
+      // 3) Last resort: any message-ish node.
+      if (!bubbles.length) bubbles = $$('[class*="botMsg"], [class*="Msg"], [class*="message"], [class*="bubble"], p', box)
+        .filter(el => isVis(el) && !isUser(el));
+
+      const texts = bubbles.map(clean).filter(t => !isNoise(t));
+      return texts.length ? texts[texts.length - 1] : '';
     }
 
     // Answer one chatbot question: chips, radios, checkboxes, or free text.
@@ -2277,13 +2289,20 @@
           await humanClick(el, `🔘 Selecting: "${el.textContent.trim().slice(0, 40)}"`);
           await sleep(rand(300, 600));
         } else {
-          // 4) Free text – Naukri uses a contenteditable <div class="textArea">
-          const input = $(
-            'div.textArea[contenteditable="true"], [class*="textArea"][contenteditable="true"], ' +
-            '[contenteditable="true"], textarea, ' +
-            'input[type="text"], input[type="number"], input[type="tel"], input[type="email"], ' +
-            'input:not([type="radio"]):not([type="checkbox"]):not([type="submit"]):not([type="button"])',
-            drawer);
+          // 4) Free text. Old drawer: contenteditable <div class="textArea">.
+          //    2026 SDUI: the field lives in chatbot_InputContainer /
+          //    chatbot_SendMessageContainer (inside the footer). Search the whole
+          //    chatbot root so the field is found wherever it renders.
+          const inputRoot = drawer.closest('[class*="chatbot_right"]') || drawer.parentElement || drawer;
+          const input =
+            $('[class*="InputContainer"] [contenteditable="true"], [class*="SendMessageContainer"] [contenteditable="true"], ' +
+              '[class*="InputContainer"] textarea, [class*="InputContainer"] input, ' +
+              '[class*="InputContainer"] [role="textbox"]', inputRoot)
+            || $('div.textArea[contenteditable="true"], [class*="textArea"][contenteditable="true"], ' +
+              '[contenteditable="true"], [role="textbox"], textarea, ' +
+              'input[type="text"], input[type="number"], input[type="tel"], input[type="email"], ' +
+              'input:not([type="radio"]):not([type="checkbox"]):not([type="submit"]):not([type="button"])',
+              inputRoot);
           if (input && isVis(input)) {
             // Consent → "Yes". Otherwise map → AI (AI first on a retry). If we
             // still have no answer, hand it to the human instead of guessing.
