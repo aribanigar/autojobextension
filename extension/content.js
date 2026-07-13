@@ -1468,8 +1468,12 @@
 
       // Give the React form time to hydrate (typically 1.8-2.8s) before any retry.
       await sleep(rand(1800, 2800));
-      if (document.hidden) return 'popup';
+      // Check the in-tab form FIRST: an iframe/embedded apply opened right here
+      // (works even while this tab is hidden, i.e. you're on another tab). Only
+      // treat "tab hidden with no in-tab form" as a genuine new-tab popup — this
+      // is what lets Indeed keep applying in the background.
       if (opened()) return 'clicked';
+      if (document.hidden) return 'popup';
 
       // Retry loop (up to ~8s more). Always check BEFORE re-clicking — never
       // fire into an already-open form. If the Apply button has vanished the
@@ -1484,8 +1488,8 @@
         for (const t of targetsOf(btn)) { try { realClick(t); } catch {} }
         SPOT.pulse(btn, '🟦 Apply with Indeed – opening form…');
         await sleep(rand(1000, 1600));
+        if (opened()) return 'clicked';       // in-tab form (works while hidden)
         if (document.hidden) return 'popup';
-        if (opened()) return 'clicked';
         // Re-check button existence after waiting
         if (!btn.isConnected || !isVis(btn)) return 'clicked';
         btn = this.findApplyButton(document) || btn;
@@ -1875,9 +1879,19 @@
               // agent fills it and closes itself. Wait here until focus
               // returns, then continue with the next job on THIS page.
               SPOT.status('Applying in the opened tab – waiting for it to finish…', 'applying');
+              // Continue when focus returns OR when the apply tab actually closes
+              // (background stamps jobbot_apply_closed on CLOSE_TAB). The second
+              // signal is what lets this keep going while you're on another tab —
+              // it no longer depends on the search tab regaining focus.
+              const waitStart = Date.now();
               for (let w = 0; w < 100 && this.running; w++) { // up to ~5 min
                 await sleep(3000);
                 if (!document.hidden) break;
+                const closedAt = await new Promise(res => {
+                  try { chrome.storage.local.get('jobbot_apply_closed', d => { void chrome.runtime.lastError; res(d?.jobbot_apply_closed || 0); }); }
+                  catch { res(0); }
+                });
+                if (closedAt > waitStart) break; // the apply tab finished + closed
               }
               await sleep(rand(3500, 5000)); // natural 4s pause before next job
             } else if (res === 'none') {
@@ -3298,34 +3312,51 @@
   // is fully torn down on Stop. Everything is wrapped so a blocked AudioContext
   // (autoplay policy) can NEVER affect the run itself. Top frame only.
   const KeepAlive = (() => {
-    let ctx = null, osc = null, gain = null, resumer = null, on = false;
+    let ctx = null, osc = null, gain = null, resumer = null, watch = null, on = false;
+    const kick = () => { try { if (ctx && ctx.state === 'suspended') ctx.resume(); } catch {} };
+    function build() {
+      const AC = window.AudioContext || window.webkitAudioContext;
+      if (!AC) return;
+      ctx = new AC();
+      gain = ctx.createGain();
+      // Low frequency + tiny gain: inaudible on normal speakers (which roll off
+      // far above 30 Hz), but it is REAL audio output — enough for Chrome's audio
+      // service to mark the tab "audible", which exempts it from background
+      // timer throttling so the agent keeps running while you're on another tab.
+      gain.gain.value = 0.006;
+      osc = ctx.createOscillator();
+      osc.type = 'sine';
+      osc.frequency.value = 30;
+      osc.connect(gain).connect(ctx.destination);
+      osc.start();
+    }
     function start() {
       if (on || !IS_TOP) return;
       on = true;
       try {
-        const AC = window.AudioContext || window.webkitAudioContext;
-        if (!AC) return;
-        ctx = new AC();
-        gain = ctx.createGain();
-        gain.gain.value = 0.0001;          // real output, but inaudible
-        osc = ctx.createOscillator();
-        osc.type = 'sine';
-        osc.frequency.value = 30;          // sub-audible tone
-        osc.connect(gain).connect(ctx.destination);
-        osc.start();
-        const kick = () => { try { if (ctx && ctx.state === 'suspended') ctx.resume(); } catch {} };
+        build();
         kick();
-        // Autoplay policy may leave the context suspended until a gesture / focus
-        // change — keep (re)starting it whenever the page gets a chance.
+        // Autoplay policy can leave the context suspended until a gesture / focus
+        // change — resume on any of these, and via a watchdog below.
         resumer = () => kick();
         document.addEventListener('visibilitychange', resumer, true);
         document.addEventListener('pointerdown', resumer, true);
+        document.addEventListener('keydown', resumer, true);
+        // Keep it alive: resume if suspended, rebuild if the graph ever dies.
+        watch = setInterval(() => {
+          try {
+            if (!ctx) { build(); kick(); return; }
+            if (ctx.state === 'suspended') ctx.resume();
+          } catch {}
+        }, 4000);
       } catch {}
     }
     function stop() {
       on = false;
+      try { clearInterval(watch); } catch {} watch = null;
       try { document.removeEventListener('visibilitychange', resumer, true); } catch {}
       try { document.removeEventListener('pointerdown', resumer, true); } catch {}
+      try { document.removeEventListener('keydown', resumer, true); } catch {}
       resumer = null;
       try { if (osc) osc.stop(); } catch {}
       try { if (ctx) ctx.close(); } catch {}

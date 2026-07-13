@@ -216,7 +216,11 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
 
     case 'CLOSE_TAB':
       // A finished apply popup asks to close itself (page scripts can't close
-      // tabs they didn't open; the extension can).
+      // tabs they didn't open; the extension can). Also stamp a timestamp so the
+      // original search tab can continue with the next job WITHOUT waiting for
+      // focus to return — this is what lets a new-tab apply flow keep running
+      // while the user is on a different tab.
+      try { chrome.storage.local.set({ jobbot_apply_closed: Date.now() }); } catch {}
       if (_sender.tab?.id != null) chrome.tabs.remove(_sender.tab.id);
       break;
 
