@@ -31,6 +31,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   const url = activeTab?.url || '';
   if      (url.includes('linkedin.com/jobs')) platform = 'linkedin';
   else if (url.includes('indeed.com') || url.includes('apply.indeed.com')) platform = 'indeed';
+  else if (url.includes('naukrigulf.com'))    platform = 'naukri'; // Naukri Gulf → Naukri engine (check BEFORE naukri.com; 'naukrigulf.com' doesn't contain 'naukri.com')
   else if (url.includes('naukri.com'))        platform = 'naukri';
 
   const pill = document.getElementById('platform-pill');
