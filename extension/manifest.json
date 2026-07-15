@@ -15,6 +15,7 @@
     "https://*.indeed.com/*",
     "https://apply.indeed.com/*",
     "https://*.naukri.com/*",
+    "https://*.naukrigulf.com/*",
     "https://*.bayt.com/*",
     "https://jobs.qckserve.in/*",
     "https://*.qckserve.in/*",
@@ -30,6 +31,7 @@
         "https://*.indeed.com/*",
         "https://apply.indeed.com/*",
         "https://*.naukri.com/*",
+        "https://*.naukrigulf.com/*",
         "https://*.bayt.com/*"
       ],
       "js": [

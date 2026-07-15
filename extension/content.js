@@ -11,6 +11,11 @@
     const h = location.hostname;
     if (h.includes('linkedin.com')) return 'linkedin';
     if (h.includes('indeed.com') || h.includes('apply.indeed.com')) return 'indeed';
+    // Naukri Gulf (naukrigulf.com) reuses the SAME Naukri engine — same apply
+    // chatbot + answer flow — so it runs as the 'naukri' platform. Handled by the
+    // NaukriAgent with naukrigulf-specific selectors added additively. Naukri.com
+    // itself is unaffected (different hostname).
+    if (h.includes('naukrigulf.com')) return 'naukri';
     if (h.includes('naukri.com')) return 'naukri';
     if (h.includes('bayt.com'))   return 'bayt';
     return null;
@@ -2034,6 +2039,22 @@
     // Naukri has two buttons: "Apply" (on-platform, automatable) and
     // "Apply on company site" (external tab – we can't fill that, so skip).
     findApplyButton() {
+      // ── Naukri Gulf (naukrigulf.com) ONLY: the primary button reads "Easy
+      //    Apply". Detect it here and return early so naukri.com's logic below
+      //    stays byte-identical (this block never runs on naukri.com). ─────────
+      if (location.hostname.includes('naukrigulf')) {
+        const already = $$('button, a, [class*="apply" i]')
+          .find(b => isVis(b) && /\balready applied\b|^applied$/i.test(b.textContent.trim()));
+        if (already) return { btn: null, external: false, already: true };
+        const ea =
+          $('button[class*="easy-apply" i], button[class*="easyApply" i], [id*="easyApply" i]') ||
+          $$('button, a').find(b => isVis(b) && /^easy\s*apply$/i.test(b.textContent.trim())) ||
+          $$('button, a').find(b => isVis(b) && /^apply$/i.test(b.textContent.trim())
+                                 && !/company|external|website/i.test(b.textContent));
+        if (ea && isVis(ea)) return { btn: ea, external: false };
+        // else fall through to the generic detection as a backup
+      }
+
       // Company-site button – must detect first so we can skip those jobs
       const company = $$(
         '#company-site-button, [class*="company-site"], [class*="companySite"], ' +
