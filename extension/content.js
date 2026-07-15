@@ -1967,11 +1967,19 @@
         const seen = new Set(); const out = [];
         $$('a[href]').forEach(a => {
           if (!isVis(a)) return;
+          // NEVER treat a header/nav link as a job — this is where the عربي/
+          // English language toggle lives, and its href can contain "jobs-in"
+          // (the Arabic variant of the current search URL). Selecting it made
+          // openJob navigate the tab into the Arabic site, after which every
+          // English-text selector failed. Exclude header/nav + lang URLs here.
+          if (a.closest('header, nav, [class*="header" i], [class*="nav" i]')) return;
           const href = a.href || '';
           if (!/naukrigulf\.com/i.test(href)) return;
+          if (/[?&]lang=|\/ar(\/|$|\?)|\/arabic/i.test(href)) return;        // language toggle
           if (!/jobs?-in|job-listings|-jid-|\/job\//i.test(href)) return;   // looks like a job link
           const title = (a.textContent || '').replace(/\s+/g, ' ').trim();
           if (title.length < 3) return;
+          if (/^(عربي|arabic|english)$/i.test(title)) return;                // language toggle text
           // The card = nearest ancestor that also contains an "Easy Apply" tag.
           let card = a.closest('article, li, [class*="card" i], [class*="tuple" i], [class*="job" i]') || a.parentElement;
           for (let d = 0; d < 5 && card && card !== document.body; d++) {
@@ -1979,7 +1987,7 @@
             card = card.parentElement;
           }
           if (!card || card === document.body) return;
-          if (card.closest('aside, [class*="similar" i], [class*="sidebar" i], [class*="right-section" i]')) return;
+          if (card.closest('header, nav, aside, [class*="similar" i], [class*="sidebar" i], [class*="right-section" i]')) return;
           const key = href;
           if (seen.has(key)) return; seen.add(key);
           out.push(card);
@@ -2105,8 +2113,23 @@
       // Naukri Gulf: the title links to the job detail (unique per job) — used
       // both to open the job and to derive a UNIQUE card id.
       if (location.hostname.includes('naukrigulf')) {
-        return $('a[href*="job-listings"], a[href*="-jid-"], a[href*="jobs-in"], a[href*="/job/"], a[href*="/jobseeker/"]', card)
-            || $('a[href]', card);
+        // HARD-EXCLUDE the header/nav, the عربي/English language toggle, any
+        // lang= or /ar URL, the Apply/Save/Share controls, and the company-logo
+        // link (an <a> wrapping an <img>). Returning the language link here was
+        // the root cause of the tab flipping to Arabic. Prefer a real job-detail
+        // anchor inside THIS card; fall back to any other safe anchor.
+        const bad = a =>
+          a.closest('header, nav, [class*="header" i], [class*="nav" i]')
+          || /[?&]lang=|\/ar(\/|$|\?)|\/arabic/i.test(a.getAttribute('href') || '')
+          || /^(عربي|arabic|english|easy\s*apply|apply|save|saved|share|view details)$/i
+               .test((a.textContent || '').trim())
+          || !!a.querySelector('img');
+        const jobA = $$('a[href*="job-listings"], a[href*="-jid-"], a[href*="jobs-in"], ' +
+                        'a[href*="/job/"], a[href*="/jobseeker/"]', card)
+          .find(a => isVis(a) && !bad(a));
+        if (jobA) return jobA;
+        return $$('a[href]', card)
+          .find(a => isVis(a) && !bad(a) && (a.textContent || '').trim().length >= 3) || null;
       }
       // Recommended-jobs tiles render the title as <p class="title">, not an anchor
       return $('a.title, a[class*="title"], a[class*="jobTitle"], a[href*="/job-listings-"], h2 a', card)
