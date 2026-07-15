@@ -2102,6 +2102,12 @@
     }
 
     cardLink(card) {
+      // Naukri Gulf: the title links to the job detail (unique per job) — used
+      // both to open the job and to derive a UNIQUE card id.
+      if (location.hostname.includes('naukrigulf')) {
+        return $('a[href*="job-listings"], a[href*="-jid-"], a[href*="jobs-in"], a[href*="/job/"], a[href*="/jobseeker/"]', card)
+            || $('a[href]', card);
+      }
       // Recommended-jobs tiles render the title as <p class="title">, not an anchor
       return $('a.title, a[class*="title"], a[class*="jobTitle"], a[href*="/job-listings-"], h2 a', card)
           || $('p.title, .title', card);
@@ -2110,6 +2116,15 @@
     cardId(card) {
       const id = card.getAttribute('data-job-id');
       if (id) return 'nk:' + id;
+      // Naukri Gulf has no data-job-id → derive a UNIQUE id from the job link
+      // href (falling back to the title text, NOT the whole card text, which
+      // collides across cards and caused "16 selected" but "Apply 2").
+      if (location.hostname.includes('naukrigulf')) {
+        const href = this.cardLink(card)?.href;
+        if (href) return 'ng:' + normalizeJobId(href);
+        const t = $('a, h2, h3, [class*="title" i]', card);
+        return 'ng:' + ((t ? t.textContent : card.textContent) || '').replace(/\s+/g, ' ').trim().slice(0, 60);
+      }
       const href = this.cardLink(card)?.href;
       if (href) return normalizeJobId(href);
       return card.textContent.trim().slice(0, 80);
