@@ -2136,6 +2136,23 @@
       SPOT.pulse(link, `Opening: ${link.textContent.trim().substring(0, 60)}`);
       await sleep(rand(300, 700));
       const before = location.href;
+      // ── Naukri Gulf: STEP 1 is to CLICK the job (open its detail), then the
+      //    detail flow looks for "Easy Apply" — same order as naukri.com. Click
+      //    the title first; if the page doesn't change, navigate to its href, and
+      //    finally click the card itself. Gated, so naukri.com is unchanged. ────
+      if (location.hostname.includes('naukrigulf')) {
+        try { link.scrollIntoView({ behavior: 'smooth', block: 'center' }); } catch {}
+        await sleep(rand(300, 600));
+        await humanClick(link, 'Opening job…');
+        await sleep(rand(1800, 2800));
+        if (location.href === before && !this.onDetailPage() && !this._gulfModal()) {
+          const href = link.tagName === 'A' ? (link.href || link.getAttribute('href') || '') : '';
+          if (href && !/^javascript:/i.test(href)) { try { location.assign(href); } catch { realClick(link); } }
+          else { realClick(card); }
+          await sleep(rand(1800, 2800));
+        }
+        return true;
+      }
       // Drive the CURRENT tab straight to the job URL. Naukri's job anchors carry
       // an onclick that opens the job in a NEW tab (which the run can't follow, so
       // nothing applies and the loop stalls). Navigating via location.assign
