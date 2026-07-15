@@ -112,23 +112,47 @@
       seen.add(key);
       cards.push({ key, el: card, title: (btn.getAttribute("aria-label") || "").replace(/^Dismiss\s+/i, "").replace(/\s+job$/i, "").trim() });
     });
-    // Fallback (2026 SDUI): job cards render as a role="button" div whose
-    // componentkey is "job-card-component-ref-<id>". Collect these directly so a
-    // card is still picked up even when its Dismiss control isn't matched — this
-    // keeps the apply loop flowing on the new layout. Additive only: deduped
-    // against the pass above by the same componentkey.
-    document.querySelectorAll('div[role="button"][componentkey^="job-card-component-ref-"]').forEach(card => {
-      const key = card.getAttribute("componentkey");
+    // Fallback (2026 SDUI): the job card is ANY element whose componentkey is
+    // "job-card-component-ref-<id>". In one variant that element itself is the
+    // clickable role="button"; in another the role="button" is a nested div with
+    // its own (UUID) componentkey. Collect by the job-card-component-ref key and
+    // resolve the clickable role="button" (self or nearest descendant). Deduped
+    // by key, so no double-count when both the wrapper and an inner node share it.
+    document.querySelectorAll('[componentkey^="job-card-component-ref-"]').forEach(node => {
+      const key = node.getAttribute("componentkey");
       if (!key || seen.has(key)) return;
       seen.add(key);
+      const clickable = node.matches('[role="button"]') ? node : (node.querySelector('[role="button"]') || node);
       let title = "";
-      try { const t = card.querySelector("p span"); if (t) title = (t.textContent || "").replace(/\s+/g, " ").trim(); } catch (_) {}
-      cards.push({ key, el: card, title });
+      try { const t = node.querySelector("p span, .eafbff92"); if (t) title = (t.textContent || "").replace(/\s+/g, " ").trim(); } catch (_) {}
+      cards.push({ key, el: clickable, title });
+    });
+    // Classic Ember layout: li[data-occludable-job-id] / div.job-card-container.
+    document.querySelectorAll('li[data-occludable-job-id], div.job-card-container[data-job-id]').forEach(node => {
+      const id = node.getAttribute("data-occludable-job-id") || node.getAttribute("data-job-id");
+      const key = id ? "occ:" + id : "";
+      if (!key || seen.has(key)) return;
+      seen.add(key);
+      const link = node.querySelector('a.job-card-container__link, a.job-card-list__title--link, a[href*="/jobs/view/"]');
+      const clickable = link || node.querySelector('[role="link"], [role="button"]') || node;
+      let title = "";
+      try { const t = node.querySelector('a[aria-label]'); if (t) title = (t.getAttribute("aria-label") || "").trim(); } catch (_) {}
+      cards.push({ key, el: clickable, title });
     });
     return cards;
   }
   function cardElForKey(key) {
-    try { return document.querySelector('div[role="button"][componentkey="' + esc(key) + '"]'); } catch (_) { return null; }
+    try {
+      if (key.indexOf("occ:") === 0) {
+        const id = key.slice(4);
+        const n = document.querySelector('li[data-occludable-job-id="' + esc(id) + '"], div.job-card-container[data-job-id="' + esc(id) + '"]');
+        if (!n) return null;
+        return n.querySelector('a.job-card-container__link, a[href*="/jobs/view/"]') || n;
+      }
+      const n = document.querySelector('[componentkey="' + esc(key) + '"]');
+      if (!n) return null;
+      return n.matches('[role="button"]') ? n : (n.querySelector('[role="button"]') || n);
+    } catch (_) { return null; }
   }
   function listScroller() {
     const btn = document.querySelector('button[aria-label^="Dismiss "][aria-label$=" job"]');
@@ -617,24 +641,34 @@
     setLabel("Scanning jobs…");
     try { startStrayWatcher(); } catch (_) {}
 
-    const processed = new Set(); let idle = 0;
+    const processed = new Set(); let idle = 0, dryScrolls = 0;
     try {
       while (!state.cancel) {
         if (isCheckpoint()) { banner("LinkedIn security check — solve it, then click Auto Apply again."); break; }
         const fresh = collectJobCards().filter(c => !processed.has(c.key));
         if (!fresh.length) {
+          // Every VISIBLE card is done. Do NOT paginate yet — first make sure the
+          // whole current page is finished. LinkedIn virtualises the list, so
+          // scroll to load any not-yet-rendered cards and require several
+          // consecutive "nothing new" confirmations before moving on. This is
+          // what guarantees ALL cards on the page are applied before the next page.
           const before = listScrollTop();
           scrollListDown();
           await sleep(rand(900, 1500));
-          if (listScrollTop() === before) {
-            const nextPage = document.querySelector('button[data-testid="pagination-controls-next-button-visible"], button[aria-label="View next page"]');
-            if (nextPage && !nextPage.disabled && visible(nextPage)) { setLabel("Loading next page…"); humanClick(nextPage); await sleep(rand(2600, 4200)); processed.clear(); idle = 0; continue; }
-            break;
-          }
-          if (++idle > 60) break;
-          continue;
+          if (collectJobCards().filter(c => !processed.has(c.key)).length) { idle = 0; dryScrolls = 0; continue; }
+          if (listScrollTop() !== before) { idle = 0; dryScrolls = 0; continue; } // scrolled → more may load
+          // No scroll movement + no new cards → possibly the bottom. Hard-scroll
+          // to the very end and re-check a few times before deciding it's done.
+          try { const s = listScroller(); if (s) s.scrollTo(0, s.scrollHeight); else window.scrollTo(0, document.body.scrollHeight); } catch (_) {}
+          await sleep(rand(800, 1400));
+          if (collectJobCards().filter(c => !processed.has(c.key)).length) { dryScrolls = 0; continue; }
+          if (++dryScrolls < 3) continue; // not yet certain every card is done
+          // Confirmed: all cards on THIS page are processed → now go to next page.
+          const nextPage = document.querySelector('button[data-testid="pagination-controls-next-button-visible"], button[aria-label="View next page"]');
+          if (nextPage && !nextPage.disabled && visible(nextPage)) { setLabel("Page done — next page…"); humanClick(nextPage); await sleep(rand(2600, 4200)); processed.clear(); idle = 0; dryScrolls = 0; continue; }
+          break; // no next page → finished
         }
-        idle = 0;
+        idle = 0; dryScrolls = 0;
         const card = fresh[0]; processed.add(card.key);
         setLabel("Applying #" + processed.size + " · " + state.applied + " applied");
         let result = "skipped";
