@@ -11,11 +11,11 @@
     const h = location.hostname;
     if (h.includes('linkedin.com')) return 'linkedin';
     if (h.includes('indeed.com') || h.includes('apply.indeed.com')) return 'indeed';
-    // Naukri Gulf (naukrigulf.com) reuses the SAME Naukri engine — same apply
-    // chatbot + answer flow — so it runs as the 'naukri' platform. Handled by the
-    // NaukriAgent with naukrigulf-specific selectors added additively. Naukri.com
-    // itself is unaffected (different hostname).
-    if (h.includes('naukrigulf.com')) return 'naukri';
+    // Naukri Gulf is its OWN platform — kept SEPARATE from naukri.com. It reuses
+    // the NaukriAgent engine, but all naukrigulf behaviour is hostname-gated, so
+    // naukri.com is completely unaffected. Checked before naukri.com because
+    // 'naukrigulf.com' does not contain the substring 'naukri.com'.
+    if (h.includes('naukrigulf.com')) return 'naukrigulf';
     if (h.includes('naukri.com')) return 'naukri';
     if (h.includes('bayt.com'))   return 'bayt';
     return null;
@@ -1959,6 +1959,33 @@
     _disarmJobTimer() { clearTimeout(this._jobTimer); this._skipNow = false; }
 
     jobCards() {
+      // ── Naukri Gulf list cards ──────────────────────────────────────────────
+      // Different DOM from naukri.com. Best-effort structural detection: each
+      // result card is the container of a job-title link that sits next to an
+      // "Easy Apply" indicator. (Refined once the exact card markup is known.)
+      if (location.hostname.includes('naukrigulf')) {
+        const seen = new Set(); const out = [];
+        $$('a[href]').forEach(a => {
+          if (!isVis(a)) return;
+          const href = a.href || '';
+          if (!/naukrigulf\.com/i.test(href)) return;
+          if (!/jobs?-in|job-listings|-jid-|\/job\//i.test(href)) return;   // looks like a job link
+          const title = (a.textContent || '').replace(/\s+/g, ' ').trim();
+          if (title.length < 3) return;
+          // The card = nearest ancestor that also contains an "Easy Apply" tag.
+          let card = a.closest('article, li, [class*="card" i], [class*="tuple" i], [class*="job" i]') || a.parentElement;
+          for (let d = 0; d < 5 && card && card !== document.body; d++) {
+            if (/easy\s*apply/i.test(card.textContent || '')) break;
+            card = card.parentElement;
+          }
+          if (!card || card === document.body) return;
+          if (card.closest('aside, [class*="similar" i], [class*="sidebar" i], [class*="right-section" i]')) return;
+          const key = href;
+          if (seen.has(key)) return; seen.add(key);
+          out.push(card);
+        });
+        return out.filter(c => isVis(c));
+      }
       return $$(
         '.srp-jobtuple-wrapper, [class*="jobTuple"], .cust-job-tuple, ' +
         'article[class*="jobTuple"], div[data-job-id]'
@@ -1975,6 +2002,13 @@
     // (sidebar recommendation tiles used to defeat that check).
     onDetailPage() {
       if (/\/job-listings-/i.test(location.pathname)) return true;
+      // Naukri Gulf: a job-detail page has the blue "Easy Apply" BUTTON and is
+      // not a search-results list (simJobs / jobs-in-…).
+      if (location.hostname.includes('naukrigulf')) {
+        const isList = /simjobs|jobs-in|\/search|-jobs/i.test((location.pathname + location.search).toLowerCase());
+        const easyApplyBtn = $$('button, a').some(b => isVis(b) && /^easy\s*apply$/i.test((b.textContent || '').trim()));
+        return easyApplyBtn && !isList;
+      }
       const bar = $('#apply-button, #company-site-button, #already-applied, ' +
                     'button[class*="apply-button"], [class*="jd-header"]');
       return !!bar && !$('.srp-jobtuple-wrapper');
@@ -1987,9 +2021,84 @@
     // its own — otherwise the run strands here ("Page complete – rescanning…").
     isAppliedConfirmationPage() {
       if (/\/myapply\/(saveApply|applyRedirect|apply)/i.test(location.pathname)) return true;
+      // Naukri Gulf success page: "You have successfully applied to 'X'" + Similar Jobs.
+      if (this._isGulf() && $$('h1, h2, h3, [role="heading"], p, div, span')
+            .some(el => isVis(el) && /you have successfully applied to/i.test(el.textContent || ''))) return true;
       const acp = $('.acp-container, .applied-job-content, #interview-360[data-section-name="interview-360"]');
       return !!acp && $$('h1, h2, [role="heading"], [class*="title"]')
         .some(el => isVis(el) && /^\s*applied to\b/i.test(el.textContent));
+    }
+
+    // ─────────────── Naukri Gulf (naukrigulf.com) support ──────────────────
+    // Gulf reuses this whole agent, but its apply is a DIRECT FORM modal
+    // ("Submit & Apply") — not the naukri.com chatbot. Every helper below is
+    // gated to the naukrigulf hostname, so naukri.com is completely unaffected.
+    _isGulf() { return location.hostname.includes('naukrigulf'); }
+
+    // The Easy-Apply form modal: a visible container with a "Submit & Apply" btn.
+    _gulfModal() {
+      if (!this._isGulf()) return null;
+      const submit = $$('button, [role="button"], input[type="submit"], a')
+        .find(b => isVis(b) && /submit\s*&?\s*apply|submit\s+application/i.test((b.textContent || b.value || '').replace(/\s+/g, ' ').trim()));
+      if (!submit) return null;
+      return submit.closest('[role="dialog"], [class*="modal" i], [class*="popup" i], [class*="dialog" i], [class*="drawer" i]') || document.body;
+    }
+
+    // The question label for a form field: climb to the field's own wrapper (the
+    // closest ancestor holding ONLY this field) and read its "…?" text.
+    _gulfQuestionFor(input) {
+      let node = input.parentElement;
+      for (let d = 0; d < 6 && node && node !== document.body; d++) {
+        const areas = node.querySelectorAll('textarea, input[type="text"], input[type="number"], input:not([type])');
+        if (areas.length === 1) {
+          const m = (node.textContent || '').replace(/\s+/g, ' ').trim().match(/([A-Z][^?]{2,120}\?)/);
+          if (m) return m[1].trim();
+        } else if (areas.length > 1) break;
+        node = node.parentElement;
+      }
+      return (input.getAttribute('aria-label') || input.name || '').trim();
+    }
+
+    // Fill every question in the Gulf modal from the saved profile answers, then
+    // click "Submit & Apply". Returns 'done' | 'continue' | 'stuck' | null(no modal).
+    async _handleGulfForm() {
+      const modal = this._gulfModal();
+      if (!modal) return null;
+      const fields = () => $$('textarea, input[type="text"], input[type="number"], input:not([type])', this._gulfModal() || modal)
+        .filter(el => isVis(el) && !el.disabled && !el.readOnly);
+      let missing = 0;
+      for (const inp of fields()) {
+        if ((inp.value || '').trim()) continue;
+        const q = this._gulfQuestionFor(inp);
+        let ans = q ? this.f.map(q) : null;
+        if (!ans && q) ans = await this.f.aiAnswer(q);
+        if (!ans && /notice/i.test(q)) ans = this.f.p.professional?.noticePeriod || '30 days';
+        if (!ans) { missing++; SPOT.pulse(inp, `❓ ${(q || 'question').slice(0, 40)}`); continue; }
+        SPOT.pulse(inp, `⌨️ ${q.slice(0, 40)}`);
+        await typeInto(inp, ans);
+        await sleep(rand(250, 550));
+      }
+      if (missing) {
+        // Buzz the human for the field(s) we can't answer; resume when filled.
+        SPOT.attention(modal, '❓ Please fill the remaining answer(s) — I\'ll submit once done');
+        notifyUser('JobBot needs you', 'A Naukrigulf question needs your answer — fill it and I\'ll continue.');
+        for (let i = 0; i < 300 && this.running; i++) {
+          await sleep(1000);
+          if (this.isApplied()) { SPOT.clearAttention(); return 'done'; }
+          if (!this._gulfModal()) { SPOT.clearAttention(); return 'continue'; }
+          if (!fields().some(el => !(el.value || '').trim())) break; // all filled → submit
+        }
+        SPOT.clearAttention();
+      }
+      const submit = $$('button, [role="button"], input[type="submit"], a', this._gulfModal() || modal)
+        .find(b => isVis(b) && /submit\s*&?\s*apply|submit\s+application/i.test((b.textContent || b.value || '').replace(/\s+/g, ' ').trim()));
+      if (submit) {
+        await sleep(rand(500, 1000));
+        await humanClick(submit, '🎉 Submit & Apply');
+        await sleep(rand(1800, 2800));
+        return 'done';
+      }
+      return 'stuck';
     }
 
     cardLink(card) {
@@ -2117,11 +2226,12 @@
         try { const inner = btn.querySelector('span, div'); if (inner) inner.click(); } catch {}
       }
 
-      // Success = the question drawer opens OR an instant-apply toast fires.
-      // Naukri's button can swallow early clicks while JS hydrates – retry twice.
+      // Success = the question drawer opens OR the Gulf "Submit & Apply" form
+      // modal opens OR an instant-apply toast fires. Naukri's button can swallow
+      // early clicks while JS hydrates – retry twice.
       for (let i = 0; i < 14; i++) {
         await sleep(700);
-        if (this.chatbot() || this.isApplied()) return true;
+        if (this.chatbot() || this._gulfModal() || this.isApplied()) return true;
         // Retry at 3s and 7s if the button is still there — synthetic + native.
         if ((i === 4 || i === 9) && btn.isConnected && isVis(btn)
             && !/already applied|applied/i.test(btn.textContent)) {
@@ -2130,7 +2240,7 @@
           try { btn.click(); } catch {} // native fallback for React buttons
         }
       }
-      return !!(this.chatbot() || this.isApplied());
+      return !!(this.chatbot() || this._gulfModal() || this.isApplied());
     }
 
     // The apply chatbot drawer that pops in after clicking Apply
@@ -2145,6 +2255,11 @@
     }
 
     isApplied() {
+      // Naukri Gulf success: "You have successfully applied to 'X'".
+      if (location.hostname.includes('naukrigulf') && $$('h1, h2, h3, [role="heading"], p')
+            .some(el => isVis(el) && /you have successfully applied to|successfully applied/i.test(el.textContent || ''))) {
+        return true;
+      }
       // Green success toast / confirmation message
       if ($$('[class*="apply"], [class*="success"], [class*="toast"], ' +
               '[class*="confirmation"], [class*="submitted"]')
@@ -2456,6 +2571,14 @@
     async handleForm() {
       if (this.isApplied()) return 'done';
 
+      // Naukri Gulf: the Easy-Apply modal is a DIRECT FORM ("Submit & Apply"),
+      // not the chatbot. Handle it first; returns null if no gulf modal is open
+      // (so naukri.com falls straight through to the chatbot path below).
+      if (this._isGulf()) {
+        const g = await this._handleGulfForm();
+        if (g) return g;
+      }
+
       const drawer = this.chatbot();
       if (drawer) {
         this._sawDrawer = true;
@@ -2574,7 +2697,7 @@
         if (!jid || !appliedSet.has(jid)) {              // guard against a double count on refresh
           if (jid) appliedSet.add(jid);
           this.applied++;
-          report({ type: 'JOB_APPLIED', platform: 'naukri', title: document.title, url: location.href });
+          report({ type: 'JOB_APPLIED', platform: (location.hostname.includes('naukrigulf') ? 'naukrigulf' : 'naukri'), title: document.title, url: location.href });
         }
         SPOT.status(`✓ Applied on Naukri! (${this.applied} total) – returning to job list…`, 'success');
         await sleep(rand(1200, 2200));
@@ -2604,7 +2727,7 @@
         if (out === 'done') {
           appliedSet.add(normalizeJobId(location.href));
           this.applied++;
-          report({ type: 'JOB_APPLIED', platform: 'naukri', title: document.title, url: location.href });
+          report({ type: 'JOB_APPLIED', platform: (location.hostname.includes('naukrigulf') ? 'naukrigulf' : 'naukri'), title: document.title, url: location.href });
           SPOT.status(`✓ Applied on Naukri! (${this.applied} total) – returning to list…`, 'success');
           await sleep(rand(1500, 2500));
         } else {
@@ -2710,7 +2833,7 @@
             this.applied++;
             if (jid) appliedSet.add(jid);
             appliedSet.add(normalizeJobId(location.href));
-            report({ type: 'JOB_APPLIED', platform: 'naukri', title: document.title, url: location.href });
+            report({ type: 'JOB_APPLIED', platform: (location.hostname.includes('naukrigulf') ? 'naukrigulf' : 'naukri'), title: document.title, url: location.href });
             SPOT.status(`✓ Applied! (${this.applied} total) – next job…`, 'success');
           } else {
             this.skipped++;
@@ -3388,7 +3511,7 @@
 
   async function startAgent(profile) {
     if (agent?.running) return;
-    if (!['linkedin', 'indeed', 'naukri', 'bayt'].includes(PLATFORM)) {
+    if (!['linkedin', 'indeed', 'naukri', 'naukrigulf', 'bayt'].includes(PLATFORM)) {
       SPOT.status('Not a supported job site', 'error'); return;
     }
 
@@ -3419,6 +3542,7 @@
     if      (PLATFORM === 'linkedin') agent = new LinkedInAgent(f);
     else if (PLATFORM === 'indeed')   agent = new IndeedAgent(f);
     else if (PLATFORM === 'naukri')   agent = new NaukriAgent(f);
+    else if (PLATFORM === 'naukrigulf') agent = new NaukriAgent(f); // separate platform, reuses the Naukri engine (hostname-gated)
     else if (PLATFORM === 'bayt')     agent = new BaytAgent(f);
     else { SPOT.status('Not a supported job site', 'error'); return; }
 
@@ -3574,7 +3698,7 @@
       // the original list tab). Apply here, then CLOSE this tab — the list tab
       // carries on with the next job. Normal Naukri runs are same-tab, so this
       // only fires for a genuine spawned tab and never touches the main flow.
-      if (IS_TOP && PLATFORM === 'naukri') {
+      if (IS_TOP && (PLATFORM === 'naukri' || PLATFORM === 'naukrigulf')) {
         const a = new NaukriAgent(new Filler(data.jobbot_profile));
         const closeThisTab = async (m) => {
           SPOT.status(m || 'Application finished – closing this tab…', 'success');
@@ -3584,7 +3708,7 @@
         if (a.isAppliedConfirmationPage()) {
           // The apply already completed in this tab → record it and close.
           try { const m = decodeURIComponent(location.href).match(/strJobsarr=\D*(\d+)/); if (m) appliedSet.add('nk:' + m[1]); } catch {}
-          try { report({ type: 'JOB_APPLIED', platform: 'naukri', title: document.title, url: location.href }); } catch {}
+          try { report({ type: 'JOB_APPLIED', platform: (location.hostname.includes('naukrigulf') ? 'naukrigulf' : 'naukri'), title: document.title, url: location.href }); } catch {}
           closeThisTab('✓ Applied on Naukri – closing this tab…');
         } else if (a.onDetailPage()) {
           a.running = true;
@@ -3624,6 +3748,7 @@
   if (IS_TOP && PLATFORM) {
     const probe = PLATFORM === 'linkedin' ? new LinkedInAgent(new Filler({}))
                 : PLATFORM === 'naukri'   ? new NaukriAgent(new Filler({}))
+                : PLATFORM === 'naukrigulf' ? new NaukriAgent(new Filler({}))
                 : PLATFORM === 'bayt'     ? new BaytAgent(new Filler({}))
                 : new IndeedAgent(new Filler({}));
 
@@ -3728,6 +3853,7 @@
       if (PLATFORM === 'indeed'  && probe.isApplyPage())  return;
       if (PLATFORM === 'bayt'    && probe.isApplyPage())  return;
       if (PLATFORM === 'naukri'  && probe.onDetailPage()) return;
+      if (PLATFORM === 'naukrigulf' && probe.onDetailPage()) return;
 
       let cards;
       try { cards = probe.jobCards(); } catch { return; }

@@ -31,7 +31,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   const url = activeTab?.url || '';
   if      (url.includes('linkedin.com/jobs')) platform = 'linkedin';
   else if (url.includes('indeed.com') || url.includes('apply.indeed.com')) platform = 'indeed';
-  else if (url.includes('naukrigulf.com'))    platform = 'naukri'; // Naukri Gulf → Naukri engine (check BEFORE naukri.com; 'naukrigulf.com' doesn't contain 'naukri.com')
+  else if (url.includes('naukrigulf.com'))    platform = 'naukrigulf'; // separate platform (check BEFORE naukri.com; 'naukrigulf.com' doesn't contain 'naukri.com')
   else if (url.includes('naukri.com'))        platform = 'naukri';
 
   const pill = document.getElementById('platform-pill');
@@ -256,7 +256,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       if (!res?.stats) return;
       bump('s-li', res.stats.linkedin || 0);
       bump('s-in', res.stats.indeed   || 0);
-      bump('s-nk', res.stats.naukri   || 0);
+      bump('s-nk', (res.stats.naukri || 0) + (res.stats.naukrigulf || 0)); // Naukri + Naukri Gulf combined (tracked separately in the backend)
       bump('s-sk', res.stats.skipped  || 0);
     });
   }
