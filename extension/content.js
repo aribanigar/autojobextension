@@ -2081,34 +2081,67 @@
     async _handleGulfForm() {
       const modal = this._gulfModal();
       if (!modal) return null;
-      const fields = () => $$('textarea, input[type="text"], input[type="number"], input:not([type])', this._gulfModal() || modal)
+
+      // ── Radios / dropdowns / comboboxes ──────────────────────────────────
+      // Handled by the SHARED Filler engine, which answers from the profile +
+      // LEARNED answers, falls back to the user's own AI, and registers
+      // learnFromField() on anything it can't answer so the human's pick is
+      // remembered and auto-applied next time. Only run when we found a real
+      // modal container (never document.body) so page-level controls behind the
+      // modal — search filters, etc. — are never touched.
+      const scoped = modal !== document.body ? modal : null;
+      if (scoped) {
+        try { await this.f.fillRadios(scoped); }     catch {}
+        try { await this.f.fillSelects(scoped); }    catch {}
+        try { await this.f.fillComboboxes(scoped); } catch {}
+      }
+
+      // ── Free-text / number fields ─────────────────────────────────────────
+      // Read the gulf-specific question label, answer from profile+LEARNED (map,
+      // which consults learnedAnswers first) then AI. For anything we can't
+      // answer, START LEARNING immediately — learnFromField() attaches listeners
+      // so whatever the human types is saved and auto-filled on the next job.
+      const textFields = () => $$('textarea, input[type="text"], input[type="number"], input:not([type])', this._gulfModal() || modal)
         .filter(el => isVis(el) && !el.disabled && !el.readOnly);
-      let missing = 0;
-      for (const inp of fields()) {
+      for (const inp of textFields()) {
         if ((inp.value || '').trim()) continue;
         const q = this._gulfQuestionFor(inp);
         let ans = q ? this.f.map(q) : null;
         if (!ans && q) ans = await this.f.aiAnswer(q);
         if (!ans && /notice/i.test(q)) ans = this.f.p.professional?.noticePeriod || '30 days';
-        if (!ans) { missing++; SPOT.pulse(inp, `❓ ${(q || 'question').slice(0, 40)}`); continue; }
+        if (!ans) {
+          if (q) learnFromField(inp, q);   // remember the human's answer for next time
+          SPOT.pulse(inp, `❓ ${(q || 'question').slice(0, 40)}`);
+          continue;
+        }
         SPOT.pulse(inp, `⌨️ ${q.slice(0, 40)}`);
         await typeInto(inp, ans);
         await sleep(rand(250, 550));
       }
-      if (missing) {
-        // Buzz the human for the field(s) we can't answer; resume when filled.
-        SPOT.attention(modal, '❓ Please fill the remaining answer(s) — I\'ll submit once done');
-        notifyUser('JobBot needs you', 'A Naukrigulf question needs your answer — fill it and I\'ll continue.');
+
+      // Completion signal: a still-blank text field, or a "Submit & Apply" that
+      // is explicitly disabled (naukrigulf keeps it disabled until every required
+      // question — including radios/dropdowns — is answered).
+      const findSubmit = () => $$('button, [role="button"], input[type="submit"], a', this._gulfModal() || modal)
+        .find(b => isVis(b) && /submit\s*&?\s*apply|submit\s+application/i.test((b.textContent || b.value || '').replace(/\s+/g, ' ').trim()));
+      const hardDisabled = el => !!el && (el.disabled || el.getAttribute('aria-disabled') === 'true' || /\bdisabled\b/i.test(el.className || ''));
+      const blanks = () => textFields().filter(el => !(el.value || '').trim());
+
+      if (blanks().length || hardDisabled(findSubmit())) {
+        // Buzz the human for whatever's left; the learnFromField listeners above
+        // capture their answers (text, radio, or dropdown) for next time.
+        SPOT.attention(modal, '❓ Please answer the remaining question(s) — I\'ll submit once done and remember them next time');
+        notifyUser('JobBot needs you', 'A Naukrigulf question needs your answer — fill it and I\'ll remember it for next time.');
         for (let i = 0; i < 300 && this.running; i++) {
           await sleep(1000);
           if (this.isApplied()) { SPOT.clearAttention(); return 'done'; }
           if (!this._gulfModal()) { SPOT.clearAttention(); return 'continue'; }
-          if (!fields().some(el => !(el.value || '').trim())) break; // all filled → submit
+          if (!blanks().length && !hardDisabled(findSubmit())) break; // all set → submit
         }
         SPOT.clearAttention();
       }
-      const submit = $$('button, [role="button"], input[type="submit"], a', this._gulfModal() || modal)
-        .find(b => isVis(b) && /submit\s*&?\s*apply|submit\s+application/i.test((b.textContent || b.value || '').replace(/\s+/g, ' ').trim()));
+
+      const submit = findSubmit();
       if (submit) {
         await sleep(rand(500, 1000));
         await humanClick(submit, '🎉 Submit & Apply');
