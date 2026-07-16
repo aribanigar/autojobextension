@@ -2010,12 +2010,21 @@
     // (sidebar recommendation tiles used to defeat that check).
     onDetailPage() {
       if (/\/job-listings-/i.test(location.pathname)) return true;
-      // Naukri Gulf: a job-detail page has the blue "Easy Apply" BUTTON and is
-      // not a search-results list (simJobs / jobs-in-…).
+      // Naukri Gulf: a job-detail page shows the "Easy Apply" button but is NOT
+      // the multi-card search list. NEVER discriminate by URL — naukrigulf DETAIL
+      // urls also contain "jobs-in"/"-jobs" (the SEO slug), which made the old
+      // isList regex mark every detail page as a list; onDetailPage then returned
+      // false and the apply flow (with its Easy Apply spotlight) never ran.
+      // Structural signal instead: on the LIST every "Easy Apply" sits INSIDE a
+      // job card; on a DETAIL page the primary "Easy Apply" is standalone (the
+      // page's own CTA, not inside any card — the "Similar Jobs" tiles' buttons
+      // are inside cards and don't count). So a detail page = an Easy Apply that
+      // is not contained by any job card.
       if (location.hostname.includes('naukrigulf')) {
-        const isList = /simjobs|jobs-in|\/search|-jobs/i.test((location.pathname + location.search).toLowerCase());
-        const easyApplyBtn = $$('button, a').some(b => isVis(b) && /^easy\s*apply$/i.test((b.textContent || '').trim()));
-        return easyApplyBtn && !isList;
+        const eaBtns = $$('button, a').filter(b => isVis(b) && /^easy\s*apply$/i.test((b.textContent || '').trim()));
+        if (!eaBtns.length) return false;
+        const cards = this.jobCards();
+        return eaBtns.some(b => !cards.some(c => c.contains(b)));
       }
       const bar = $('#apply-button, #company-site-button, #already-applied, ' +
                     'button[class*="apply-button"], [class*="jd-header"]');
@@ -2159,29 +2168,13 @@
       SPOT.pulse(link, `Opening: ${link.textContent.trim().substring(0, 60)}`);
       await sleep(rand(300, 700));
       const before = location.href;
-      // ── Naukri Gulf: STEP 1 is to CLICK the job (open its detail), then the
-      //    detail flow looks for "Easy Apply" — same order as naukri.com. Click
-      //    the title first; if the page doesn't change, navigate to its href, and
-      //    finally click the card itself. Gated, so naukri.com is unchanged. ────
-      if (location.hostname.includes('naukrigulf')) {
-        try { link.scrollIntoView({ behavior: 'smooth', block: 'center' }); } catch {}
-        await sleep(rand(300, 600));
-        await humanClick(link, 'Opening job…');
-        await sleep(rand(1800, 2800));
-        if (location.href === before && !this.onDetailPage() && !this._gulfModal()) {
-          const href = link.tagName === 'A' ? (link.href || link.getAttribute('href') || '') : '';
-          if (href && !/^javascript:/i.test(href)) { try { location.assign(href); } catch { realClick(link); } }
-          else { realClick(card); }
-          await sleep(rand(1800, 2800));
-        }
-        return true;
-      }
-      // Drive the CURRENT tab straight to the job URL. Naukri's job anchors carry
-      // an onclick that opens the job in a NEW tab (which the run can't follow, so
-      // nothing applies and the loop stalls). Navigating via location.assign
-      // bypasses that handler and guarantees the apply → history.back() → next-job
-      // sequence stays in ONE tab. Falls back to a click for recommended tiles
-      // that have no real href.
+      // Drive the CURRENT tab straight to the job URL. Naukri AND Naukri Gulf job
+      // anchors open in a NEW tab (target=_blank / an onclick that calls
+      // window.open) — CLICKING them spawns extra tabs the run can't follow, which
+      // is what made naukrigulf open multiple pages and stall with no Easy Apply
+      // spotlight. Navigating via location.assign reads the href WITHOUT clicking,
+      // so the onclick never fires: the apply → back-to-list → next-job sequence
+      // stays in ONE tab. Falls back to a click for tiles with no real href.
       const href = link.tagName === 'A' ? (link.href || link.getAttribute('href') || '') : '';
       if (href && !/^javascript:/i.test(href)) {
         try { link.setAttribute('target', '_self'); } catch {}
