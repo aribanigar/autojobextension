@@ -97,6 +97,30 @@
   let _moving = false; // true while a moveTo glide is running (ambient drift yields to it)
   const _clampX = v => Math.max(0, Math.min(innerWidth - 1, v));
   const _clampY = v => Math.max(0, Math.min(innerHeight - 1, v));
+
+  // ── Post-captcha trust-rebuild cool-down (Indeed anti-detection) ───────────
+  // Cloudflare Turnstile scores the WHOLE session. After a challenge is solved,
+  // trust is low — resuming at full speed re-triggers it right away, which is the
+  // "captcha again and again" loop the user hit at the submit step. So after every
+  // captcha CLEAR we enter a cool-down: clicks slow down and add extra lifelike
+  // activity, and repeated challenges ESCALATE the back-off (longer + more motion)
+  // until Indeed stops challenging. Purely additive dwell/motion — it never changes
+  // WHAT is clicked or the flow, so the locked Indeed logic is unaffected.
+  let _captchaCooldownUntil = 0;   // Date.now() until which we're in slow mode
+  let _captchaHits = 0;            // consecutive challenges → escalate the back-off
+  let _lastCaptchaClearedAt = 0;
+  const inCaptchaCooldown = () => Date.now() < _captchaCooldownUntil;
+  const captchaBackoffMs = () => 22000 + Math.min(_captchaHits, 6) * 14000; // ~22s → ~106s
+  const noteCaptchaCleared = () => {
+    _captchaHits = Math.min(_captchaHits + 1, 6);
+    _lastCaptchaClearedAt = Date.now();
+    _captchaCooldownUntil = Date.now() + captchaBackoffMs();
+  };
+  // Decay the escalation once a long quiet stretch passes with no new challenge,
+  // so a clean later session isn't stuck crawling.
+  const decayCaptchaBackoff = () => {
+    if (_captchaHits > 0 && !inCaptchaCooldown() && Date.now() - _lastCaptchaClearedAt > 240000) _captchaHits = 0;
+  };
   const _emitMove = (ex, ey) => {
     const tgt = document.elementFromPoint(_clampX(ex), _clampY(ey));
     (tgt || document.body)?.dispatchEvent(new MouseEvent('mousemove', {
@@ -218,11 +242,24 @@
     if (msg) SPOT.pulse(el, msg);
     el.scrollIntoView({ behavior: 'smooth', block: 'center' });
     await sleep(rand(250, 500));
+    // Post-captcha trust-rebuild (Indeed only): before touching the next
+    // protected control, move slower and drift the cursor so the behavioural
+    // score recovers. No-op unless we're inside a cool-down, so every other
+    // click on every platform is byte-for-byte the same as before.
+    const cooling = PLATFORM === 'indeed' && inCaptchaCooldown();
+    if (cooling) {
+      await sleep(rand(600, 1500));
+      try {
+        await moveTo(_clampX(_mx + (Math.random() - 0.5) * rand(140, 380)),
+                     _clampY(_my + (Math.random() - 0.5) * rand(100, 280)));
+        await sleep(rand(300, 800));
+      } catch {}
+    }
     const r = el.getBoundingClientRect();
     await moveTo(r.left + r.width / 2, r.top + r.height / 2);
-    await sleep(rand(80, 200));
+    await sleep(rand(80, 200) + (cooling ? rand(400, 900) : 0));
     realClick(el);
-    await sleep(rand(350, 700));
+    await sleep(rand(350, 700) + (cooling ? rand(500, 1100) : 0));
     return true;
   }
 
@@ -269,6 +306,16 @@
         }
       } catch {}
       if (Math.random() < 0.8) { await wander(); await sleep(rand(400, 1200)); }
+      // Recently challenged → spend noticeably longer reviewing before this
+      // protected submit. A rushed submit right after a captcha is the classic
+      // re-challenge trigger, so linger, read-scroll and interact more.
+      if (inCaptchaCooldown()) {
+        for (let k = 0, n = rand(2, 4); k < n; k++) { await wander(); await sleep(rand(500, 1400)); }
+        try { window.scrollBy(0, rand(60, 180)); } catch {}
+        await sleep(rand(700, 1600));
+        try { window.scrollBy(0, -rand(40, 120)); } catch {}
+        await sleep(rand(600, 1500));
+      }
       await sleep(rand(500, 1400)); // final settle before the submit click
     } catch {}
   }
@@ -4071,8 +4118,11 @@
             notifyUser('JobBot needs you', 'A captcha appeared — solve it and the agent keeps going automatically.');
           } else if (_captchaShown && !here) {
             _captchaShown = false;
+            noteCaptchaCleared();   // enter the trust-rebuild cool-down (escalates on repeats)
             SPOT.clearAttention();
-            SPOT.status('✓ Captcha cleared — continuing…', 'success');
+            SPOT.status('✓ Captcha cleared — easing back in to avoid another…', 'success');
+          } else {
+            decayCaptchaBackoff();  // long quiet stretch → drop back to full speed
           }
         });
       } catch { clearInterval(captchaWatch); }
@@ -4118,9 +4168,12 @@
         } catch {} finally { _ambientRunning = false; }
       };
       // Irregular cadence (humans aren't metronomic): re-arm with a random gap.
+      // Right after a captcha, tighten the cadence so the behavioural score sees
+      // more continuous, lifelike motion while trust is being rebuilt.
       const scheduleAmbient = () => {
         if (!contextAlive()) return;
-        setTimeout(async () => { try { await ambientTick(); } catch {} scheduleAmbient(); }, rand(900, 2600));
+        const gap = inCaptchaCooldown() ? rand(350, 1000) : rand(900, 2600);
+        setTimeout(async () => { try { await ambientTick(); } catch {} scheduleAmbient(); }, gap);
       };
       scheduleAmbient();
     }
