@@ -214,6 +214,20 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
       sendResponse({ tabId: _sender.tab?.id ?? null });
       break;
 
+    case 'OPEN_TAB':
+      // Open a job in its OWN tab. Using the extension API (chrome.tabs.create)
+      // bypasses the page's popup blocker, which silently blocks window.open from
+      // a content script outside a user gesture. Used by the Naukri Gulf flow:
+      // the list tab opens a job tab; that tab applies + closes itself; the list
+      // tab then continues with the next job. Returns the new tab id.
+      try {
+        chrome.tabs.create({ url: msg.url, active: msg.active !== false }, tab => {
+          void chrome.runtime.lastError;
+          sendResponse({ tabId: tab?.id ?? null });
+        });
+      } catch { sendResponse({ tabId: null }); }
+      return true;
+
     case 'CLOSE_TAB':
       // A finished apply popup asks to close itself (page scripts can't close
       // tabs they didn't open; the extension can). Also stamp a timestamp so the

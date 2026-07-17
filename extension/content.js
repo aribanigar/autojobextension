@@ -2092,6 +2092,14 @@
       // Never key off the URL — naukrigulf detail urls also contain the "jobs-in"
       // SEO slug, which made the old regex mark every detail page as a list.
       if (location.hostname.includes('naukrigulf')) {
+        // Positive LIST signal first: the search-results page carries the
+        // "Showing N Jobs" header + the Refine/Sort sidebar. If those are
+        // present it is the list, never a detail page — this guarantees the
+        // per-card selection ticks keep rendering there even if card detection
+        // momentarily misses a card.
+        const listMarker = $$('h1, h2, h3, [class*="refine" i], [class*="sort" i]')
+          .some(el => isVis(el) && /refine search|showing\s+[\d,]+\s+jobs?|^\s*sort by\s*$/i.test((el.textContent || '').trim()));
+        if (listMarker) return false;
         return !!this._gulfEasyApply();
       }
       const bar = $('#apply-button, #company-site-button, #already-applied, ' +
@@ -2263,19 +2271,66 @@
       return card.textContent.trim().slice(0, 80);
     }
 
+    // ── Naukri Gulf: apply each job in its OWN tab, one at a time ────────────
+    // Keep the search list intact: open the job in a new tab (via the extension,
+    // so it isn't popup-blocked), let THAT tab apply + close itself, and only
+    // then return so the list moves on to the next selected job. This is the
+    // "open → apply → close tab → back to list → next" flow. Sets _ngTabHandled
+    // to the outcome so applyHere() reports it without re-applying on the list.
+    async _openGulfJobTab(card) {
+      const link = this.cardLink(card);
+      const href = link && link.tagName === 'A' ? (link.href || link.getAttribute('href') || '') : '';
+      if (!href || /^javascript:/i.test(href)) { this._ngTabHandled = 'skip'; return true; }
+      SPOT.pulse(link || card, `Opening: ${(link?.textContent || 'job').trim().slice(0, 50)} — in a new tab`);
+      await sleep(rand(400, 800));
+      // Handshake: the spawned job tab clears jobbot_ng_job and sets
+      // jobbot_ng_done when it finishes, so we know when to open the next.
+      await new Promise(r => { try { chrome.storage.local.set({ jobbot_ng_job: '1', jobbot_ng_done: '' }, () => { void chrome.runtime.lastError; r(); }); } catch { r(); } });
+      const tabId = await new Promise(res => {
+        try { chrome.runtime.sendMessage({ type: 'OPEN_TAB', url: href, active: true }, resp => { void chrome.runtime.lastError; res(resp?.tabId ?? null); }); }
+        catch { res(null); }
+      });
+      if (!tabId) {
+        // Popup/extension open failed → fall back to same-tab navigation; the
+        // detail page's own run() then applies. _ngTabHandled=null skips the
+        // short-circuit so applyHere runs normally there.
+        try { link.setAttribute('target', '_self'); } catch {}
+        try { location.assign(href); } catch { realClick(link); }
+        this._ngTabHandled = null;
+        this._ngTabDidReport = false;   // same-tab: the list tab reports as usual
+        await sleep(rand(2000, 3000));
+        return true;
+      }
+      // A real job tab handled the apply AND its own JOB_APPLIED report, so the
+      // list tab must not report again (would double-count).
+      this._ngTabDidReport = true;
+      SPOT.status('⏳ Applying in the job tab — I\'ll continue here when it\'s done…', 'applying');
+      let done = 'skip';
+      for (let i = 0; i < 150 && this.running; i++) {   // wait up to ~2.5 min
+        await sleep(1000);
+        const st = await new Promise(res => { try { chrome.storage.local.get(['jobbot_ng_job', 'jobbot_ng_done'], d => { void chrome.runtime.lastError; res(d || {}); }); } catch { res({}); } });
+        if (!st.jobbot_ng_job) { done = st.jobbot_ng_done === 'done' ? 'done' : 'skip'; break; }
+      }
+      try { chrome.storage.local.remove(['jobbot_ng_job', 'jobbot_ng_done']); } catch {}
+      this._ngTabHandled = done;
+      return true;
+    }
+
     async openJob(card) {
+      // Naukri Gulf runs the tab-per-job flow above; naukri.com stays same-tab.
+      if (this._isGulf()) return await this._openGulfJobTab(card);
+
       const link = this.cardLink(card);
       if (!link) return false;
       SPOT.pulse(link, `Opening: ${link.textContent.trim().substring(0, 60)}`);
       await sleep(rand(300, 700));
       const before = location.href;
-      // Drive the CURRENT tab straight to the job URL. Naukri AND Naukri Gulf job
-      // anchors open in a NEW tab (target=_blank / an onclick that calls
-      // window.open) — CLICKING them spawns extra tabs the run can't follow, which
-      // is what made naukrigulf open multiple pages and stall with no Easy Apply
-      // spotlight. Navigating via location.assign reads the href WITHOUT clicking,
-      // so the onclick never fires: the apply → back-to-list → next-job sequence
-      // stays in ONE tab. Falls back to a click for tiles with no real href.
+      // Drive the CURRENT tab straight to the job URL. Naukri job anchors open in
+      // a NEW tab (target=_blank / an onclick that calls window.open) — CLICKING
+      // them spawns extra tabs the run can't follow. Navigating via location.assign
+      // reads the href WITHOUT clicking, so the onclick never fires: the apply →
+      // back-to-list → next-job sequence stays in ONE tab. Falls back to a click
+      // for tiles with no real href.
       const href = link.tagName === 'A' ? (link.href || link.getAttribute('href') || '') : '';
       if (href && !/^javascript:/i.test(href)) {
         try { link.setAttribute('target', '_self'); } catch {}
@@ -2804,6 +2859,15 @@
 
     // Run the full apply sequence on a job detail page
     async applyHere() {
+      // Naukri Gulf tab-per-job: _openGulfJobTab already applied the job in its
+      // own tab and recorded the outcome. Report it directly instead of trying to
+      // apply again on the list tab. (_ngTabHandled is null when we fell back to
+      // same-tab navigation, so the normal flow runs on the detail page.)
+      if (this._isGulf() && this._ngTabHandled) {
+        const r = this._ngTabHandled; this._ngTabHandled = null;
+        return r === 'done' ? 'done' : 'skip';
+      }
+
       this._sawDrawer = false;
       this._qTries = new Map(); // fresh question memory per job
       const r = await this.clickApply();
@@ -2995,7 +3059,14 @@
             this.applied++;
             if (jid) appliedSet.add(jid);
             appliedSet.add(normalizeJobId(location.href));
-            report({ type: 'JOB_APPLIED', platform: (location.hostname.includes('naukrigulf') ? 'naukrigulf' : 'naukri'), title: document.title, url: location.href });
+            // Naukri Gulf tab-per-job: the JOB tab already reported JOB_APPLIED
+            // (in-place or on its confirmation page). Don't report again from the
+            // list tab or the applied count would double. Same-tab platforms and
+            // the same-tab Gulf fallback report here as usual.
+            if (!(this._isGulf() && this._ngTabDidReport)) {
+              report({ type: 'JOB_APPLIED', platform: (location.hostname.includes('naukrigulf') ? 'naukrigulf' : 'naukri'), title: document.title, url: location.href });
+            }
+            this._ngTabDidReport = false;
             SPOT.status(`✓ Applied! (${this.applied} total) – next job…`, 'success');
           } else {
             this.skipped++;
@@ -3862,6 +3933,13 @@
       // only fires for a genuine spawned tab and never touches the main flow.
       if (IS_TOP && (PLATFORM === 'naukri' || PLATFORM === 'naukrigulf')) {
         const a = new NaukriAgent(new Filler(data.jobbot_profile));
+        const isGulf = location.hostname.includes('naukrigulf');
+        // Naukri Gulf: tell the LIST tab this job is finished (it's polling
+        // jobbot_ng_job) so it opens the next selected job, then close THIS tab.
+        const signalGulfDone = (res) => {
+          if (!isGulf) return;
+          try { chrome.storage.local.set({ jobbot_ng_done: res === 'done' ? 'done' : 'skip', jobbot_ng_job: '' }); } catch {}
+        };
         const closeThisTab = async (m) => {
           SPOT.status(m || 'Application finished – closing this tab…', 'success');
           await sleep(rand(1000, 1800));
@@ -3870,8 +3948,32 @@
         if (a.isAppliedConfirmationPage()) {
           // The apply already completed in this tab → record it and close.
           try { const m = decodeURIComponent(location.href).match(/strJobsarr=\D*(\d+)/); if (m) appliedSet.add('nk:' + m[1]); } catch {}
-          try { report({ type: 'JOB_APPLIED', platform: (location.hostname.includes('naukrigulf') ? 'naukrigulf' : 'naukri'), title: document.title, url: location.href }); } catch {}
-          closeThisTab('✓ Applied on Naukri – closing this tab…');
+          try { report({ type: 'JOB_APPLIED', platform: (isGulf ? 'naukrigulf' : 'naukri'), title: document.title, url: location.href }); } catch {}
+          signalGulfDone('done');
+          closeThisTab('✓ Applied – closing this tab…');
+        } else if (isGulf) {
+          // Spawned Gulf job tab: WAIT for the detail page (Easy Apply) to hydrate
+          // — the SPA often isn't ready the instant the content script loads, so a
+          // naive onDetailPage() check here would close the tab before it could
+          // apply. Then apply, signal the list tab, and close.
+          a.running = true;
+          agent = a;
+          (async () => {
+            let ready = a.onDetailPage();
+            for (let w = 0; w < 24 && !ready && !a.isAppliedConfirmationPage(); w++) { await sleep(700); ready = a.onDetailPage(); }
+            if (a.isAppliedConfirmationPage()) { signalGulfDone('done'); await closeThisTab('✓ Applied – closing this tab…'); return; }
+            if (!ready) { signalGulfDone('skip'); await closeThisTab('Couldn\'t find Easy Apply – closing this tab…'); return; }
+            let out = 'skip';
+            try { a._armJobTimer(); out = await a.applyHere(); a._disarmJobTimer(); } catch {}
+            // Report the apply from THIS job tab (the list tab is told not to, to
+            // avoid a double count). If it navigated to a confirmation page the
+            // reloaded tab reports via the branch above instead.
+            if (out === 'done' && !a.isAppliedConfirmationPage()) {
+              try { report({ type: 'JOB_APPLIED', platform: 'naukrigulf', title: document.title, url: location.href }); } catch {}
+            }
+            signalGulfDone(out === 'done' || a.isAppliedConfirmationPage() ? 'done' : 'skip');
+            if (!a.isAppliedConfirmationPage()) await closeThisTab();
+          })().catch(() => { signalGulfDone('skip'); }).finally(() => { agent = null; });
         } else if (a.onDetailPage()) {
           a.running = true;
           agent = a;
