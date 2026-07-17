@@ -4059,8 +4059,16 @@
     function visibleIds() {
       try {
         let cards = probe.jobCards();
-        cards = cards.filter(c => !cards.some(o => o !== c && o.contains(c))); // outermost only
-        return cards.map(c => probe.cardId(c)).filter(Boolean);
+        // Count EXACTLY what the tick overlay renders, on every platform
+        // (naukri.com / Naukri Gulf / Indeed): real job cards only (same
+        // isJobCard filter the ticks use), outermost element only, and UNIQUE
+        // per job id. Without the isJobCard filter + id de-dupe, a card that
+        // exposes several job links (naukrigulf) or a nested match inflated
+        // "Select all (N)" / "Apply All" past the actual jobs on the page.
+        cards = cards.filter(isJobCard);
+        cards = cards.filter(c => !cards.some(o => o !== c && o.contains(c)));
+        const ids = cards.map(c => probe.cardId(c)).filter(Boolean);
+        return [...new Set(ids)];
       } catch { return []; }
     }
     function paintTicks() {
