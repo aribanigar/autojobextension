@@ -2052,26 +2052,47 @@
                       '[class*="sidebar"], [class*="right-section"], [class*="rightSection"]'));
     }
 
+    // ── Naukri Gulf: the PRIMARY "Easy Apply" button ──────────────────────────
+    // The blue CTA on a job-detail page. Robust against how naukrigulf renders it:
+    //   • text is "Easy Apply" whether it's plain text or text beside an icon
+    //     (the icon adds no text, but we still allow a little slack in length),
+    //   • matched on <button>, <a> AND <div/span role="button">,
+    //   • NEVER the "Easy Apply (213)" search-filter chip (it carries a count),
+    //   • NEVER an "Already Applied" state,
+    //   • PRIMARY only — the CTA that is NOT inside a job/"Similar Jobs" card, so
+    //     on the LIST (every Easy Apply lives inside a card) this returns null and
+    //     on a DETAIL page it returns the standalone button. This single helper is
+    //     the source of truth for both detail-page detection and the apply click.
+    _gulfEasyApply() {
+      if (!location.hostname.includes('naukrigulf')) return null;
+      const norm = el => (el.textContent || '').replace(/\s+/g, ' ').trim();
+      const cards = this.jobCards();
+      return $$('button, a, [role="button"]').find(el => {
+        if (!isVis(el)) return false;
+        const t = norm(el);
+        // "Easy Apply" is short; CONTAINS-match (not anchored) so a leading logo
+        // glyph before the text can't defeat it. Length cap keeps out breadcrumbs
+        // like "Easy Apply Jobs in Dubai".
+        if (!t || t.length > 16) return false;
+        if (/\balready applied\b|^applied$/i.test(t)) return false;
+        if (/\(\s*\d/.test(t)) return false;                   // "Easy Apply (213)" filter chip
+        if (!/easy\s*apply/i.test(t)) return false;
+        return !cards.some(c => c.contains(el));               // standalone CTA, not a card's button
+      }) || null;
+    }
+
     // A job-description page is where the Apply action lives. Detect it by
     // URL or by the apply bar itself — NOT by the absence of job cards
     // (sidebar recommendation tiles used to defeat that check).
     onDetailPage() {
       if (/\/job-listings-/i.test(location.pathname)) return true;
-      // Naukri Gulf: a job-detail page shows the "Easy Apply" button but is NOT
-      // the multi-card search list. NEVER discriminate by URL — naukrigulf DETAIL
-      // urls also contain "jobs-in"/"-jobs" (the SEO slug), which made the old
-      // isList regex mark every detail page as a list; onDetailPage then returned
-      // false and the apply flow (with its Easy Apply spotlight) never ran.
-      // Structural signal instead: on the LIST every "Easy Apply" sits INSIDE a
-      // job card; on a DETAIL page the primary "Easy Apply" is standalone (the
-      // page's own CTA, not inside any card — the "Similar Jobs" tiles' buttons
-      // are inside cards and don't count). So a detail page = an Easy Apply that
-      // is not contained by any job card.
+      // Naukri Gulf: a detail page is exactly where a PRIMARY (standalone) Easy
+      // Apply button exists — see _gulfEasyApply(). On the list every Easy Apply
+      // is inside a card, so this is null there; on a detail page it's the CTA.
+      // Never key off the URL — naukrigulf detail urls also contain the "jobs-in"
+      // SEO slug, which made the old regex mark every detail page as a list.
       if (location.hostname.includes('naukrigulf')) {
-        const eaBtns = $$('button, a').filter(b => isVis(b) && /^easy\s*apply$/i.test((b.textContent || '').trim()));
-        if (!eaBtns.length) return false;
-        const cards = this.jobCards();
-        return eaBtns.some(b => !cards.some(c => c.contains(b)));
+        return !!this._gulfEasyApply();
       }
       const bar = $('#apply-button, #company-site-button, #already-applied, ' +
                     'button[class*="apply-button"], [class*="jd-header"]');
@@ -2284,10 +2305,11 @@
         const already = $$('button, a, [class*="apply" i]')
           .find(b => isVis(b) && /\balready applied\b|^applied$/i.test((b.textContent || '').trim()));
         if (already) return { btn: null, external: false, already: true };
-        // Strictly "Easy Apply" — by class/id or by exact button text.
+        // The robust primary "Easy Apply" finder (handles icon+text, role=button,
+        // excludes the filter chip). Class/id selectors are a secondary fallback.
         const ea =
-          $('button[class*="easy-apply" i], button[class*="easyApply" i], [id*="easyApply" i]') ||
-          $$('button, a').find(b => isVis(b) && /^easy\s*apply$/i.test((b.textContent || '').replace(/\s+/g, ' ').trim()));
+          this._gulfEasyApply() ||
+          $('button[class*="easy-apply" i], button[class*="easyApply" i], [id*="easyApply" i]');
         if (ea && isVis(ea)) return { btn: ea, external: false };
         // "Apply on company site" → external, skip. Never fall through to naukri.
         const company = $$('button, a')
@@ -2344,16 +2366,24 @@
       if (external) return 'external';
       if (!btn) return false;
 
-      // Smooth scroll + cursor glide + spotlight before clicking
+      // Smooth scroll + cursor glide + spotlight before clicking. On naukrigulf
+      // give the Easy Apply CTA a clear, held spotlight so it's obvious the agent
+      // located it before clicking (the user asked for a clean, visible target).
       btn.scrollIntoView({ behavior: 'smooth', block: 'center' });
       await sleep(rand(600, 900));
-      await humanClick(btn, '🎯 Clicking APPLY…');
-      // Native-click fallback: some Naukri React buttons ignore a synthetic
-      // click. Only fire it if the chatbot hasn't already opened, so a working
-      // click is never double-fired. Also nudge the inner text span some builds
-      // bind the handler to. Additive — humanClick above is unchanged.
+      if (this._isGulf()) {
+        SPOT.pulse(btn, '🎯 Easy Apply — clicking…');
+        await sleep(rand(500, 900));
+        await humanClick(btn, '🎯 Easy Apply — clicking…');
+      } else {
+        await humanClick(btn, '🎯 Clicking APPLY…');
+      }
+      // Native-click fallback: some Naukri / Naukri Gulf React buttons ignore a
+      // synthetic click. Only fire it if neither the chatbot NOR the Gulf apply
+      // form modal has opened, so a working click is never double-fired. Also
+      // nudge the inner text span some builds bind the handler to.
       await sleep(rand(150, 350));
-      if (!this.chatbot() && !this.isApplied()) {
+      if (!this.chatbot() && !this._gulfModal() && !this.isApplied()) {
         try { btn.click(); } catch {}
         try { const inner = btn.querySelector('span, div'); if (inner) inner.click(); } catch {}
       }
@@ -3974,7 +4004,11 @@
     const isJobCard = card =>
       !!$('a[data-jk], [data-jk], [data-job-id], [data-occludable-job-id], ' +
           'a[href*="viewjob"], a[href*="/jobs/view/"], a[href*="/rc/clk"], ' +
-          'a[href*="job-listings"], a[href*="bayt.com"][href*="/jobs/"]', card)
+          'a[href*="job-listings"], a[href*="bayt.com"][href*="/jobs/"], ' +
+          // Naukri Gulf job links — without these, naukrigulf cards were not
+          // recognised as job cards, so the per-card selection checkboxes never
+          // rendered (the "check box system is missing" report).
+          'a[href*="-jid-"], a[href*="jobs-in"], a[href*="/job/"], a[href*="/jobseeker/"]', card)
       || (card.matches && card.matches('[data-jk], [data-job-id], [data-occludable-job-id]'));
 
     const tickTimer = setInterval(() => {
