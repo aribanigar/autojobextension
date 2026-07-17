@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "JobBot – Auto Apply Agent",
-  "version": "1.4.8",
+  "version": "1.4.9",
   "description": "Automated job application agent for LinkedIn, Indeed, Naukri, and Naukri Gulf. Fills forms, clicks Continue, and moves through jobs like a pro.",
   "permissions": [
     "activeTab",
