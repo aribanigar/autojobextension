@@ -5,43 +5,65 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
   <link rel="apple-touch-icon" href="/favicon.svg" />
-  <title>AutoApplier – Admin Console</title>
+  <link rel="stylesheet" href="https://cdn-uicons.flaticon.com/uicons-regular-rounded/css/uicons-regular-rounded.css" />
+  <title>AutoApplier - Admin Console</title>
   <style>
     :root{
-      --violet:#8b5cf6;--violet2:#7c3aed;--violet-dk:#6d28d9;
-      --bg:#0b0817;--card:#161029;--card2:#1d1636;
-      --text:#f1eefb;--muted:#9d95c0;--dim:#6f6790;
-      --border:rgba(139,92,246,.16);--border2:rgba(139,92,246,.32);
-      --green:#34d399;--red:#f87171;--amber:#fbbf24;--blue:#60a5fa;
+      --bg:#ffffff;--bg-soft:#f5f8ff;--card:#ffffff;--card2:#f4f7fe;
+      --border:rgba(15,23,42,.10);--border-hi:rgba(37,99,235,.40);
+      --accent:#2563eb;--accent-2:#3b82f6;--accent-dk:#1d4ed8;--accent-light:#1d4ed8;
+      --accent-dim:rgba(37,99,235,.08);
+      --text:#0f172a;--muted:#56617a;--dim:#8a93a6;
+      --green:#16a34a;--red:#dc2626;--amber:#d97706;--blue:#2563eb;
     }
     *{margin:0;padding:0;box-sizing:border-box}
-    body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Inter,Roboto,sans-serif;background:radial-gradient(130% 55% at 50% -8%,rgba(124,58,237,.20),transparent 65%),var(--bg);color:var(--text);min-height:100vh;font-size:14px;line-height:1.5}
-    ::-webkit-scrollbar{width:10px;height:10px}::-webkit-scrollbar-thumb{background:var(--border2);border-radius:8px}
-    .container{max-width:1080px;margin:0 auto;padding:26px 24px 60px}
-    header{display:flex;align-items:center;justify-content:space-between;padding:6px 0 22px;flex-wrap:wrap;gap:12px}
-    h1{font-size:22px;font-weight:800;letter-spacing:-.01em}h1 a{color:var(--muted);font-size:13px;text-decoration:none;font-weight:500}h1 a:hover{color:var(--text)}
+    html{scroll-behavior:smooth}
+    body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Inter,Roboto,sans-serif;background:var(--bg);color:var(--text);min-height:100vh;font-size:14px;line-height:1.55;-webkit-font-smoothing:antialiased}
+    ::-webkit-scrollbar{width:10px;height:10px}::-webkit-scrollbar-track{background:#eef2f9}::-webkit-scrollbar-thumb{background:#c7d2e5;border-radius:8px}
+    a{color:inherit}
+    i[class^="fi-"],i[class*=" fi-"]{display:inline-flex;align-items:center;line-height:0;vertical-align:-1px}
+
+    /* Nav */
+    nav{position:sticky;top:0;z-index:200;display:flex;align-items:center;justify-content:space-between;padding:15px 40px;background:rgba(255,255,255,.85);border-bottom:1px solid var(--border);backdrop-filter:blur(16px)}
+    .nav-logo{display:flex;align-items:center;gap:9px;font-size:18px;font-weight:800;letter-spacing:-.01em;color:var(--text);text-decoration:none}
+    .nav-logo .logo-img{width:26px;height:26px;border-radius:7px;display:block}
+    footer.site .nav-logo .logo-img{width:22px;height:22px;border-radius:6px}
+    .admin-tag{font-size:10px;font-weight:800;letter-spacing:.06em;text-transform:uppercase;color:var(--amber);background:rgba(217,119,6,.1);border:1px solid rgba(217,119,6,.25);padding:3px 9px;border-radius:20px;margin-left:2px}
+    #nav-right{display:flex;align-items:center;gap:12px}
+    .who{font-size:13px;color:var(--muted);background:var(--card2);border:1px solid var(--border);padding:6px 14px;border-radius:20px;max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+    .btn-g{display:inline-flex;align-items:center;gap:7px;background:#fff;color:var(--text);border:1px solid var(--border);border-radius:10px;padding:9px 16px;font-size:14px;font-weight:600;text-decoration:none;cursor:pointer;transition:border-color .13s,color .13s}
+    .btn-g:hover{border-color:var(--border-hi);color:var(--accent)}
+
+    .container{max-width:1080px;margin:0 auto;padding:30px 24px 50px}
+    .page-head{margin-bottom:22px}
+    .page-head h1{font-size:26px;font-weight:800;letter-spacing:-.02em}
+    .page-head p{color:var(--muted);font-size:14px;margin-top:3px}
     h2{font-size:15px;font-weight:800;margin:0 0 12px}
-    input,select,button,textarea{background:var(--card2);border:1px solid var(--border);color:var(--text);border-radius:10px;padding:9px 13px;font-size:13.5px;font-family:inherit;transition:border-color .15s,box-shadow .15s,filter .12s}
-    input:focus,select:focus,textarea:focus{outline:none;border-color:var(--violet);box-shadow:0 0 0 3px rgba(124,58,237,.16)}
-    button{cursor:pointer;font-weight:600}button:hover{filter:brightness(1.08)}
-    .btn-v{background:linear-gradient(135deg,var(--violet),var(--violet-dk));border:none;color:#fff;font-weight:700;box-shadow:0 6px 16px rgba(124,58,237,.3)}
-    .btn-danger{background:rgba(248,113,113,.12);border:1px solid rgba(248,113,113,.4);color:var(--red);font-weight:700}
-    .btn-danger:hover{background:rgba(248,113,113,.22);filter:none}
+    input,select,button,textarea{background:#fff;border:1px solid var(--border);color:var(--text);border-radius:10px;padding:9px 13px;font-size:13.5px;font-family:inherit;transition:border-color .15s,box-shadow .15s,filter .12s}
+    input:focus,select:focus,textarea:focus{outline:none;border-color:var(--accent);box-shadow:0 0 0 3px rgba(37,99,235,.14)}
+    input::placeholder,textarea::placeholder{color:var(--dim)}
+    button{cursor:pointer;font-weight:600}button:hover{border-color:var(--border-hi)}
+    .btn-v{background:linear-gradient(135deg,var(--accent-2),var(--accent-dk));border:none;color:#fff;font-weight:700;box-shadow:0 6px 16px rgba(37,99,235,.28)}
+    .btn-v:hover{filter:brightness(1.07);border:none}
+    .btn-danger{background:rgba(220,38,38,.08);border:1px solid rgba(220,38,38,.35);color:var(--red);font-weight:700}
+    .btn-danger:hover{background:rgba(220,38,38,.15);filter:none}
     .tabs{display:flex;gap:6px;margin-bottom:18px;flex-wrap:wrap}
-    .tabs button{background:var(--card);border:1px solid var(--border);color:var(--muted);font-weight:700;padding:9px 15px;border-radius:999px}
-    .tabs button:hover{color:var(--text);filter:none}
-    .tabs button.on{background:linear-gradient(135deg,var(--violet),var(--violet-dk));border-color:transparent;color:#fff}
-    table{width:100%;border-collapse:collapse;background:var(--card);border:1px solid var(--border);border-radius:14px;overflow:hidden;margin-top:10px}
+    .tabs button{background:#fff;border:1px solid var(--border);color:var(--muted);font-weight:700;padding:9px 15px;border-radius:999px}
+    .tabs button:hover{color:var(--text);filter:none;border-color:var(--border-hi)}
+    .tabs button.on{background:linear-gradient(135deg,var(--accent-2),var(--accent-dk));border-color:transparent;color:#fff}
+    .tabs button.on:hover{color:#fff}
+    section > [id$="-list"]{overflow-x:auto}
+    table{width:100%;border-collapse:collapse;background:#fff;border:1px solid var(--border);border-radius:14px;overflow:hidden;margin-top:10px;box-shadow:0 1px 3px rgba(15,23,42,.04)}
     th,td{padding:11px 14px;text-align:left;font-size:13px;border-bottom:1px solid var(--border);vertical-align:middle}
-    th{color:var(--dim);font-size:11px;text-transform:uppercase;letter-spacing:.05em;font-weight:700;background:var(--card2)}
-    tbody tr{transition:background .12s}tbody tr:hover{background:rgba(139,92,246,.05)}
+    th{color:var(--muted);font-size:11px;text-transform:uppercase;letter-spacing:.05em;font-weight:700;background:var(--card2)}
+    tbody tr{transition:background .12s}tbody tr:hover{background:var(--bg-soft)}
     tr:last-child td{border-bottom:none}
     .pill{padding:3px 10px;border-radius:999px;font-size:10.5px;font-weight:800;text-transform:capitalize}
-    .pill.yes,.pill.on{background:rgba(52,211,153,.15);color:var(--green)}
-    .pill.no,.pill.off{background:rgba(248,113,113,.15);color:var(--red)}
+    .pill.yes,.pill.on{background:rgba(22,163,74,.12);color:var(--green)}
+    .pill.no,.pill.off{background:rgba(220,38,38,.12);color:var(--red)}
     .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px}
-    .card{background:var(--card);border:1px solid var(--border);border-radius:16px;padding:18px;margin-bottom:16px}
-    .gate{max-width:360px;margin:56px auto;text-align:center}
+    .card{background:#fff;border:1px solid var(--border);border-radius:16px;padding:20px;margin-bottom:16px;box-shadow:0 1px 3px rgba(15,23,42,.04)}
+    .gate{max-width:380px;margin:48px auto;text-align:center;box-shadow:0 24px 60px -30px rgba(15,23,42,.25)}
     .gate>div:first-child{font-size:34px}
     .gate input{width:100%;margin:8px 0}
     .msg{font-size:12.5px;margin-top:10px;min-height:16px}.msg.err{color:var(--red)}.msg.ok{color:var(--green)}
@@ -49,14 +71,27 @@
     label{font-size:11px;color:var(--muted);display:block;margin:8px 0 4px;text-transform:uppercase;letter-spacing:.03em;font-weight:700}
     label span{text-transform:none;letter-spacing:0;font-weight:500;color:var(--dim)}
     td[style*="monospace"],td.key-cell{font-family:ui-monospace,Menlo,monospace}
+
+    footer.site{border-top:1px solid var(--border);padding:26px 0;color:var(--dim);font-size:13px;margin-top:20px}
+    footer.site .wrap{max-width:1080px;margin:0 auto;padding:0 24px;display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap}
+    footer.site a{color:var(--muted);text-decoration:none}footer.site a:hover{color:var(--accent)}
+    @media(max-width:860px){nav{padding:13px 20px}}
   </style>
 </head>
 <body>
+  <nav>
+    <a class="nav-logo" href="/"><img src="/favicon.svg" alt="AutoApplier logo" class="logo-img"/> AutoApplier <span class="admin-tag">Admin</span></a>
+    <div id="nav-right">
+      <span id="who" class="who" style="display:none"></span>
+      <a class="btn-g" href="/">← Home</a>
+    </div>
+  </nav>
+
   <div class="container">
-    <header>
-      <h1>🛠️ AutoApplier Admin <a href="/">← home</a></h1>
-      <span id="who" style="font-size:13px;color:var(--muted)"></span>
-    </header>
+    <div class="page-head">
+      <h1>Admin Console</h1>
+      <p>Manage license keys, plans, users, referral codes, purchases and integration health.</p>
+    </div>
 
     <div id="gate" class="gate card">
       <div style="font-size:30px">🔐</div>
@@ -85,19 +120,19 @@
             <div style="grid-column:span 2"><label>User email</label><input id="ik-email" type="email" placeholder="user@email.com" style="width:100%"></div>
             <div><label>Access</label><select id="ik-life" style="width:100%"><option value="false">Limited (days)</option><option value="true">Lifetime</option></select></div>
             <div><label>Validity (days)</label><input id="ik-days" type="number" min="1" placeholder="30" style="width:100%"></div>
-            <div style="grid-column:span 2"><label>Set password <span style="color:var(--muted)">(optional — user can change later)</span></label><input id="ik-pass" type="text" placeholder="starter password" style="width:100%"></div>
+            <div style="grid-column:span 2"><label>Set password <span style="color:var(--muted)">(optional, user can change later)</span></label><input id="ik-pass" type="text" placeholder="starter password" style="width:100%"></div>
           </div>
           <button class="btn-v" id="ik-create" style="margin-top:10px">Grant access &amp; generate key</button>
           <div id="ik-msg" class="msg"></div>
         </div>
         <div class="card">
-          <h2>Issue blank keys <span style="font-size:12px;color:var(--muted);font-weight:400">(no email — activate on first use)</span></h2>
+          <h2>Issue blank keys <span style="font-size:12px;color:var(--muted);font-weight:400">(no email, activate on first use)</span></h2>
           <div class="grid">
             <div style="grid-column:span 2"><label>Name</label><input id="k-label" placeholder="e.g. John's key / Batch A" style="width:100%"></div>
             <div><label>Validity (days)</label><input id="k-days" type="number" min="1" placeholder="30" style="width:100%"></div>
             <div><label>How many keys</label><input id="k-count" type="number" min="1" max="50" placeholder="1" style="width:100%"></div>
           </div>
-          <div style="font-size:12px;color:var(--muted);margin-top:4px">The validity clock starts when the key is first used in the extension or CRM. Give the key to your customer — they paste it and the agent runs for that many days.</div>
+          <div style="font-size:12px;color:var(--muted);margin-top:4px">The validity clock starts when the key is first used in the extension or CRM. Give the key to your customer and they paste it and the agent runs for that many days.</div>
           <button class="btn-v" id="k-create" style="margin-top:10px">＋ Generate key(s)</button>
           <div id="k-msg" class="msg"></div>
         </div>
@@ -117,7 +152,7 @@
           </div>
           <div style="font-size:12px;color:var(--muted);margin-top:4px">Validity = how many days one purchase unlocks access (e.g. 30, 90, 365). Leave blank for lifetime. (Monthly plans renew automatically and ignore this.)</div>
           <label>Description</label><textarea id="p-desc" rows="2" style="width:100%" placeholder="What this plan includes"></textarea>
-          <label>Features (one per line — shown as ticks on checkout)</label>
+          <label>Features (one per line, shown as ticks on checkout)</label>
           <textarea id="p-feats" rows="3" style="width:100%" placeholder="LinkedIn auto-apply&#10;Indeed auto-apply&#10;AI smart answers"></textarea>
           <button class="btn-v" id="p-create" style="margin-top:10px">＋ Create plan</button>
           <div id="p-msg" class="msg"></div>
@@ -181,12 +216,24 @@
       <section id="tab-purchases" style="display:none"><div id="purchases-list"></div></section>
 
       <section id="tab-health" style="display:none">
-        <p style="color:#666;margin:0 0 10px">Anonymous field-health beacons from the extension — spot a job site changing its DOM or an integration breaking. Last 300 events.</p>
+        <p style="color:#666;margin:0 0 10px">Anonymous field-health beacons from the extension. Spot a job site changing its DOM or an integration breaking. Last 300 events.</p>
         <div id="health-summary" style="margin-bottom:12px"></div>
         <div id="health-list"></div>
       </section>
     </div>
   </div>
+
+  <footer class="site">
+    <div class="wrap">
+      <div class="nav-logo" style="font-size:15px"><img src="/favicon.svg" alt="AutoApplier logo" class="logo-img"/> AutoApplier</div>
+      <div>© <span id="yr"></span> AutoApplier. Admin console.</div>
+      <div style="display:flex;gap:18px">
+        <a href="/">Home</a>
+        <a href="/crm.html">CRM</a>
+        <a href="/checkout.html">Plans</a>
+      </div>
+    </div>
+  </footer>
 
   <script>
     const $ = s => document.querySelector(s);
@@ -203,7 +250,7 @@
       try {
         const r = await fetch('/api/admin',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'login',email,password})});
         const d = await r.json(); if (!r.ok) throw new Error(d.error||r.status);
-        token=d.token; localStorage.setItem(TOKEN,token); $('#who').textContent=d.email; boot();
+        token=d.token; localStorage.setItem(TOKEN,token); const w=$('#who'); w.textContent=d.email; w.style.display=''; boot();
       } catch(e){ $('#gate-msg').className='msg err'; $('#gate-msg').textContent=e.message; }
     }
     $('#login').onclick=login;
@@ -258,10 +305,10 @@
             const cls = ['active','unused','lifetime'].includes(state) ? 'on' : 'off';
             return `<tr>
               <td style="font-family:monospace;font-weight:700">${esc(k.key)}</td>
-              <td style="color:var(--muted)">${esc(k.email||k.label||'—')}</td>
+              <td style="color:var(--muted)">${esc(k.email||k.label||'-')}</td>
               <td>${k.lifetime?'lifetime':k.validity_days+' days'}</td>
               <td><span class="pill ${cls}">${state}</span></td>
-              <td style="color:var(--muted)">${k.lifetime?'never':(k.expires_at?new Date(k.expires_at).toLocaleDateString():'—')}</td>
+              <td style="color:var(--muted)">${k.lifetime?'never':(k.expires_at?new Date(k.expires_at).toLocaleDateString():'-')}</td>
               <td style="white-space:nowrap;display:flex;gap:6px">
                 <button class="mini" data-copy="${esc(k.key)}">Copy</button>
                 ${k.status==='revoked'
@@ -403,17 +450,17 @@
         // 24h summary by type and by platform (all values escaped — the source is a public endpoint).
         const dayAgo = Date.now() - 24*3600*1000;
         const recent = rows.filter(r=>new Date(r.created_at).getTime() >= dayAgo);
-        const tally = (arr,k)=>{ const m={}; arr.forEach(r=>{ const v=r[k]||'—'; m[v]=(m[v]||0)+1; }); return Object.entries(m).sort((a,b)=>b[1]-a[1]); };
+        const tally = (arr,k)=>{ const m={}; arr.forEach(r=>{ const v=r[k]||'-'; m[v]=(m[v]||0)+1; }); return Object.entries(m).sort((a,b)=>b[1]-a[1]); };
         const chip = (label,n,warn)=>`<span style="display:inline-block;margin:2px 6px 2px 0;padding:3px 9px;border-radius:20px;font-size:12px;background:${warn?'#fde8e8':'#eef2ff'};color:${warn?'#b91c1c':'#3730a3'}">${esc(label)} · ${n}</span>`;
         const WARN = /error|miss|fail|captcha|no_cards/;
         $('#health-summary').innerHTML =
-          `<div style="margin-bottom:6px"><b>Last 24h — by event</b><br>${tally(recent,'type').map(([t,n])=>chip(t,n,WARN.test(t))).join('')||'—'}</div>`+
-          `<div><b>Last 24h — by platform</b><br>${tally(recent,'platform').map(([p,n])=>chip(p,n,false)).join('')||'—'}</div>`;
+          `<div style="margin-bottom:6px"><b>Last 24h · by event</b><br>${tally(recent,'type').map(([t,n])=>chip(t,n,WARN.test(t))).join('')||'-'}</div>`+
+          `<div><b>Last 24h · by platform</b><br>${tally(recent,'platform').map(([p,n])=>chip(p,n,false)).join('')||'-'}</div>`;
         $('#health-list').innerHTML = `<table><thead><tr><th>When</th><th>Type</th><th>Platform</th><th>Detail</th><th>Host</th><th>Ver</th></tr></thead><tbody>${
           rows.slice(0,300).map(r=>`<tr>
             <td style="color:var(--muted);white-space:nowrap">${new Date(r.created_at).toLocaleString()}</td>
             <td><span style="color:${WARN.test(r.type||'')?'#b91c1c':'#3730a3'};font-weight:600">${esc(r.type)}</span></td>
-            <td>${esc(r.platform||'—')}</td>
+            <td>${esc(r.platform||'-')}</td>
             <td style="max-width:340px;overflow:hidden;text-overflow:ellipsis">${esc(r.detail||'')}</td>
             <td style="color:var(--muted)">${esc(r.host||'')}</td>
             <td style="color:var(--muted)">${esc(r.version||'')}</td></tr>`).join('')}</tbody></table>`;
@@ -421,6 +468,7 @@
     }
 
     function boot(){ $('#gate').style.display='none'; $('#app').style.display=''; loadKeys(); }
+    document.getElementById('yr').textContent = new Date().getFullYear();
     if (token) boot();
   </script>
 </body>

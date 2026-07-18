@@ -59,6 +59,8 @@
       color: var(--text); text-decoration: none;
     }
     .nav-logo span { font-size: 20px; }
+    .nav-logo .logo-img { width: 26px; height: 26px; border-radius: 7px; display: block; }
+    footer.site .nav-logo .logo-img { width: 22px; height: 22px; border-radius: 6px; }
     .nav-links { display: none; gap: 26px; }
     .nav-links a { font-size: 14px; font-weight: 600; color: var(--muted); text-decoration: none; transition: color .13s; }
     .nav-links a:hover { color: var(--text); }
@@ -460,7 +462,7 @@
 <!-- ── Nav ── -->
 <nav>
   <a class="nav-logo" href="/">
-    <span>🤖</span> AutoApplier
+    <img src="/favicon.svg" alt="AutoApplier logo" class="logo-img"/> AutoApplier
   </a>
   <div class="nav-links">
     <a href="#how">How it works</a>
@@ -839,7 +841,7 @@
 
   <footer class="site">
     <div class="wrap">
-      <div class="nav-logo" style="font-size:15px"><span>🤖</span> AutoApplier</div>
+      <div class="nav-logo" style="font-size:15px"><img src="/favicon.svg" alt="AutoApplier logo" class="logo-img"/> AutoApplier</div>
       <div>© <span id="yr"></span> AutoApplier. Automated job applications for LinkedIn, Indeed, Naukri and Bayt.</div>
       <div style="display:flex;gap:18px">
         <a href="/crm.html">CRM</a>

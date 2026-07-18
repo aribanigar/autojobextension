@@ -28,6 +28,8 @@
     nav{position:sticky;top:0;z-index:200;display:flex;align-items:center;justify-content:space-between;padding:15px 40px;background:rgba(255,255,255,.85);border-bottom:1px solid var(--border);backdrop-filter:blur(16px)}
     .nav-logo{display:flex;align-items:center;gap:9px;font-size:18px;font-weight:800;letter-spacing:-.01em;color:var(--text);text-decoration:none}
     .nav-logo span{font-size:20px}
+    .nav-logo .logo-img{width:26px;height:26px;border-radius:7px;display:block}
+    footer.site .nav-logo .logo-img{width:22px;height:22px;border-radius:6px}
     .nav-links{display:none;gap:26px}
     .nav-links a{font-size:14px;font-weight:600;color:var(--muted);text-decoration:none;transition:color .13s}
     .nav-links a:hover{color:var(--text)}
@@ -123,7 +125,7 @@
 
   <!-- Nav -->
   <nav>
-    <a class="nav-logo" href="/"><span>🤖</span> AutoApplier</a>
+    <a class="nav-logo" href="/"><img src="/favicon.svg" alt="AutoApplier logo" class="logo-img"/> AutoApplier</a>
     <div class="nav-links">
       <a href="/#how">How it works</a>
       <a href="/#platforms">Platforms</a>
@@ -224,7 +226,7 @@
 
   <footer class="site">
     <div class="wrap">
-      <div class="nav-logo" style="font-size:15px"><span>🤖</span> AutoApplier</div>
+      <div class="nav-logo" style="font-size:15px"><img src="/favicon.svg" alt="AutoApplier logo" class="logo-img"/> AutoApplier</div>
       <div>© <span id="yr"></span> AutoApplier. Automated job applications for LinkedIn, Indeed, Naukri and Bayt.</div>
       <div style="display:flex;gap:18px">
         <a href="/">Home</a>
