@@ -5,8 +5,9 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
   <link rel="apple-touch-icon" href="/favicon.svg" />
-  <title>AutoApplier – AI Job Application Agent</title>
-  <meta name="description" content="AutoApplier automatically applies to jobs on LinkedIn, Indeed, Naukri and Bayt — fills forms, answers screening questions, clicks through every step, and moves to the next job hands-free." />
+  <link rel="stylesheet" href="https://cdn-uicons.flaticon.com/uicons-regular-rounded/css/uicons-regular-rounded.css" />
+  <title>AutoApplier - Auto Apply to Jobs on LinkedIn, Indeed, Naukri &amp; Bayt</title>
+  <meta name="description" content="AutoApplier automatically applies to jobs on LinkedIn, Indeed, Naukri and Bayt. It fills forms, answers screening questions, clicks through every step, and moves to the next job hands-free." />
   <style>
     :root {
       --bg:           #ffffff;
@@ -168,12 +169,33 @@
     .ferr { font-size: 12px; color: var(--danger); margin-bottom: 10px; display: none; }
     .ferr.show { display: block; }
 
-    /* Logo strip */
-    .logos-row {
-      display: flex; align-items: center; justify-content: center; gap: 34px 56px; flex-wrap: wrap;
+    /* Icons (Flaticon UIcons) */
+    i[class^="fi-"], i[class*=" fi-"] { display: inline-flex; align-items: center; line-height: 0; vertical-align: -1px; }
+    .btn i { font-size: 14px; }
+
+    /* Platform chips under the hero */
+    .chips { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 24px; }
+    .chip {
+      display: inline-flex; align-items: center; gap: 8px;
+      font-size: 13.5px; font-weight: 650; color: #334155;
+      background: #fff; border: 1px solid var(--border); border-radius: 22px; padding: 8px 15px;
+      box-shadow: 0 1px 2px rgba(15,23,42,.04);
     }
-    .logos-row img { height: 30px; width: auto; opacity: .9; filter: saturate(1); }
-    .logos-cap { text-align: center; font-size: 12.5px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: var(--dim); margin-bottom: 26px; }
+    .chip i { font-size: 15px; color: var(--accent); }
+
+    /* Intro block */
+    .intro-lead { max-width: 820px; margin: 0 auto; text-align: center; }
+    .intro-lead h2 { font-size: clamp(24px, 2.7vw, 34px); font-weight: 800; letter-spacing: -.02em; }
+    .intro-lead p { font-size: 17px; color: var(--muted); margin-top: 16px; }
+
+    /* Steps */
+    .step-ico {
+      width: 50px; height: 50px; border-radius: 14px;
+      background: linear-gradient(135deg, var(--accent-2), var(--accent-dk)); color: #fff;
+      display: flex; align-items: center; justify-content: center;
+      margin-bottom: 16px; box-shadow: 0 6px 14px rgba(37,99,235,.3);
+    }
+    .step-ico i { font-size: 22px; }
 
     /* Steps */
     .steps-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 22px; }
@@ -198,7 +220,12 @@
       transition: border-color .15s, box-shadow .15s, transform .15s;
     }
     .plat-card:hover { border-color: var(--border-hi); box-shadow: 0 16px 36px -20px rgba(37,99,235,.4); transform: translateY(-2px); }
-    .plat-logo { height: 30px; width: auto; margin-bottom: 16px; display: block; }
+    .pi { width: 52px; height: 52px; border-radius: 14px; display: flex; align-items: center; justify-content: center; margin-bottom: 16px; }
+    .pi i { font-size: 25px; }
+    .pi-li { background: rgba(10,102,194,.12);  color: #0a66c2; }
+    .pi-in { background: rgba(37,87,167,.14);   color: #2557a7; }
+    .pi-nk { background: rgba(24,117,229,.13);  color: #1875e5; }
+    .pi-by { background: rgba(3,120,180,.13);   color: #0378b4; }
     .plat-card h3 { font-size: 18px; font-weight: 750; margin-bottom: 8px; }
     .plat-card p { font-size: 14.5px; color: var(--muted); }
     .plat-tag {
@@ -207,14 +234,17 @@
       border: 1px solid rgba(37,99,235,.16); padding: 3px 10px; border-radius: 16px; margin-bottom: 14px;
     }
 
-    /* Features */
+    /* Features & benefits */
     .feat-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 22px; }
+    .ben-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 20px; }
     .feat-card { background: #fff; border: 1px solid var(--border); border-radius: 16px; padding: 26px 22px; transition: border-color .15s, transform .15s; }
     .feat-card:hover { border-color: var(--border-hi); transform: translateY(-2px); }
     .feat-ico {
-      width: 46px; height: 46px; border-radius: 13px; background: var(--accent-dim);
-      display: flex; align-items: center; justify-content: center; font-size: 22px; margin-bottom: 15px;
+      width: 48px; height: 48px; border-radius: 13px; background: var(--accent-dim);
+      display: flex; align-items: center; justify-content: center; margin-bottom: 15px;
     }
+    .feat-ico i { font-size: 23px; color: var(--accent); }
+    .tick i { font-size: 10px; }
     .feat-card h3 { font-size: 16px; font-weight: 750; margin-bottom: 6px; }
     .feat-card p { font-size: 14px; color: var(--muted); }
 
@@ -227,7 +257,7 @@
     }
     .faq summary::-webkit-details-marker { display: none; }
     .faq summary::after { content: '+'; font-size: 22px; color: var(--accent); font-weight: 400; line-height: 1; }
-    .faq[open] summary::after { content: '–'; }
+    .faq[open] summary::after { content: '-'; }
     .faq p { font-size: 14.5px; color: var(--muted); padding: 0 0 18px; }
 
     /* CTA band */
@@ -325,14 +355,21 @@
     #toast.ok  { background: #ecfdf5; border: 1px solid rgba(22,163,74,.3); color: #15803d; }
     #toast.err { background: #fef2f2; border: 1px solid rgba(220,38,38,.3); color: #b91c1c; }
 
+    @media (max-width: 980px) {
+      .ben-grid { grid-template-columns: 1fr 1fr; }
+    }
     @media (max-width: 860px) {
       .hero-grid { grid-template-columns: 1fr; gap: 34px; padding: 48px 0; }
       .steps-grid { grid-template-columns: 1fr; }
       .plat-grid { grid-template-columns: 1fr; }
       .feat-grid { grid-template-columns: 1fr; }
+      .ben-grid { grid-template-columns: 1fr 1fr; }
       .section { padding: 56px 0; }
       nav { padding: 13px 20px; }
       .create-form { grid-template-columns: 1fr; }
+    }
+    @media (max-width: 520px) {
+      .ben-grid, .feat-grid { grid-template-columns: 1fr; }
     }
   </style>
 </head>
@@ -362,17 +399,22 @@
     <div class="wrap">
       <div class="hero-grid">
         <div class="hero-copy">
-          <span class="eyebrow">🤖 AI Auto-Apply Agent</span>
-          <h1>Apply to hundreds of jobs on <span class="grad">autopilot</span></h1>
-          <p class="lead">AutoApplier is a browser extension that applies to jobs for you on <strong>LinkedIn</strong>, <strong>Indeed</strong>, <strong>Naukri</strong> and <strong>Bayt</strong>. It opens each listing, fills every form, answers screening questions from your profile, submits, and moves to the next job — completely hands-free.</p>
+          <h1>Auto apply to jobs on <span class="grad">LinkedIn, Indeed, Naukri and Bayt</span></h1>
+          <p class="lead">AutoApplier is a browser extension that does your job applications for you. You run a normal search on any supported job board, press Start, and the agent opens each listing, fills in the application, answers the screening questions from your saved profile, submits it, and moves straight on to the next job. You stay in control and can stop it at any time.</p>
           <div class="hero-cta">
-            <button class="btn btn-primary btn-lg" onclick="gotoLogin()">Get started free →</button>
+            <button class="btn btn-primary btn-lg" onclick="gotoLogin()">Get started free <i class="fi-rr-arrow-right"></i></button>
             <a class="btn btn-ghost btn-lg" href="#how">See how it works</a>
           </div>
           <div class="feature-list">
-            <div class="feature-item"><span class="tick">✓</span> Works on LinkedIn Easy Apply, Indeed, Naukri &amp; Bayt</div>
-            <div class="feature-item"><span class="tick">✓</span> Answers screening questions automatically from your profile</div>
-            <div class="feature-item"><span class="tick">✓</span> Runs continuously across pages — stop anytime</div>
+            <div class="feature-item"><span class="tick"><i class="fi-rr-check"></i></span> Applies for you on LinkedIn Easy Apply, Indeed, Naukri and Bayt</div>
+            <div class="feature-item"><span class="tick"><i class="fi-rr-check"></i></span> Answers screening questions automatically from your profile</div>
+            <div class="feature-item"><span class="tick"><i class="fi-rr-check"></i></span> Keeps applying across pages until you tell it to stop</div>
+          </div>
+          <div class="chips">
+            <span class="chip"><i class="fi-rr-briefcase"></i> LinkedIn</span>
+            <span class="chip"><i class="fi-rr-building"></i> Indeed</span>
+            <span class="chip"><i class="fi-rr-id-badge"></i> Naukri &amp; Naukri Gulf</span>
+            <span class="chip"><i class="fi-rr-marker"></i> Bayt</span>
           </div>
         </div>
 
@@ -399,85 +441,115 @@
             </button>
           </form>
           <p style="font-size:12px;color:var(--muted);text-align:center;margin-top:18px;">
-            No account? <a href="/checkout.html" style="color:var(--accent-light);font-weight:600;text-decoration:none">Buy a plan to get instant access →</a><br>
+            No account? <a href="/checkout.html" style="color:var(--accent-light);font-weight:600;text-decoration:none">Buy a plan to get instant access</a><br>
             <span style="opacity:.75">or contact your administrator.</span>
           </p>
-        </div>
-      </div>
-
-      <!-- Logo strip -->
-      <div style="padding-bottom:56px">
-        <div class="logos-cap">Automates applications on</div>
-        <div class="logos-row">
-          <img src="/assets/logos/linkedin.png" alt="LinkedIn" />
-          <img src="/assets/logos/indeed.png" alt="Indeed" />
-          <img src="/assets/logos/naukri.png" alt="Naukri" />
-          <img src="/assets/logos/bayt.png" alt="Bayt" />
         </div>
       </div>
     </div>
   </div>
 
+  <!-- Intro / what it is -->
+  <section class="section">
+    <div class="wrap">
+      <div class="intro-lead">
+        <h2>Applying to jobs by hand takes hours. AutoApplier gives that time back.</h2>
+        <p>Searching, opening every listing, re-typing the same details, and answering the same screening questions over and over is slow and repetitive work. Most people give up after a handful of applications, even though applying to more roles is the single biggest thing you can do to land interviews faster.</p>
+        <p>AutoApplier removes that friction. It runs inside your own browser, uses your own account, and applies exactly the way you would, only far faster and without getting tired. Set up your details once and it will work through page after page of jobs while you do something else.</p>
+      </div>
+    </div>
+  </section>
+
   <!-- How it works -->
-  <section class="section" id="how">
+  <section class="section section-alt" id="how">
     <div class="wrap">
       <div class="sec-head">
-        <span class="eyebrow">How it works</span>
-        <h2>From “applying by hand” to “applied while you sleep”</h2>
-        <p>Set it up once, then let the agent do the repetitive work on every job board.</p>
+        <h2>How AutoApplier works</h2>
+        <p>Three simple steps. Set it up once, then let it run on every job board you use.</p>
       </div>
       <div class="steps-grid">
         <div class="step-card">
-          <div class="step-num">1</div>
-          <h3>Install &amp; set your profile</h3>
-          <p>Load the extension in Chrome or Edge and fill in your details, resume answers, and job preferences once. Add your own Gemini key if you want AI-written answers.</p>
+          <div class="step-ico"><i class="fi-rr-settings-sliders"></i></div>
+          <h3>1. Set up your profile once</h3>
+          <p>Install the extension in Chrome or Edge and fill in your details, your standard answers, and your job preferences. This is the information the agent will reuse on every application, so you only enter it a single time. You can also add your own Gemini key if you want AI written answers for open questions.</p>
         </div>
         <div class="step-card">
-          <div class="step-num">2</div>
-          <h3>Open a search &amp; hit Start</h3>
-          <p>Go to LinkedIn, Indeed, Naukri or Bayt, run a job search, and press Start. Tick specific jobs to apply only to those, or let it apply to every match.</p>
+          <div class="step-ico"><i class="fi-rr-search"></i></div>
+          <h3>2. Search and press Start</h3>
+          <p>Open LinkedIn, Indeed, Naukri or Bayt and run a normal job search with the filters you want. Press Start in the extension. You can let it apply to every matching job, or tick only the specific jobs you want and it will apply to just those, in order.</p>
         </div>
         <div class="step-card">
-          <div class="step-num">3</div>
-          <h3>Watch it apply</h3>
-          <p>The agent opens each job, fills the form, answers questions, clicks through every step, submits, and moves on — page after page, until you stop it.</p>
+          <div class="step-ico"><i class="fi-rr-play-circle"></i></div>
+          <h3>3. Watch it apply for you</h3>
+          <p>The agent opens each job, fills the form, answers the screening questions, clicks through every step, and submits. Then it returns to the list and moves to the next job, page after page, until you press Stop. It only pauses to hand a captcha back to you.</p>
         </div>
       </div>
     </div>
   </section>
 
   <!-- Platforms -->
-  <section class="section section-alt" id="platforms">
+  <section class="section" id="platforms">
     <div class="wrap">
       <div class="sec-head">
-        <span class="eyebrow">Supported platforms</span>
         <h2>One agent, four job boards</h2>
-        <p>Each platform has its own dedicated apply flow, tuned to how that site really works.</p>
+        <p>Every platform has its own dedicated apply flow, built around how that site actually works.</p>
       </div>
       <div class="plat-grid">
         <div class="plat-card">
-          <img class="plat-logo" src="/assets/logos/linkedin.png" alt="LinkedIn" />
-          <span class="plat-tag">Easy Apply</span>
-          <h3>LinkedIn — end to end</h3>
-          <p>Detects every Easy Apply job in your search, opens the modal, steps through each page of the application, fills answers and uploads, then submits — and paginates to the next results page automatically.</p>
+          <div class="pi pi-li"><i class="fi-rr-briefcase"></i></div>
+          <span class="plat-tag">LinkedIn Easy Apply</span>
+          <h3>LinkedIn, end to end</h3>
+          <p>The agent finds every Easy Apply job in your search, opens the application modal, and steps through each page. It fills your answers, handles the dropdowns and questions, and submits. Then it closes the modal, moves to the next card, and turns the page automatically so it keeps going without you.</p>
         </div>
         <div class="plat-card">
-          <img class="plat-logo" src="/assets/logos/indeed.png" alt="Indeed" />
+          <div class="pi pi-in"><i class="fi-rr-building"></i></div>
           <span class="plat-tag">Apply with Indeed</span>
-          <h3>Indeed — multi-step apply</h3>
-          <p>Handles the full Apply-with-Indeed flow, the cross-domain hop to the apply page, and every Continue / Submit step. If a captcha appears it hands off to you, then resumes on its own.</p>
+          <h3>Indeed, multi step apply</h3>
+          <p>Indeed applications span several steps and often move to a separate apply page. The agent follows that whole flow, clicking Continue and Submit through each stage. If a captcha appears it never tries to solve it. It spotlights the captcha, alerts you, and picks up again the moment you clear it.</p>
         </div>
         <div class="plat-card">
-          <img class="plat-logo" src="/assets/logos/naukri.png" alt="Naukri" />
-          <span class="plat-tag">Naukri &amp; Naukri Gulf</span>
-          <h3>Naukri — full application flow</h3>
-          <p>Clicks Apply, walks through chatbot or direct-form questions, answers them from your saved profile, and returns to the list to continue. Naukri.com and Naukri Gulf each run as their own flow.</p>
+          <div class="pi pi-nk"><i class="fi-rr-id-badge"></i></div>
+          <span class="plat-tag">Naukri and Naukri Gulf</span>
+          <h3>Naukri, full application flow</h3>
+          <p>The agent clicks Apply, then works through the questions whether they appear as a chatbot or as a direct form, answering each one from your saved profile. When the application is done it returns to the list and continues. Naukri.com and Naukri Gulf each run as their own separate flow.</p>
         </div>
         <div class="plat-card">
-          <img class="plat-logo" src="/assets/logos/bayt.png" alt="Bayt" />
-          <span class="plat-tag">Easy Apply</span>
-          <h3>Bayt — Easy Apply</h3>
-          <p>Scans the results list, clicks Easy Apply on each job, fills the application and any screening questions, clicks “Apply now”, then returns to the search and continues through every page.</p>
+          <div class="pi pi-by"><i class="fi-rr-marker"></i></div>
+          <span class="plat-tag">Bayt Easy Apply</span>
+          <h3>Bayt, Easy Apply</h3>
+          <p>On Bayt the agent scans the results list, clicks Easy Apply on each job, and fills in the application along with any screening questions. It clicks Apply now to submit, returns to the job search, and keeps going through every listing and every page of results.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Benefits -->
+  <section class="section section-alt">
+    <div class="wrap">
+      <div class="sec-head">
+        <h2>Why job seekers use AutoApplier</h2>
+        <p>More applications, far less effort, and none of the repetitive typing.</p>
+      </div>
+      <div class="ben-grid">
+        <div class="feat-card">
+          <div class="feat-ico"><i class="fi-rr-time-fast"></i></div>
+          <h3>Save hours every day</h3>
+          <p>What normally takes a full afternoon of clicking and typing runs on its own in the background while you focus on interviews and prep.</p>
+        </div>
+        <div class="feat-card">
+          <div class="feat-ico"><i class="fi-rr-rocket"></i></div>
+          <h3>Apply to far more jobs</h3>
+          <p>The more roles you apply to, the more replies you get. The agent lets you reach many more listings than you ever could by hand.</p>
+        </div>
+        <div class="feat-card">
+          <div class="feat-ico"><i class="fi-rr-badge-check"></i></div>
+          <h3>Never miss a question</h3>
+          <p>Screening questions are answered every time from your profile, so applications are complete and consistent instead of rushed.</p>
+        </div>
+        <div class="feat-card">
+          <div class="feat-ico"><i class="fi-rr-following"></i></div>
+          <h3>Stay consistent</h3>
+          <p>Every applied and skipped job is tracked automatically, so you always know where you have applied and never send a duplicate.</p>
         </div>
       </div>
     </div>
@@ -487,40 +559,39 @@
   <section class="section" id="features">
     <div class="wrap">
       <div class="sec-head">
-        <span class="eyebrow">Features</span>
-        <h2>Built to apply like a human — at machine speed</h2>
-        <p>Smart form-filling, safe captcha handling, and a memory that gets better the more you use it.</p>
+        <h2>Built to apply like a human, at machine speed</h2>
+        <p>Smart form filling, safe captcha handling, and a memory that improves the more you use it.</p>
       </div>
       <div class="feat-grid">
         <div class="feat-card">
-          <div class="feat-ico">🤖</div>
+          <div class="feat-ico"><i class="fi-rr-comment-question"></i></div>
           <h3>Answers screening questions</h3>
-          <p>Reads each question and answers it from your profile — or from your own Gemini API key for anything custom.</p>
+          <p>The agent reads each question and answers it from your profile. For anything custom, it can use your own Gemini API key to write a fitting answer.</p>
         </div>
         <div class="feat-card">
-          <div class="feat-ico">🧠</div>
+          <div class="feat-ico"><i class="fi-rr-brain"></i></div>
           <h3>Learns your answers</h3>
-          <p>Anything you type in manually is remembered and auto-filled the next time the same question comes up.</p>
+          <p>Anything you fill in by hand is remembered and filled in automatically the next time the same question comes up, so it gets smarter as you go.</p>
         </div>
         <div class="feat-card">
-          <div class="feat-ico">🛡️</div>
-          <h3>Safe captcha hand-off</h3>
-          <p>Never auto-solves captchas. It spotlights them, sends you a desktop alert, and resumes the moment you clear it.</p>
+          <div class="feat-ico"><i class="fi-rr-shield-check"></i></div>
+          <h3>Safe captcha hand off</h3>
+          <p>It never tries to auto solve a captcha. It highlights it on the page, sends you a desktop alert, and resumes the moment you have cleared it.</p>
         </div>
         <div class="feat-card">
-          <div class="feat-ico">🖱️</div>
-          <h3>Human-like behavior</h3>
-          <p>Randomized delays and natural clicks and typing, so applications look like they came from a real person.</p>
+          <div class="feat-ico"><i class="fi-rr-cursor-finger"></i></div>
+          <h3>Human like behavior</h3>
+          <p>Randomized delays and natural clicking and typing mean each application looks like it came from a real person, not a script.</p>
         </div>
         <div class="feat-card">
-          <div class="feat-ico">♾️</div>
+          <div class="feat-ico"><i class="fi-rr-infinity"></i></div>
           <h3>Runs continuously</h3>
-          <p>Keeps applying across every page and navigation until you press Stop — no need to babysit it.</p>
+          <p>The agent keeps working across every page and navigation until you press Stop. There is no need to sit and watch it or restart it.</p>
         </div>
         <div class="feat-card">
-          <div class="feat-ico">📊</div>
-          <h3>Built-in CRM tracker</h3>
-          <p>Every applied and skipped job is logged automatically, so you always know where you’ve applied.</p>
+          <div class="feat-ico"><i class="fi-rr-chart-histogram"></i></div>
+          <h3>Built in CRM tracker</h3>
+          <p>Every job you apply to is logged in a built in tracker, so you always have a clear record of your applications in one place.</p>
         </div>
       </div>
     </div>
@@ -530,29 +601,33 @@
   <section class="section section-alt" id="faq">
     <div class="wrap">
       <div class="sec-head">
-        <span class="eyebrow">FAQ</span>
-        <h2>Questions, answered</h2>
+        <h2>Frequently asked questions</h2>
+        <p>Everything you need to know before you start.</p>
       </div>
       <div class="faq-list">
         <details class="faq" open>
-          <summary>Which job sites are supported?</summary>
-          <p>LinkedIn (Easy Apply), Indeed, Naukri and Naukri Gulf, and Bayt. Each has its own dedicated apply flow.</p>
+          <summary>Which job sites does it support?</summary>
+          <p>AutoApplier works on LinkedIn Easy Apply, Indeed, Naukri, Naukri Gulf, and Bayt. Each site has its own dedicated apply flow that is tuned to how that platform actually behaves.</p>
         </details>
         <details class="faq">
-          <summary>Which browsers does it work on?</summary>
-          <p>Google Chrome and Microsoft Edge. It’s a Manifest V3 extension you load unpacked — download the zip, unzip it, and add it from the extensions page.</p>
+          <summary>Which browsers can I use?</summary>
+          <p>Google Chrome and Microsoft Edge. AutoApplier is a Manifest V3 extension that you load unpacked. You download the zip, unzip it, and add it from your browser extensions page. The dashboard walks you through every step.</p>
         </details>
         <details class="faq">
-          <summary>Do I have to sit and watch it?</summary>
-          <p>No. Once you press Start it runs on its own across pages and job listings. It only pauses for captchas, which it flags for you and resumes automatically once solved.</p>
+          <summary>Do I have to sit and watch it work?</summary>
+          <p>No. Once you press Start it runs on its own across pages and job listings. The only time it pauses is for a captcha, which it flags for you and then resumes automatically once you have solved it.</p>
         </details>
         <details class="faq">
-          <summary>Is it safe to use on my account?</summary>
-          <p>It runs entirely inside your own browser with your own login, uses human-like pacing, and never auto-solves captchas. You stay in control and can stop it at any moment.</p>
+          <summary>Is it safe to use on my accounts?</summary>
+          <p>The agent runs entirely inside your own browser using your own login. It uses human like timing, never auto solves captchas, and does nothing you could not do yourself. You stay in full control and can stop it instantly at any moment.</p>
+        </details>
+        <details class="faq">
+          <summary>Can I choose which jobs to apply to?</summary>
+          <p>Yes. You can let the agent apply to every job that matches your search, or tick only the specific listings you want. When you tick jobs, it applies to just those, one after another, in the order you picked them.</p>
         </details>
         <details class="faq">
           <summary>How do I get access?</summary>
-          <p>Sign in and enter your activation key — or buy a plan for instant access. The same key unlocks both the extension and the CRM tracker.</p>
+          <p>Sign in and enter your activation key, or buy a plan for instant access. The same key unlocks both the extension and the built in CRM tracker, so you only manage one key.</p>
         </details>
       </div>
     </div>
@@ -565,7 +640,7 @@
         <h2>Ready to stop applying by hand?</h2>
         <p>Install AutoApplier and let it work through LinkedIn, Indeed, Naukri and Bayt for you.</p>
         <div style="display:flex;gap:12px;justify-content:center;flex-wrap:wrap">
-          <button class="btn btn-lg cta-white" onclick="gotoLogin()">Get started free →</button>
+          <button class="btn btn-lg cta-white" onclick="gotoLogin()">Get started free <i class="fi-rr-arrow-right"></i></button>
           <a class="btn btn-ghost btn-lg" href="/checkout.html">View plans</a>
         </div>
       </div>
@@ -575,7 +650,7 @@
   <footer class="site">
     <div class="wrap">
       <div class="nav-logo" style="font-size:15px"><span>🤖</span> AutoApplier</div>
-      <div>© <span id="yr"></span> AutoApplier · Automated job applications for LinkedIn, Indeed, Naukri &amp; Bayt</div>
+      <div>© <span id="yr"></span> AutoApplier. Automated job applications for LinkedIn, Indeed, Naukri and Bayt.</div>
       <div style="display:flex;gap:18px">
         <a href="/crm.html">CRM</a>
         <a href="/checkout.html">Plans</a>
@@ -593,7 +668,7 @@
   <!-- Access-needed banner (no active key or plan yet) -->
   <div id="lic-banner" style="display:none;background:linear-gradient(135deg,rgba(245,158,11,.16),rgba(245,158,11,.05));border:1px solid rgba(245,158,11,.35);border-radius:14px;padding:18px 22px;margin-bottom:22px">
     <div style="font-weight:700;margin-bottom:4px">🔑 Enter your activation key to unlock</div>
-    <div style="font-size:13px;color:var(--muted);margin-bottom:12px">You're signed in. Paste the activation key your admin gave you in the box below to unlock the agent and CRM — or buy a plan.</div>
+    <div style="font-size:13px;color:var(--muted);margin-bottom:12px">You're signed in. Paste the activation key your admin gave you in the box below to unlock the agent and CRM, or buy a plan.</div>
     <a class="btn btn-primary btn-sm" href="/checkout.html">Buy a plan →</a>
   </div>
 
@@ -660,7 +735,7 @@
       </div>
       <div class="step">
         <span class="sn">5</span>
-        <p>Paste your <strong>activation key</strong> (shown in the Activation Key box above) and click <strong>Save &amp; Activate</strong> — it should say “✓ Activated”.</p>
+        <p>Paste your <strong>activation key</strong> (shown in the Activation Key box above) and click <strong>Save &amp; Activate</strong>, it should say “✓ Activated”.</p>
       </div>
       <div class="step">
         <span class="sn">6</span>
@@ -672,7 +747,7 @@
   <!-- Referral link (any signed-in user) -->
   <div class="card" id="ref-card" style="display:none">
     <h3>Refer &amp; earn</h3>
-    <p style="font-size:13px;color:var(--muted);margin:8px 0 12px" id="ref-terms">Share your link — friends get a discount and you earn free days.</p>
+    <p style="font-size:13px;color:var(--muted);margin:8px 0 12px" id="ref-terms">Share your link. Friends get a discount and you earn free days.</p>
     <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
       <input id="ref-link" readonly style="flex:1;min-width:220px;background:var(--bg);border:1px solid var(--border);color:var(--text);border-radius:9px;padding:10px 12px;font-size:13px" />
       <button class="btn btn-primary btn-sm" id="ref-copy">Copy link</button>
@@ -862,7 +937,7 @@
           errEl.classList.add('show');
         }
       } catch {
-        errEl.textContent = 'Network error — please try again';
+        errEl.textContent = 'Network error, please try again';
         errEl.classList.add('show');
       }
       btn.disabled = false; btn.textContent = 'Sign In';
@@ -887,7 +962,7 @@
         errEl.textContent = d.emailed === false
           ? (d.note || 'Contact your administrator to reset your password.')
           : 'If that email is registered, a reset link is on its way.';
-      } catch { errEl.textContent = 'Could not send reset link — try again.'; }
+      } catch { errEl.textContent = 'Could not send reset link, try again.'; }
     },
   };
 
@@ -984,7 +1059,7 @@
               <div class="avatar">${esc(u.email[0].toUpperCase())}</div>
               <div>
                 <div class="uname">${esc(u.email)}</div>
-                <div class="udate">Joined ${u.created_at ? new Date(u.created_at).toLocaleDateString('en-US', {month:'short',day:'numeric',year:'numeric'}) : '—'}</div>
+                <div class="udate">Joined ${u.created_at ? new Date(u.created_at).toLocaleDateString('en-US', {month:'short',day:'numeric',year:'numeric'}) : '-'}</div>
               </div>
             </div>
             <button class="btn btn-danger-soft" data-email="${esc(u.email)}" onclick="Admin.deleteUser(this)">Remove</button>
