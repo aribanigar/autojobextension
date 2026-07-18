@@ -355,6 +355,86 @@
     #toast.ok  { background: #ecfdf5; border: 1px solid rgba(22,163,74,.3); color: #15803d; }
     #toast.err { background: #fef2f2; border: 1px solid rgba(220,38,38,.3); color: #b91c1c; }
 
+    /* Trusted-by logo strip */
+    .trust-cap { text-align: center; font-size: 12.5px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--dim); margin: 0 0 22px; }
+    .trust { display: flex; align-items: center; justify-content: center; gap: 30px 52px; flex-wrap: wrap; }
+    .trust img { height: 27px; width: auto; opacity: .92; }
+    .hero-trust { padding: 0 0 56px; }
+    .plat-logo { height: 26px; width: auto; margin-bottom: 16px; display: block; }
+
+    /* ── "See it working" — alternating step rows with product mockups ── */
+    .hiw { display: flex; flex-direction: column; gap: 62px; }
+    .hiw-row { display: grid; grid-template-columns: 1fr 1fr; gap: 54px; align-items: center; }
+    .hiw-row.rev .hiw-visual { order: 2; }
+    .hiw-num {
+      width: 42px; height: 42px; border-radius: 50%;
+      background: linear-gradient(135deg, var(--accent-2), var(--accent-dk)); color: #fff;
+      display: flex; align-items: center; justify-content: center; font-size: 18px; font-weight: 800;
+      margin-bottom: 16px; box-shadow: 0 6px 14px rgba(37,99,235,.3);
+    }
+    .hiw-text h3 { font-size: clamp(20px, 2.2vw, 26px); font-weight: 800; letter-spacing: -.01em; margin-bottom: 10px; }
+    .hiw-text p { font-size: 15.5px; color: var(--muted); }
+    .hiw-text .mini { display: flex; flex-direction: column; gap: 8px; margin-top: 16px; }
+    .hiw-text .mini span { display: flex; align-items: center; gap: 9px; font-size: 14px; color: #334155; }
+    .hiw-text .mini i { color: var(--accent); font-size: 14px; }
+
+    /* Browser-window mockup */
+    .mock {
+      background: #fff; border: 1px solid var(--border); border-radius: 14px; overflow: hidden;
+      box-shadow: 0 30px 70px -34px rgba(15,23,42,.32), 0 2px 10px rgba(15,23,42,.06);
+    }
+    .mock-bar { display: flex; align-items: center; gap: 9px; padding: 11px 14px; background: #f6f8fc; border-bottom: 1px solid var(--border); }
+    .mock-dots { display: flex; gap: 6px; }
+    .mock-dot { width: 10px; height: 10px; border-radius: 50%; }
+    .mock-dot.r { background: #ff5f57; } .mock-dot.y { background: #febc2e; } .mock-dot.g { background: #28c840; }
+    .mock-url { flex: 1; margin-left: 6px; font-size: 11.5px; color: var(--muted); background: #fff; border: 1px solid var(--border); border-radius: 7px; padding: 5px 11px; display: flex; align-items: center; gap: 7px; }
+    .mock-url i { color: var(--success); font-size: 12px; }
+    .mock-body { padding: 16px; position: relative; }
+
+    /* rows inside a mockup */
+    .mrow { display: flex; align-items: center; gap: 11px; padding: 10px 12px; border: 1px solid var(--border); border-radius: 10px; margin-bottom: 9px; background: #fff; transition: box-shadow .2s, border-color .2s; }
+    .mrow:last-child { margin-bottom: 0; }
+    .mrow.hot { border-color: var(--border-hi); box-shadow: 0 0 0 3px rgba(37,99,235,.12); }
+    .mlogo { width: 30px; height: 30px; border-radius: 7px; flex-shrink: 0; display: flex; align-items: center; justify-content: center; font-size: 14px; }
+    .mlogo.li { background: rgba(10,102,194,.12); color: #0a66c2; }
+    .mlogo.in { background: rgba(37,87,167,.14); color: #2557a7; }
+    .mlogo.nk { background: rgba(24,117,229,.13); color: #1875e5; }
+    .mlogo.by { background: rgba(3,120,180,.13); color: #0378b4; }
+    .mtitle { font-size: 13px; font-weight: 700; color: var(--text); line-height: 1.3; }
+    .mmeta { font-size: 11.5px; color: var(--muted); }
+    .mcheck { width: 19px; height: 19px; border-radius: 5px; border: 1.5px solid #cbd5e1; flex-shrink: 0; display: flex; align-items: center; justify-content: center; color: #fff; font-size: 10px; }
+    .mcheck.on { background: var(--accent); border-color: var(--accent); }
+    .mbadge { margin-left: auto; font-size: 11px; font-weight: 700; border-radius: 20px; padding: 3px 9px; display: inline-flex; gap: 5px; align-items: center; white-space: nowrap; }
+    .mbadge.ok { color: var(--success); background: rgba(22,163,74,.1); border: 1px solid rgba(22,163,74,.25); }
+    .mbadge.run { color: var(--accent); background: var(--accent-dim); border: 1px solid rgba(37,99,235,.22); }
+
+    /* form fields inside a mockup */
+    .mfield { margin-bottom: 11px; }
+    .mfield:last-child { margin-bottom: 0; }
+    .mlab { font-size: 10.5px; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); margin-bottom: 5px; }
+    .minput { font-size: 12.5px; color: var(--text); background: #f6f8fc; border: 1px solid var(--border); border-radius: 7px; padding: 8px 10px; display: flex; align-items: center; justify-content: space-between; }
+    .minput .ai { font-size: 10px; font-weight: 700; color: var(--accent); background: var(--accent-dim); border-radius: 12px; padding: 2px 8px; }
+    .mbtn { margin-top: 14px; text-align: center; font-size: 13px; font-weight: 700; color: #fff; background: linear-gradient(135deg, var(--accent-2), var(--accent-dk)); border-radius: 9px; padding: 10px; position: relative; }
+    .mbtn.spot { animation: spotPulse 1.9s ease-out infinite; }
+    @keyframes spotPulse { 0% { box-shadow: 0 0 0 0 rgba(37,99,235,.45); } 70% { box-shadow: 0 0 0 10px rgba(37,99,235,0); } 100% { box-shadow: 0 0 0 0 rgba(37,99,235,0); } }
+    .mfloat { margin-top: 12px; font-size: 13px; font-weight: 700; color: #fff; background: linear-gradient(135deg, var(--accent-2), var(--accent-dk)); border-radius: 9px; padding: 10px 14px; display: inline-flex; align-items: center; gap: 8px; box-shadow: 0 8px 18px rgba(37,99,235,.32); }
+
+    /* status overlay (SPOT) inside the "applying" mockup */
+    .mspot { display: flex; align-items: center; gap: 10px; margin-top: 14px; padding: 10px 13px; border-radius: 10px; background: #0f172a; color: #fff; font-size: 12.5px; font-weight: 600; }
+    .mspot .pip { width: 8px; height: 8px; border-radius: 50%; background: #34d399; flex-shrink: 0; animation: blink 1.1s ease-in-out infinite; }
+    @keyframes blink { 0%,100% { opacity: 1; } 50% { opacity: .3; } }
+    .mspot-track { height: 17px; line-height: 17px; overflow: hidden; flex: 1; }
+    .mspot-track ul { margin: 0; padding: 0; list-style: none; animation: spotCycle 8s infinite; }
+    .mspot-track li { height: 17px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    @keyframes spotCycle {
+      0%, 20%   { transform: translateY(0); }
+      25%, 45%  { transform: translateY(-17px); }
+      50%, 70%  { transform: translateY(-34px); }
+      75%, 100% { transform: translateY(-51px); }
+    }
+    .mstat { display: flex; align-items: center; justify-content: space-between; margin-bottom: 14px; }
+    .mstat b { font-size: 15px; } .mstat .cnt { font-size: 12px; font-weight: 700; color: var(--success); background: rgba(22,163,74,.1); border-radius: 20px; padding: 3px 10px; }
+
     @media (max-width: 980px) {
       .ben-grid { grid-template-columns: 1fr 1fr; }
     }
@@ -364,6 +444,8 @@
       .plat-grid { grid-template-columns: 1fr; }
       .feat-grid { grid-template-columns: 1fr; }
       .ben-grid { grid-template-columns: 1fr 1fr; }
+      .hiw-row { grid-template-columns: 1fr; gap: 26px; }
+      .hiw-row.rev .hiw-visual { order: 0; }
       .section { padding: 56px 0; }
       nav { padding: 13px 20px; }
       .create-form { grid-template-columns: 1fr; }
@@ -410,11 +492,11 @@
             <div class="feature-item"><span class="tick"><i class="fi-rr-check"></i></span> Answers screening questions automatically from your profile</div>
             <div class="feature-item"><span class="tick"><i class="fi-rr-check"></i></span> Keeps applying across pages until you tell it to stop</div>
           </div>
-          <div class="chips">
-            <span class="chip"><i class="fi-rr-briefcase"></i> LinkedIn</span>
-            <span class="chip"><i class="fi-rr-building"></i> Indeed</span>
-            <span class="chip"><i class="fi-rr-id-badge"></i> Naukri &amp; Naukri Gulf</span>
-            <span class="chip"><i class="fi-rr-marker"></i> Bayt</span>
+          <div class="trust" style="justify-content:flex-start;margin-top:26px">
+            <img src="/assets/logos/linkedin.png" alt="LinkedIn" />
+            <img src="/assets/logos/indeed.png" alt="Indeed" />
+            <img src="/assets/logos/naukri.png" alt="Naukri" />
+            <img src="/assets/logos/bayt.png" alt="Bayt" />
           </div>
         </div>
 
@@ -460,29 +542,137 @@
     </div>
   </section>
 
-  <!-- How it works -->
+  <!-- See it working -->
   <section class="section section-alt" id="how">
     <div class="wrap">
       <div class="sec-head">
-        <h2>How AutoApplier works</h2>
-        <p>Three simple steps. Set it up once, then let it run on every job board you use.</p>
+        <h2>See AutoApplier in action</h2>
+        <p>Here is exactly what happens after you press Start, step by step.</p>
       </div>
-      <div class="steps-grid">
-        <div class="step-card">
-          <div class="step-ico"><i class="fi-rr-settings-sliders"></i></div>
-          <h3>1. Set up your profile once</h3>
-          <p>Install the extension in Chrome or Edge and fill in your details, your standard answers, and your job preferences. This is the information the agent will reuse on every application, so you only enter it a single time. You can also add your own Gemini key if you want AI written answers for open questions.</p>
+
+      <div class="hiw">
+
+        <!-- Step 1: set up profile -->
+        <div class="hiw-row">
+          <div class="hiw-visual">
+            <div class="mock">
+              <div class="mock-bar">
+                <div class="mock-dots"><span class="mock-dot r"></span><span class="mock-dot y"></span><span class="mock-dot g"></span></div>
+                <div class="mock-url"><i class="fi-rr-user"></i> AutoApplier &middot; Your profile</div>
+              </div>
+              <div class="mock-body">
+                <div class="mstat"><b>Your details</b><span class="cnt"><i class="fi-rr-check"></i> Saved</span></div>
+                <div class="mfield"><div class="mlab">Full name</div><div class="minput">Alex Morgan</div></div>
+                <div class="mfield"><div class="mlab">Total experience</div><div class="minput">5 years</div></div>
+                <div class="mfield"><div class="mlab">Notice period</div><div class="minput">30 days</div></div>
+                <div class="mfield"><div class="mlab">Expected salary</div><div class="minput">$95,000</div></div>
+              </div>
+            </div>
+          </div>
+          <div class="hiw-text">
+            <div class="hiw-num">1</div>
+            <h3>Set up your profile once</h3>
+            <p>Install the extension in Chrome or Edge and enter your details, your standard answers, and your job preferences a single time. This is the information the agent reuses on every application, so you never type it again.</p>
+            <div class="mini">
+              <span><i class="fi-rr-check"></i> Reused on every job, on every platform</span>
+              <span><i class="fi-rr-check"></i> Add your own Gemini key for open questions</span>
+            </div>
+          </div>
         </div>
-        <div class="step-card">
-          <div class="step-ico"><i class="fi-rr-search"></i></div>
-          <h3>2. Search and press Start</h3>
-          <p>Open LinkedIn, Indeed, Naukri or Bayt and run a normal job search with the filters you want. Press Start in the extension. You can let it apply to every matching job, or tick only the specific jobs you want and it will apply to just those, in order.</p>
+
+        <!-- Step 2: search and start -->
+        <div class="hiw-row rev">
+          <div class="hiw-visual">
+            <div class="mock">
+              <div class="mock-bar">
+                <div class="mock-dots"><span class="mock-dot r"></span><span class="mock-dot y"></span><span class="mock-dot g"></span></div>
+                <div class="mock-url"><i class="fi-rr-lock"></i> linkedin.com/jobs</div>
+              </div>
+              <div class="mock-body">
+                <div class="mrow"><span class="mcheck on"><i class="fi-rr-check"></i></span><div class="mlogo li"><i class="fi-rr-briefcase"></i></div><div><div class="mtitle">Senior Frontend Developer</div><div class="mmeta">Acme Inc &middot; Remote &middot; Easy Apply</div></div></div>
+                <div class="mrow"><span class="mcheck on"><i class="fi-rr-check"></i></span><div class="mlogo li"><i class="fi-rr-briefcase"></i></div><div><div class="mtitle">Full Stack Engineer</div><div class="mmeta">Globex &middot; Hybrid &middot; Easy Apply</div></div></div>
+                <div class="mrow"><span class="mcheck on"><i class="fi-rr-check"></i></span><div class="mlogo li"><i class="fi-rr-briefcase"></i></div><div><div class="mtitle">React Developer</div><div class="mmeta">Initech &middot; Remote &middot; Easy Apply</div></div></div>
+                <div class="mfloat"><i class="fi-rr-play-circle"></i> Apply to 3 ticked jobs</div>
+              </div>
+            </div>
+          </div>
+          <div class="hiw-text">
+            <div class="hiw-num">2</div>
+            <h3>Run a search and press Start</h3>
+            <p>Open LinkedIn, Indeed, Naukri or Bayt and search with the filters you want. Press Start and let it apply to every match, or tick only the specific jobs you want and it applies to just those, in order.</p>
+            <div class="mini">
+              <span><i class="fi-rr-check"></i> Apply to all matches, or only the ones you tick</span>
+              <span><i class="fi-rr-check"></i> Works on your normal search results</span>
+            </div>
+          </div>
         </div>
-        <div class="step-card">
-          <div class="step-ico"><i class="fi-rr-play-circle"></i></div>
-          <h3>3. Watch it apply for you</h3>
-          <p>The agent opens each job, fills the form, answers the screening questions, clicks through every step, and submits. Then it returns to the list and moves to the next job, page after page, until you press Stop. It only pauses to hand a captcha back to you.</p>
+
+        <!-- Step 3: the agent applies (animated) -->
+        <div class="hiw-row">
+          <div class="hiw-visual">
+            <div class="mock">
+              <div class="mock-bar">
+                <div class="mock-dots"><span class="mock-dot r"></span><span class="mock-dot y"></span><span class="mock-dot g"></span></div>
+                <div class="mock-url"><i class="fi-rr-lock"></i> linkedin.com &middot; Easy Apply</div>
+              </div>
+              <div class="mock-body">
+                <div class="mstat"><b>Senior Frontend Developer</b><span class="cnt">Step 2 of 3</span></div>
+                <div class="mfield"><div class="mlab">Years of experience</div><div class="minput">5 <span class="ai">auto-filled</span></div></div>
+                <div class="mfield"><div class="mlab">Are you authorized to work?</div><div class="minput">Yes <span class="ai">auto-filled</span></div></div>
+                <div class="mbtn spot">Submit application</div>
+                <div class="mspot">
+                  <span class="pip"></span>
+                  <div class="mspot-track">
+                    <ul>
+                      <li>Scanning jobs on this page</li>
+                      <li>Opening Senior Frontend Developer</li>
+                      <li>Answering screening questions</li>
+                      <li>Applied. Moving to the next job</li>
+                    </ul>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div class="hiw-text">
+            <div class="hiw-num">3</div>
+            <h3>The agent applies for you</h3>
+            <p>It opens each job, fills the form, and answers the screening questions from your profile. It clicks through every step and submits, then returns to the list and moves to the next job. An on-page status bar shows you exactly what it is doing.</p>
+            <div class="mini">
+              <span><i class="fi-rr-check"></i> Answers questions automatically</span>
+              <span><i class="fi-rr-check"></i> Pauses and pings you if a captcha appears</span>
+            </div>
+          </div>
         </div>
+
+        <!-- Step 4: tracked and continues -->
+        <div class="hiw-row rev">
+          <div class="hiw-visual">
+            <div class="mock">
+              <div class="mock-bar">
+                <div class="mock-dots"><span class="mock-dot r"></span><span class="mock-dot y"></span><span class="mock-dot g"></span></div>
+                <div class="mock-url"><i class="fi-rr-chart-histogram"></i> AutoApplier &middot; Tracker</div>
+              </div>
+              <div class="mock-body">
+                <div class="mstat"><b>Applications today</b><span class="cnt">12 applied</span></div>
+                <div class="mrow"><div class="mlogo li"><i class="fi-rr-briefcase"></i></div><div><div class="mtitle">Senior Frontend Developer</div><div class="mmeta">LinkedIn</div></div><span class="mbadge ok"><i class="fi-rr-check"></i> Applied</span></div>
+                <div class="mrow"><div class="mlogo in"><i class="fi-rr-building"></i></div><div><div class="mtitle">Full Stack Engineer</div><div class="mmeta">Indeed</div></div><span class="mbadge ok"><i class="fi-rr-check"></i> Applied</span></div>
+                <div class="mrow"><div class="mlogo nk"><i class="fi-rr-id-badge"></i></div><div><div class="mtitle">Software Engineer</div><div class="mmeta">Naukri</div></div><span class="mbadge ok"><i class="fi-rr-check"></i> Applied</span></div>
+                <div class="mrow hot"><div class="mlogo by"><i class="fi-rr-marker"></i></div><div><div class="mtitle">Frontend Developer</div><div class="mmeta">Bayt</div></div><span class="mbadge run"><i class="fi-rr-refresh"></i> Applying</span></div>
+              </div>
+            </div>
+          </div>
+          <div class="hiw-text">
+            <div class="hiw-num">4</div>
+            <h3>Every job is tracked, and it keeps going</h3>
+            <p>Each application is logged automatically in the built-in tracker, so you always know where you have applied and never send a duplicate. The agent keeps working across pages and platforms until you press Stop.</p>
+            <div class="mini">
+              <span><i class="fi-rr-check"></i> Built-in tracker records every job</span>
+              <span><i class="fi-rr-check"></i> Runs continuously, page after page</span>
+            </div>
+          </div>
+        </div>
+
       </div>
     </div>
   </section>
@@ -496,25 +686,25 @@
       </div>
       <div class="plat-grid">
         <div class="plat-card">
-          <div class="pi pi-li"><i class="fi-rr-briefcase"></i></div>
+          <img class="plat-logo" src="/assets/logos/linkedin.png" alt="LinkedIn" />
           <span class="plat-tag">LinkedIn Easy Apply</span>
           <h3>LinkedIn, end to end</h3>
           <p>The agent finds every Easy Apply job in your search, opens the application modal, and steps through each page. It fills your answers, handles the dropdowns and questions, and submits. Then it closes the modal, moves to the next card, and turns the page automatically so it keeps going without you.</p>
         </div>
         <div class="plat-card">
-          <div class="pi pi-in"><i class="fi-rr-building"></i></div>
+          <img class="plat-logo" src="/assets/logos/indeed.png" alt="Indeed" />
           <span class="plat-tag">Apply with Indeed</span>
           <h3>Indeed, multi step apply</h3>
           <p>Indeed applications span several steps and often move to a separate apply page. The agent follows that whole flow, clicking Continue and Submit through each stage. If a captcha appears it never tries to solve it. It spotlights the captcha, alerts you, and picks up again the moment you clear it.</p>
         </div>
         <div class="plat-card">
-          <div class="pi pi-nk"><i class="fi-rr-id-badge"></i></div>
+          <img class="plat-logo" src="/assets/logos/naukri.png" alt="Naukri" />
           <span class="plat-tag">Naukri and Naukri Gulf</span>
           <h3>Naukri, full application flow</h3>
           <p>The agent clicks Apply, then works through the questions whether they appear as a chatbot or as a direct form, answering each one from your saved profile. When the application is done it returns to the list and continues. Naukri.com and Naukri Gulf each run as their own separate flow.</p>
         </div>
         <div class="plat-card">
-          <div class="pi pi-by"><i class="fi-rr-marker"></i></div>
+          <img class="plat-logo" src="/assets/logos/bayt.png" alt="Bayt" />
           <span class="plat-tag">Bayt Easy Apply</span>
           <h3>Bayt, Easy Apply</h3>
           <p>On Bayt the agent scans the results list, clicks Easy Apply on each job, and fills in the application along with any screening questions. It clicks Apply now to submit, returns to the job search, and keeps going through every listing and every page of results.</p>
