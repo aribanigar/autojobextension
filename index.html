@@ -6,187 +6,271 @@
   <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
   <link rel="apple-touch-icon" href="/favicon.svg" />
   <title>AutoApplier – AI Job Application Agent</title>
-  <meta name="description" content="AutoApplier automates job applications on LinkedIn, Indeed, and Naukri — fills forms, clicks Continue, and moves through listings automatically." />
+  <meta name="description" content="AutoApplier automatically applies to jobs on LinkedIn, Indeed, Naukri and Bayt — fills forms, answers screening questions, clicks through every step, and moves to the next job hands-free." />
   <style>
     :root {
-      --bg:           #0b0817;
-      --surface:      #110c22;
-      --card:         #161029;
-      --card2:        #1d1636;
-      --border:       rgba(139, 92, 246, 0.16);
-      --border-hi:    rgba(139, 92, 246, 0.34);
-      --accent:       #7c3aed;
-      --accent-2:     #8b5cf6;
-      --accent-dk:    #6d28d9;
-      --accent-light: #a78bfa;
-      --accent-dim:   rgba(124, 58, 237, 0.12);
-      --text:         #f1eefb;
-      --muted:        #9d95c0;
-      --dim:          #6f6790;
-      --danger:       #f87171;
-      --success:      #34d399;
-      --warn:         #fbbf24;
+      --bg:           #ffffff;
+      --bg-soft:      #f5f8ff;
+      --surface:      #ffffff;
+      --card:         #ffffff;
+      --card2:        #f4f7fe;
+      --border:       rgba(15, 23, 42, 0.10);
+      --border-hi:    rgba(37, 99, 235, 0.40);
+      --accent:       #2563eb;
+      --accent-2:     #3b82f6;
+      --accent-dk:    #1d4ed8;
+      --accent-light: #1d4ed8;
+      --accent-dim:   rgba(37, 99, 235, 0.08);
+      --text:         #0f172a;
+      --muted:        #56617a;
+      --dim:          #8a93a6;
+      --danger:       #dc2626;
+      --success:      #16a34a;
+      --warn:         #d97706;
     }
     *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+    html { scroll-behavior: smooth; }
     body {
       font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Inter, Roboto, sans-serif;
-      background: radial-gradient(130% 55% at 50% -8%, rgba(124,58,237,.20), transparent 65%), var(--bg);
+      background: var(--bg);
       color: var(--text);
       min-height: 100vh;
       line-height: 1.6;
+      -webkit-font-smoothing: antialiased;
     }
     ::-webkit-scrollbar { width: 10px; height: 10px; }
-    ::-webkit-scrollbar-thumb { background: var(--border-hi); border-radius: 8px; }
+    ::-webkit-scrollbar-track { background: #eef2f9; }
+    ::-webkit-scrollbar-thumb { background: #c7d2e5; border-radius: 8px; }
+    a { color: inherit; }
 
     /* ── Nav ─────────────────────────────────────────── */
     nav {
       position: sticky; top: 0; z-index: 200;
       display: flex; align-items: center; justify-content: space-between;
-      padding: 18px 40px;
-      background: rgba(8,8,16,0.85);
+      padding: 15px 40px;
+      background: rgba(255,255,255,0.85);
       border-bottom: 1px solid var(--border);
       backdrop-filter: blur(16px);
     }
     .nav-logo {
-      display: flex; align-items: center; gap: 10px;
-      font-size: 17px; font-weight: 700;
+      display: flex; align-items: center; gap: 9px;
+      font-size: 18px; font-weight: 800; letter-spacing: -.01em;
       color: var(--text); text-decoration: none;
     }
+    .nav-logo span { font-size: 20px; }
+    .nav-links { display: none; gap: 26px; }
+    .nav-links a { font-size: 14px; font-weight: 600; color: var(--muted); text-decoration: none; transition: color .13s; }
+    .nav-links a:hover { color: var(--text); }
     #nav-right { display: flex; align-items: center; gap: 10px; }
     .user-pill {
       font-size: 13px; color: var(--muted);
-      background: var(--card); border: 1px solid var(--border);
+      background: var(--card2); border: 1px solid var(--border);
       padding: 6px 14px; border-radius: 20px;
       white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 220px;
     }
+    @media (min-width: 900px) { .nav-links { display: flex; } }
 
     /* ── Buttons ─────────────────────────────────────── */
     .btn {
       display: inline-flex; align-items: center; justify-content: center; gap: 7px;
-      padding: 9px 20px; border-radius: 9px;
+      padding: 10px 20px; border-radius: 10px;
       font-size: 14px; font-weight: 600; font-family: inherit;
       cursor: pointer; border: none; text-decoration: none;
-      transition: background .13s, transform .12s, box-shadow .13s;
+      transition: background .13s, transform .12s, box-shadow .13s, filter .13s;
     }
-    .btn-primary { background: linear-gradient(135deg, var(--accent-2), var(--accent-dk)); color: #fff; box-shadow: 0 6px 16px rgba(124,58,237,.32); }
-    .btn-primary:hover { filter: brightness(1.08); transform: translateY(-1px); box-shadow: 0 10px 26px rgba(124,58,237,.45); }
+    .btn-primary { background: linear-gradient(135deg, var(--accent-2), var(--accent-dk)); color: #fff; box-shadow: 0 6px 16px rgba(37,99,235,.28); }
+    .btn-primary:hover { filter: brightness(1.06); transform: translateY(-1px); box-shadow: 0 12px 26px rgba(37,99,235,.36); }
     .btn-primary:active { transform: scale(.98); }
     .btn-ghost {
-      background: transparent; color: var(--muted);
+      background: #fff; color: var(--text);
       border: 1px solid var(--border);
     }
-    .btn-ghost:hover { border-color: var(--border-hi); color: var(--text); }
-    .btn-lg { padding: 13px 30px; font-size: 15px; border-radius: 11px; }
-    .btn-sm { padding: 6px 14px; font-size: 12px; border-radius: 7px; }
+    .btn-ghost:hover { border-color: var(--border-hi); color: var(--accent); }
+    .btn-lg { padding: 14px 30px; font-size: 15px; border-radius: 12px; }
+    .btn-sm { padding: 7px 14px; font-size: 12px; border-radius: 8px; }
     .btn-danger-soft {
       background: transparent; color: var(--danger);
-      border: 1px solid rgba(239,68,68,.22); font-size: 12px; padding: 5px 12px; border-radius: 7px;
+      border: 1px solid rgba(220,38,38,.25); font-size: 12px; padding: 5px 12px; border-radius: 7px;
     }
-    .btn-danger-soft:hover { background: rgba(239,68,68,.1); }
-    .btn:disabled { opacity: .45; cursor: not-allowed; transform: none !important; }
+    .btn-danger-soft:hover { background: rgba(220,38,38,.08); }
+    .btn:disabled { opacity: .5; cursor: not-allowed; transform: none !important; }
 
     /* ── Views ───────────────────────────────────────── */
     .view { display: none; }
     .view.active { display: block; }
 
-    /* ── Landing (split) ─────────────────────────────── */
-    #view-landing.active {
-      display: grid;
-      grid-template-columns: 55% 45%;
-      min-height: calc(100vh - 57px);
+    /* ── Landing (marketing) ─────────────────────────── */
+    .wrap { max-width: 1140px; margin: 0 auto; padding: 0 24px; }
+    .section { padding: 76px 0; }
+    .section-alt { background: var(--bg-soft); border-top: 1px solid var(--border); border-bottom: 1px solid var(--border); }
+    .eyebrow {
+      display: inline-flex; align-items: center; gap: 7px;
+      font-size: 12px; font-weight: 700; letter-spacing: .05em; text-transform: uppercase;
+      color: var(--accent); background: var(--accent-dim);
+      border: 1px solid rgba(37,99,235,.18); padding: 5px 13px; border-radius: 20px;
     }
+    .sec-head { text-align: center; max-width: 640px; margin: 0 auto 46px; }
+    .sec-head h2 { font-size: clamp(26px, 3vw, 38px); font-weight: 800; letter-spacing: -.02em; margin: 16px 0 12px; }
+    .sec-head p { font-size: 16px; color: var(--muted); }
 
-    .hero {
-      padding: 72px 56px;
-      display: flex; flex-direction: column; justify-content: center;
-      background: radial-gradient(ellipse 70% 55% at 25% 45%, rgba(124,58,237,.13), transparent);
+    /* Hero */
+    .hero-band {
+      background:
+        radial-gradient(60% 60% at 78% 12%, rgba(59,130,246,.10), transparent 60%),
+        radial-gradient(50% 50% at 8% 20%, rgba(37,99,235,.07), transparent 60%),
+        var(--bg);
+      border-bottom: 1px solid var(--border);
     }
-    .hero-badge {
-      display: inline-flex; align-items: center; gap: 6px;
-      font-size: 11px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase;
-      color: var(--accent-light); background: var(--accent-dim);
-      border: 1px solid rgba(124,58,237,.28); padding: 4px 12px; border-radius: 20px;
-      width: fit-content; margin-bottom: 28px;
+    .hero-grid {
+      display: grid; grid-template-columns: 1.15fr .85fr; gap: 54px; align-items: center;
+      padding: 70px 0 64px;
     }
-    .hero h1 {
-      font-size: clamp(30px, 3.6vw, 50px); font-weight: 800; line-height: 1.13;
-      margin-bottom: 18px; letter-spacing: -.02em;
-      background: linear-gradient(140deg, var(--text) 30%, var(--accent-light));
+    .hero-copy h1 {
+      font-size: clamp(32px, 4vw, 54px); font-weight: 850; line-height: 1.08;
+      letter-spacing: -.03em; margin: 22px 0 18px;
+    }
+    .hero-copy h1 .grad {
+      background: linear-gradient(120deg, var(--accent) 10%, #60a5fa);
       -webkit-background-clip: text; background-clip: text; color: transparent;
     }
-    .hero p {
-      font-size: 16px; color: var(--muted); max-width: 460px; margin-bottom: 40px;
+    .hero-copy p.lead { font-size: 17px; color: var(--muted); max-width: 520px; margin-bottom: 26px; }
+    .hero-cta { display: flex; gap: 12px; flex-wrap: wrap; margin-bottom: 26px; }
+    .hero-sub { font-size: 13px; color: var(--dim); }
+    .feature-list { display: flex; flex-direction: column; gap: 10px; margin-top: 6px; }
+    .feature-item { display: flex; align-items: center; gap: 11px; font-size: 14.5px; color: #334155; }
+    .feature-item .tick {
+      width: 20px; height: 20px; border-radius: 50%; flex-shrink: 0;
+      background: var(--accent-dim); color: var(--accent);
+      display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 800;
     }
-    .feature-list { display: flex; flex-direction: column; gap: 11px; }
-    .feature-item {
-      display: flex; align-items: center; gap: 12px;
-      font-size: 14px; color: var(--muted);
-    }
-    .feature-item .dot {
-      width: 5px; height: 5px; border-radius: 50%;
-      background: var(--accent); flex-shrink: 0;
-    }
-    .platforms {
-      display: flex; gap: 8px; flex-wrap: wrap; margin-top: 36px;
-    }
-    .platform-tag {
-      font-size: 12px; font-weight: 600; padding: 4px 12px; border-radius: 20px;
-      border: 1px solid var(--border); background: var(--card);
-    }
-    .p-li { color: #60a5fa; } .p-in { color: #818cf8; } .p-nk { color: #34d399; }
 
-    /* ── Auth panel ──────────────────────────────────── */
-    .auth-side {
-      display: flex; align-items: center; justify-content: center;
-      padding: 48px 40px;
-      background: var(--surface); border-left: 1px solid var(--border);
+    /* Auth card (in hero) */
+    .auth-card {
+      background: #fff; border: 1px solid var(--border);
+      border-radius: 18px; padding: 30px 28px;
+      box-shadow: 0 24px 60px -24px rgba(15,23,42,.22), 0 2px 8px rgba(15,23,42,.05);
     }
-    .auth-box { width: 100%; max-width: 360px; }
-    .auth-box h2 { font-size: 22px; font-weight: 700; margin-bottom: 5px; }
-    .auth-box .sub { font-size: 13px; color: var(--muted); margin-bottom: 28px; }
+    .auth-card h2 { font-size: 21px; font-weight: 750; margin-bottom: 4px; }
+    .auth-card .sub { font-size: 13px; color: var(--muted); margin-bottom: 22px; }
     .field { margin-bottom: 14px; }
     .field label {
-      display: block; font-size: 12px; font-weight: 600;
-      color: var(--muted); margin-bottom: 5px; text-transform: uppercase; letter-spacing: .04em;
+      display: block; font-size: 11.5px; font-weight: 700;
+      color: var(--muted); margin-bottom: 6px; text-transform: uppercase; letter-spacing: .04em;
     }
     .field input {
-      width: 100%; padding: 10px 13px;
-      background: var(--card); border: 1px solid var(--border);
-      border-radius: 8px; color: var(--text); font-size: 14px; font-family: inherit;
-      outline: none; transition: border-color .14s;
+      width: 100%; padding: 11px 13px;
+      background: #fff; border: 1px solid var(--border);
+      border-radius: 9px; color: var(--text); font-size: 14px; font-family: inherit;
+      outline: none; transition: border-color .14s, box-shadow .14s;
     }
-    .field input:focus { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(124,58,237,.16); }
+    .field input:focus { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(37,99,235,.14); }
     .field input::placeholder { color: var(--dim); }
-    .ferr {
-      font-size: 12px; color: var(--danger);
-      margin-bottom: 10px; display: none;
-    }
+    .ferr { font-size: 12px; color: var(--danger); margin-bottom: 10px; display: none; }
     .ferr.show { display: block; }
+
+    /* Logo strip */
+    .logos-row {
+      display: flex; align-items: center; justify-content: center; gap: 34px 56px; flex-wrap: wrap;
+    }
+    .logos-row img { height: 30px; width: auto; opacity: .9; filter: saturate(1); }
+    .logos-cap { text-align: center; font-size: 12.5px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: var(--dim); margin-bottom: 26px; }
+
+    /* Steps */
+    .steps-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 22px; }
+    .step-card {
+      background: #fff; border: 1px solid var(--border); border-radius: 16px; padding: 28px 24px;
+      position: relative; transition: border-color .15s, box-shadow .15s, transform .15s;
+    }
+    .step-card:hover { border-color: var(--border-hi); box-shadow: 0 14px 30px -18px rgba(37,99,235,.4); transform: translateY(-2px); }
+    .step-num {
+      width: 38px; height: 38px; border-radius: 11px;
+      background: linear-gradient(135deg, var(--accent-2), var(--accent-dk)); color: #fff;
+      display: flex; align-items: center; justify-content: center; font-size: 16px; font-weight: 800;
+      margin-bottom: 16px; box-shadow: 0 6px 14px rgba(37,99,235,.3);
+    }
+    .step-card h3 { font-size: 17px; font-weight: 750; margin-bottom: 7px; }
+    .step-card p { font-size: 14px; color: var(--muted); }
+
+    /* Platform cards */
+    .plat-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 22px; }
+    .plat-card {
+      background: #fff; border: 1px solid var(--border); border-radius: 18px; padding: 30px 28px;
+      transition: border-color .15s, box-shadow .15s, transform .15s;
+    }
+    .plat-card:hover { border-color: var(--border-hi); box-shadow: 0 16px 36px -20px rgba(37,99,235,.4); transform: translateY(-2px); }
+    .plat-logo { height: 30px; width: auto; margin-bottom: 16px; display: block; }
+    .plat-card h3 { font-size: 18px; font-weight: 750; margin-bottom: 8px; }
+    .plat-card p { font-size: 14.5px; color: var(--muted); }
+    .plat-tag {
+      display: inline-block; font-size: 11px; font-weight: 700; letter-spacing: .04em;
+      color: var(--accent); background: var(--accent-dim);
+      border: 1px solid rgba(37,99,235,.16); padding: 3px 10px; border-radius: 16px; margin-bottom: 14px;
+    }
+
+    /* Features */
+    .feat-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 22px; }
+    .feat-card { background: #fff; border: 1px solid var(--border); border-radius: 16px; padding: 26px 22px; transition: border-color .15s, transform .15s; }
+    .feat-card:hover { border-color: var(--border-hi); transform: translateY(-2px); }
+    .feat-ico {
+      width: 46px; height: 46px; border-radius: 13px; background: var(--accent-dim);
+      display: flex; align-items: center; justify-content: center; font-size: 22px; margin-bottom: 15px;
+    }
+    .feat-card h3 { font-size: 16px; font-weight: 750; margin-bottom: 6px; }
+    .feat-card p { font-size: 14px; color: var(--muted); }
+
+    /* FAQ */
+    .faq-list { max-width: 780px; margin: 0 auto; display: flex; flex-direction: column; gap: 12px; }
+    .faq { background: #fff; border: 1px solid var(--border); border-radius: 13px; padding: 4px 20px; }
+    .faq summary {
+      cursor: pointer; list-style: none; padding: 16px 0; font-size: 15.5px; font-weight: 700;
+      display: flex; align-items: center; justify-content: space-between; gap: 12px;
+    }
+    .faq summary::-webkit-details-marker { display: none; }
+    .faq summary::after { content: '+'; font-size: 22px; color: var(--accent); font-weight: 400; line-height: 1; }
+    .faq[open] summary::after { content: '–'; }
+    .faq p { font-size: 14.5px; color: var(--muted); padding: 0 0 18px; }
+
+    /* CTA band */
+    .cta-band {
+      background: linear-gradient(135deg, var(--accent-dk), var(--accent-2));
+      border-radius: 24px; padding: 54px 40px; text-align: center; color: #fff;
+      box-shadow: 0 30px 60px -28px rgba(37,99,235,.6);
+    }
+    .cta-band h2 { font-size: clamp(24px, 3vw, 34px); font-weight: 800; letter-spacing: -.02em; margin-bottom: 12px; }
+    .cta-band p { font-size: 16px; opacity: .92; max-width: 520px; margin: 0 auto 26px; }
+    .cta-band .btn-ghost { background: rgba(255,255,255,.12); color: #fff; border-color: rgba(255,255,255,.35); }
+    .cta-band .btn-ghost:hover { background: rgba(255,255,255,.2); color: #fff; }
+    .cta-white { background: #fff !important; color: var(--accent-dk) !important; }
+
+    /* Footer */
+    footer.site {
+      border-top: 1px solid var(--border); padding: 30px 0;
+      color: var(--dim); font-size: 13px;
+    }
+    footer.site .wrap { display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap; }
+    footer.site a { color: var(--muted); text-decoration: none; }
+    footer.site a:hover { color: var(--accent); }
 
     /* ── Dashboard ───────────────────────────────────── */
     #view-dashboard { max-width: 720px; margin: 0 auto; padding: 48px 24px 80px; }
-
     .section-label {
       font-size: 11px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase;
       color: var(--muted); margin-bottom: 14px;
     }
-
-    /* Download card */
     .dl-card {
-      background: linear-gradient(135deg, rgba(124,58,237,.16), rgba(124,58,237,.05));
-      border: 1px solid rgba(124,58,237,.3); border-radius: 16px;
+      background: linear-gradient(135deg, rgba(37,99,235,.10), rgba(37,99,235,.03));
+      border: 1px solid rgba(37,99,235,.25); border-radius: 16px;
       padding: 40px 36px; text-align: center; margin-bottom: 24px;
     }
     .dl-card .dl-icon { font-size: 44px; margin-bottom: 14px; }
     .dl-card h2 { font-size: 20px; font-weight: 700; margin-bottom: 7px; }
     .dl-card p { font-size: 14px; color: var(--muted); margin-bottom: 22px; }
     .dl-meta { margin-top: 12px; font-size: 12px; color: var(--muted); }
-
-    /* Install steps */
     .card {
       background: var(--card); border: 1px solid var(--border);
       border-radius: 16px; padding: 26px; margin-bottom: 24px;
-      transition: border-color .15s;
+      transition: border-color .15s, box-shadow .15s;
+      box-shadow: 0 1px 3px rgba(15,23,42,.04);
     }
     .card:hover { border-color: var(--border-hi); }
     .card h3 { font-size: 15px; font-weight: 700; margin-bottom: 18px; }
@@ -194,43 +278,36 @@
     .step { display: flex; gap: 13px; align-items: flex-start; }
     .sn {
       width: 24px; height: 24px; border-radius: 50%; flex-shrink: 0;
-      background: var(--accent-dim); border: 1px solid rgba(124,58,237,.3);
-      color: var(--accent-light); font-size: 11px; font-weight: 700;
+      background: var(--accent-dim); border: 1px solid rgba(37,99,235,.3);
+      color: var(--accent); font-size: 11px; font-weight: 700;
       display: flex; align-items: center; justify-content: center; margin-top: 1px;
     }
     .step p { font-size: 14px; color: var(--muted); }
     .step code {
-      background: var(--accent-dim); color: var(--accent-light);
+      background: var(--accent-dim); color: var(--accent-dk);
       padding: 1px 6px; border-radius: 4px; font-size: 12px;
     }
-
-    /* Admin panel */
-    .admin-header {
-      display: flex; align-items: center; justify-content: space-between; margin-bottom: 22px;
-    }
+    .admin-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 22px; }
     .admin-badge {
       font-size: 10px; font-weight: 700; letter-spacing: .07em; text-transform: uppercase;
-      color: var(--warn); background: rgba(245,158,11,.1);
-      border: 1px solid rgba(245,158,11,.25); padding: 3px 10px; border-radius: 20px;
+      color: var(--warn); background: rgba(217,119,6,.1);
+      border: 1px solid rgba(217,119,6,.25); padding: 3px 10px; border-radius: 20px;
     }
-    .create-form {
-      display: grid; grid-template-columns: 1fr 1fr auto;
-      gap: 10px; align-items: end; margin-bottom: 8px;
-    }
+    .create-form { display: grid; grid-template-columns: 1fr 1fr auto; gap: 10px; align-items: end; margin-bottom: 8px; }
     .create-form .field { margin-bottom: 0; }
     .divider { height: 1px; background: var(--border); margin: 20px 0; }
     .users { display: flex; flex-direction: column; gap: 7px; }
     .user-row {
       display: flex; align-items: center; justify-content: space-between;
       padding: 11px 14px;
-      background: var(--surface); border: 1px solid var(--border); border-radius: 9px;
+      background: var(--bg-soft); border: 1px solid var(--border); border-radius: 9px;
     }
     .user-info { display: flex; align-items: center; gap: 10px; }
     .avatar {
       width: 30px; height: 30px; border-radius: 50%; flex-shrink: 0;
       background: var(--accent-dim);
       display: flex; align-items: center; justify-content: center;
-      font-size: 12px; font-weight: 700; color: var(--accent-light);
+      font-size: 12px; font-weight: 700; color: var(--accent);
     }
     .uname { font-size: 14px; }
     .udate { font-size: 12px; color: var(--muted); }
@@ -245,14 +322,16 @@
       transition: all .28s cubic-bezier(.34,1.56,.64,1);
     }
     #toast.show { transform: translateY(0); opacity: 1; }
-    #toast.ok  { background: rgba(34,197,94,.14); border: 1px solid rgba(34,197,94,.3); color: #4ade80; }
-    #toast.err { background: rgba(239,68,68,.14);  border: 1px solid rgba(239,68,68,.3);  color: #f87171; }
+    #toast.ok  { background: #ecfdf5; border: 1px solid rgba(22,163,74,.3); color: #15803d; }
+    #toast.err { background: #fef2f2; border: 1px solid rgba(220,38,38,.3); color: #b91c1c; }
 
-    @media (max-width: 800px) {
-      #view-landing.active { grid-template-columns: 1fr; }
-      .hero { padding: 48px 24px; order: 2; }
-      .auth-side { order: 1; border-left: none; border-bottom: 1px solid var(--border); }
-      nav { padding: 14px 20px; }
+    @media (max-width: 860px) {
+      .hero-grid { grid-template-columns: 1fr; gap: 34px; padding: 48px 0; }
+      .steps-grid { grid-template-columns: 1fr; }
+      .plat-grid { grid-template-columns: 1fr; }
+      .feat-grid { grid-template-columns: 1fr; }
+      .section { padding: 56px 0; }
+      nav { padding: 13px 20px; }
       .create-form { grid-template-columns: 1fr; }
     }
   </style>
@@ -264,61 +343,248 @@
   <a class="nav-logo" href="/">
     <span>🤖</span> AutoApplier
   </a>
+  <div class="nav-links">
+    <a href="#how">How it works</a>
+    <a href="#platforms">Platforms</a>
+    <a href="#features">Features</a>
+    <a href="#faq">FAQ</a>
+  </div>
   <div id="nav-right">
-    <button class="btn btn-primary" onclick="Views.showLanding()">Sign In</button>
+    <button class="btn btn-primary" onclick="gotoLogin()">Sign In</button>
   </div>
 </nav>
 
 <!-- ══ View: Landing / Login ══ -->
 <div id="view-landing" class="view">
 
-  <div class="hero">
-    <div class="hero-badge">🚀 AI-Powered</div>
-    <h1>Apply to hundreds&nbsp;of jobs automatically</h1>
-    <p>AutoApplier fills forms, answers screening questions, clicks Continue through every step, and moves to the next job — completely hands-free.</p>
-    <div class="feature-list">
-      <div class="feature-item"><span class="dot"></span>LinkedIn Easy Apply — end-to-end automation</div>
-      <div class="feature-item"><span class="dot"></span>Indeed Apply — multi-step forms &amp; captcha hand-off</div>
-      <div class="feature-item"><span class="dot"></span>Naukri — full application flow</div>
-      <div class="feature-item"><span class="dot"></span>AI answers screening questions from your profile</div>
-      <div class="feature-item"><span class="dot"></span>Real-time spotlight overlay — stop anytime</div>
-    </div>
-    <div class="platforms">
-      <span class="platform-tag p-li">LinkedIn Easy Apply</span>
-      <span class="platform-tag p-in">Indeed Apply</span>
-      <span class="platform-tag p-nk">Naukri</span>
-    </div>
-  </div>
-
-  <div class="auth-side">
-    <div class="auth-box">
-      <h2>Welcome back</h2>
-      <p class="sub">Sign in to download the extension and access your account.</p>
-      <form id="login-form" onsubmit="Auth.login(event)">
-        <div class="field">
-          <label>Email</label>
-          <input type="email" id="f-email" placeholder="you@example.com" autocomplete="email" required />
-        </div>
-        <div class="field">
-          <label>Password</label>
-          <div style="position:relative">
-            <input type="password" id="f-pass" placeholder="••••••••" autocomplete="current-password" required style="padding-right:44px" />
-            <button type="button" id="f-eye" title="Show/hide" style="position:absolute;right:12px;top:50%;transform:translateY(-50%);background:none;border:none;color:var(--muted);cursor:pointer;font-size:15px">👁</button>
+  <!-- Hero -->
+  <div class="hero-band">
+    <div class="wrap">
+      <div class="hero-grid">
+        <div class="hero-copy">
+          <span class="eyebrow">🤖 AI Auto-Apply Agent</span>
+          <h1>Apply to hundreds of jobs on <span class="grad">autopilot</span></h1>
+          <p class="lead">AutoApplier is a browser extension that applies to jobs for you on <strong>LinkedIn</strong>, <strong>Indeed</strong>, <strong>Naukri</strong> and <strong>Bayt</strong>. It opens each listing, fills every form, answers screening questions from your profile, submits, and moves to the next job — completely hands-free.</p>
+          <div class="hero-cta">
+            <button class="btn btn-primary btn-lg" onclick="gotoLogin()">Get started free →</button>
+            <a class="btn btn-ghost btn-lg" href="#how">See how it works</a>
+          </div>
+          <div class="feature-list">
+            <div class="feature-item"><span class="tick">✓</span> Works on LinkedIn Easy Apply, Indeed, Naukri &amp; Bayt</div>
+            <div class="feature-item"><span class="tick">✓</span> Answers screening questions automatically from your profile</div>
+            <div class="feature-item"><span class="tick">✓</span> Runs continuously across pages — stop anytime</div>
           </div>
         </div>
-        <div style="text-align:right;margin-top:-4px"><a href="#" id="f-forgot" style="font-size:12px;color:var(--accent-light);text-decoration:none">Forgot password?</a></div>
-        <div class="ferr" id="login-err"></div>
-        <button type="submit" id="login-btn" class="btn btn-primary btn-lg" style="width:100%;margin-top:4px;">
-          Sign In
-        </button>
-      </form>
-      <p style="font-size:12px;color:var(--muted);text-align:center;margin-top:18px;">
-        No account? <a href="/checkout.html" style="color:var(--accent-light);font-weight:600;text-decoration:none">Buy a plan to get instant access →</a><br>
-        <span style="opacity:.75">or contact your administrator.</span>
-      </p>
+
+        <!-- Login / access card -->
+        <div class="auth-card" id="auth-card">
+          <h2>Welcome back</h2>
+          <p class="sub">Sign in to download the extension and access your account.</p>
+          <form id="login-form" onsubmit="Auth.login(event)">
+            <div class="field">
+              <label>Email</label>
+              <input type="email" id="f-email" placeholder="you@example.com" autocomplete="email" required />
+            </div>
+            <div class="field">
+              <label>Password</label>
+              <div style="position:relative">
+                <input type="password" id="f-pass" placeholder="••••••••" autocomplete="current-password" required style="padding-right:44px" />
+                <button type="button" id="f-eye" title="Show/hide" style="position:absolute;right:12px;top:50%;transform:translateY(-50%);background:none;border:none;color:var(--muted);cursor:pointer;font-size:15px">👁</button>
+              </div>
+            </div>
+            <div style="text-align:right;margin-top:-4px"><a href="#" id="f-forgot" style="font-size:12px;color:var(--accent-light);text-decoration:none">Forgot password?</a></div>
+            <div class="ferr" id="login-err"></div>
+            <button type="submit" id="login-btn" class="btn btn-primary btn-lg" style="width:100%;margin-top:4px;">
+              Sign In
+            </button>
+          </form>
+          <p style="font-size:12px;color:var(--muted);text-align:center;margin-top:18px;">
+            No account? <a href="/checkout.html" style="color:var(--accent-light);font-weight:600;text-decoration:none">Buy a plan to get instant access →</a><br>
+            <span style="opacity:.75">or contact your administrator.</span>
+          </p>
+        </div>
+      </div>
+
+      <!-- Logo strip -->
+      <div style="padding-bottom:56px">
+        <div class="logos-cap">Automates applications on</div>
+        <div class="logos-row">
+          <img src="/assets/logos/linkedin.png" alt="LinkedIn" />
+          <img src="/assets/logos/indeed.png" alt="Indeed" />
+          <img src="/assets/logos/naukri.png" alt="Naukri" />
+          <img src="/assets/logos/bayt.png" alt="Bayt" />
+        </div>
+      </div>
     </div>
   </div>
 
+  <!-- How it works -->
+  <section class="section" id="how">
+    <div class="wrap">
+      <div class="sec-head">
+        <span class="eyebrow">How it works</span>
+        <h2>From “applying by hand” to “applied while you sleep”</h2>
+        <p>Set it up once, then let the agent do the repetitive work on every job board.</p>
+      </div>
+      <div class="steps-grid">
+        <div class="step-card">
+          <div class="step-num">1</div>
+          <h3>Install &amp; set your profile</h3>
+          <p>Load the extension in Chrome or Edge and fill in your details, resume answers, and job preferences once. Add your own Gemini key if you want AI-written answers.</p>
+        </div>
+        <div class="step-card">
+          <div class="step-num">2</div>
+          <h3>Open a search &amp; hit Start</h3>
+          <p>Go to LinkedIn, Indeed, Naukri or Bayt, run a job search, and press Start. Tick specific jobs to apply only to those, or let it apply to every match.</p>
+        </div>
+        <div class="step-card">
+          <div class="step-num">3</div>
+          <h3>Watch it apply</h3>
+          <p>The agent opens each job, fills the form, answers questions, clicks through every step, submits, and moves on — page after page, until you stop it.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Platforms -->
+  <section class="section section-alt" id="platforms">
+    <div class="wrap">
+      <div class="sec-head">
+        <span class="eyebrow">Supported platforms</span>
+        <h2>One agent, four job boards</h2>
+        <p>Each platform has its own dedicated apply flow, tuned to how that site really works.</p>
+      </div>
+      <div class="plat-grid">
+        <div class="plat-card">
+          <img class="plat-logo" src="/assets/logos/linkedin.png" alt="LinkedIn" />
+          <span class="plat-tag">Easy Apply</span>
+          <h3>LinkedIn — end to end</h3>
+          <p>Detects every Easy Apply job in your search, opens the modal, steps through each page of the application, fills answers and uploads, then submits — and paginates to the next results page automatically.</p>
+        </div>
+        <div class="plat-card">
+          <img class="plat-logo" src="/assets/logos/indeed.png" alt="Indeed" />
+          <span class="plat-tag">Apply with Indeed</span>
+          <h3>Indeed — multi-step apply</h3>
+          <p>Handles the full Apply-with-Indeed flow, the cross-domain hop to the apply page, and every Continue / Submit step. If a captcha appears it hands off to you, then resumes on its own.</p>
+        </div>
+        <div class="plat-card">
+          <img class="plat-logo" src="/assets/logos/naukri.png" alt="Naukri" />
+          <span class="plat-tag">Naukri &amp; Naukri Gulf</span>
+          <h3>Naukri — full application flow</h3>
+          <p>Clicks Apply, walks through chatbot or direct-form questions, answers them from your saved profile, and returns to the list to continue. Naukri.com and Naukri Gulf each run as their own flow.</p>
+        </div>
+        <div class="plat-card">
+          <img class="plat-logo" src="/assets/logos/bayt.png" alt="Bayt" />
+          <span class="plat-tag">Easy Apply</span>
+          <h3>Bayt — Easy Apply</h3>
+          <p>Scans the results list, clicks Easy Apply on each job, fills the application and any screening questions, clicks “Apply now”, then returns to the search and continues through every page.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Features -->
+  <section class="section" id="features">
+    <div class="wrap">
+      <div class="sec-head">
+        <span class="eyebrow">Features</span>
+        <h2>Built to apply like a human — at machine speed</h2>
+        <p>Smart form-filling, safe captcha handling, and a memory that gets better the more you use it.</p>
+      </div>
+      <div class="feat-grid">
+        <div class="feat-card">
+          <div class="feat-ico">🤖</div>
+          <h3>Answers screening questions</h3>
+          <p>Reads each question and answers it from your profile — or from your own Gemini API key for anything custom.</p>
+        </div>
+        <div class="feat-card">
+          <div class="feat-ico">🧠</div>
+          <h3>Learns your answers</h3>
+          <p>Anything you type in manually is remembered and auto-filled the next time the same question comes up.</p>
+        </div>
+        <div class="feat-card">
+          <div class="feat-ico">🛡️</div>
+          <h3>Safe captcha hand-off</h3>
+          <p>Never auto-solves captchas. It spotlights them, sends you a desktop alert, and resumes the moment you clear it.</p>
+        </div>
+        <div class="feat-card">
+          <div class="feat-ico">🖱️</div>
+          <h3>Human-like behavior</h3>
+          <p>Randomized delays and natural clicks and typing, so applications look like they came from a real person.</p>
+        </div>
+        <div class="feat-card">
+          <div class="feat-ico">♾️</div>
+          <h3>Runs continuously</h3>
+          <p>Keeps applying across every page and navigation until you press Stop — no need to babysit it.</p>
+        </div>
+        <div class="feat-card">
+          <div class="feat-ico">📊</div>
+          <h3>Built-in CRM tracker</h3>
+          <p>Every applied and skipped job is logged automatically, so you always know where you’ve applied.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- FAQ -->
+  <section class="section section-alt" id="faq">
+    <div class="wrap">
+      <div class="sec-head">
+        <span class="eyebrow">FAQ</span>
+        <h2>Questions, answered</h2>
+      </div>
+      <div class="faq-list">
+        <details class="faq" open>
+          <summary>Which job sites are supported?</summary>
+          <p>LinkedIn (Easy Apply), Indeed, Naukri and Naukri Gulf, and Bayt. Each has its own dedicated apply flow.</p>
+        </details>
+        <details class="faq">
+          <summary>Which browsers does it work on?</summary>
+          <p>Google Chrome and Microsoft Edge. It’s a Manifest V3 extension you load unpacked — download the zip, unzip it, and add it from the extensions page.</p>
+        </details>
+        <details class="faq">
+          <summary>Do I have to sit and watch it?</summary>
+          <p>No. Once you press Start it runs on its own across pages and job listings. It only pauses for captchas, which it flags for you and resumes automatically once solved.</p>
+        </details>
+        <details class="faq">
+          <summary>Is it safe to use on my account?</summary>
+          <p>It runs entirely inside your own browser with your own login, uses human-like pacing, and never auto-solves captchas. You stay in control and can stop it at any moment.</p>
+        </details>
+        <details class="faq">
+          <summary>How do I get access?</summary>
+          <p>Sign in and enter your activation key — or buy a plan for instant access. The same key unlocks both the extension and the CRM tracker.</p>
+        </details>
+      </div>
+    </div>
+  </section>
+
+  <!-- CTA -->
+  <section class="section">
+    <div class="wrap">
+      <div class="cta-band">
+        <h2>Ready to stop applying by hand?</h2>
+        <p>Install AutoApplier and let it work through LinkedIn, Indeed, Naukri and Bayt for you.</p>
+        <div style="display:flex;gap:12px;justify-content:center;flex-wrap:wrap">
+          <button class="btn btn-lg cta-white" onclick="gotoLogin()">Get started free →</button>
+          <a class="btn btn-ghost btn-lg" href="/checkout.html">View plans</a>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <footer class="site">
+    <div class="wrap">
+      <div class="nav-logo" style="font-size:15px"><span>🤖</span> AutoApplier</div>
+      <div>© <span id="yr"></span> AutoApplier · Automated job applications for LinkedIn, Indeed, Naukri &amp; Bayt</div>
+      <div style="display:flex;gap:18px">
+        <a href="/crm.html">CRM</a>
+        <a href="/checkout.html">Plans</a>
+        <a href="#" onclick="gotoLogin();return false;">Sign in</a>
+      </div>
+    </div>
+  </footer>
+
+</div>
 </div>
 
 <!-- ══ View: Dashboard ══ -->
@@ -398,7 +664,7 @@
       </div>
       <div class="step">
         <span class="sn">6</span>
-        <p>Open LinkedIn Jobs, Indeed, or Naukri, fill your profile, and hit <strong>Start</strong>.</p>
+        <p>Open LinkedIn Jobs, Indeed, Naukri, or Bayt, fill your profile, and hit <strong>Start</strong>.</p>
       </div>
     </div>
   </div>
@@ -484,7 +750,7 @@
       document.getElementById('view-landing').classList.add('active');
       document.getElementById('view-dashboard').classList.remove('active');
       document.getElementById('nav-right').innerHTML =
-        '<button class="btn btn-primary" onclick="Views.showLanding()">Sign In</button>';
+        '<button class="btn btn-primary" onclick="gotoLogin()">Sign In</button>';
     },
 
     showDashboard(s) {
@@ -809,8 +1075,20 @@
     el._t = setTimeout(() => el.classList.remove('show'), 3400);
   }
 
+  // Reveal the landing view and jump to the sign-in card.
+  function gotoLogin() {
+    Views.showLanding();
+    const card = document.getElementById('auth-card');
+    if (card) {
+      card.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      const email = document.getElementById('f-email');
+      if (email) setTimeout(() => email.focus({ preventScroll: true }), 400);
+    }
+  }
+
   // ── Boot ──────────────────────────────────────────────────────────────────
   (function init() {
+    const yr = document.getElementById('yr'); if (yr) yr.textContent = new Date().getFullYear();
     const s = Session.load();
     if (s?.token && s?.email) {
       Views.showDashboard(s);
