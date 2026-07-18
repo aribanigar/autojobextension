@@ -76,11 +76,13 @@
     footer.site .wrap{max-width:1080px;margin:0 auto;padding:0 24px;display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap}
     footer.site a{color:var(--muted);text-decoration:none}footer.site a:hover{color:var(--accent)}
     @media(max-width:860px){nav{padding:13px 20px}}
+    .nav-logo .brand-logo{height:34px;width:auto;display:block}
+    footer.site .nav-logo .brand-logo{height:26px}
   </style>
 </head>
 <body>
   <nav>
-    <a class="nav-logo" href="/"><img src="/favicon.svg" alt="AutoApplier logo" class="logo-img"/> AutoApplier <span class="admin-tag">Admin</span></a>
+    <a class="nav-logo" href="/"><img src="/assets/logo.svg" alt="Job Auto Applier" class="brand-logo"/> <span class="admin-tag">Admin</span></a>
     <div id="nav-right">
       <span id="who" class="who" style="display:none"></span>
       <a class="btn-g" href="/">← Home</a>
@@ -225,7 +227,7 @@
 
   <footer class="site">
     <div class="wrap">
-      <div class="nav-logo" style="font-size:15px"><img src="/favicon.svg" alt="AutoApplier logo" class="logo-img"/> AutoApplier</div>
+      <div class="nav-logo" style="font-size:15px"><img src="/assets/logo.svg" alt="Job Auto Applier" class="brand-logo"/></div>
       <div>© <span id="yr"></span> AutoApplier. Admin console.</div>
       <div style="display:flex;gap:18px">
         <a href="/">Home</a>

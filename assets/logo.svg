@@ -1,0 +1,42 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 690 205" role="img" aria-label="Job Auto Applier">
+  <!-- little extension chip near the star -->
+  <g>
+    <rect x="34" y="60" width="26" height="26" rx="6" fill="#2f6fed" stroke="#111" stroke-width="3"/>
+    <circle cx="47" cy="73" r="5.5" fill="#fff"/>
+  </g>
+
+  <!-- legs + sneakers (behind the star) -->
+  <g stroke="#111" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M100 150 L84 184" fill="none" stroke="#111" stroke-width="17"/>
+    <path d="M100 150 L84 184" fill="none" stroke="#fff" stroke-width="11"/>
+    <path d="M122 150 L150 180" fill="none" stroke="#111" stroke-width="17"/>
+    <path d="M122 150 L150 180" fill="none" stroke="#fff" stroke-width="11"/>
+    <!-- left shoe -->
+    <path d="M66 182 q0-11 14-12 l10 0 q10 0 12 9 q1 8-8 10 l-20 0 q-8 0-8-7 Z" fill="#22357a" stroke="#111" stroke-width="4"/>
+    <line x1="66" y1="184" x2="94" y2="184" stroke="#fff" stroke-width="4"/>
+    <!-- right shoe -->
+    <path d="M138 178 q-2-11 12-13 l10 0 q10 0 13 8 q2 8-7 11 l-20 1 q-8 1-8-7 Z" fill="#22357a" stroke="#111" stroke-width="4"/>
+    <line x1="139" y1="181" x2="167" y2="180" stroke="#fff" stroke-width="4"/>
+  </g>
+
+  <!-- star body -->
+  <path d="M110,17 L130.6,76.7 L193.7,77.8 L143.3,115.8 L161.7,176.2 L110,140 L58.3,176.2 L76.7,115.8 L26.3,77.8 L89.4,76.7 Z"
+        fill="#FCD117" stroke="#111" stroke-width="5.5" stroke-linejoin="round"/>
+
+  <!-- sunglasses -->
+  <g fill="#111">
+    <rect x="74" y="92" width="30" height="23" rx="8"/>
+    <rect x="112" y="92" width="30" height="23" rx="8"/>
+    <rect x="102" y="98" width="12" height="6" rx="3"/>
+    <rect x="60" y="96" width="16" height="6" rx="3"/>
+    <rect x="140" y="96" width="16" height="6" rx="3"/>
+  </g>
+  <!-- lens glints -->
+  <path d="M82 98 l-4 12" stroke="#3a3a3a" stroke-width="3" stroke-linecap="round"/>
+  <!-- smile -->
+  <path d="M96 126 Q110 139 130 124" fill="none" stroke="#111" stroke-width="5" stroke-linecap="round"/>
+
+  <!-- wordmark -->
+  <text x="238" y="90" font-family="'Segoe UI','Helvetica Neue',Arial,sans-serif" font-weight="700" font-size="70" fill="#111">Job Auto</text>
+  <text x="236" y="162" font-family="'Segoe UI','Helvetica Neue',Arial,sans-serif" font-weight="900" font-size="80" letter-spacing="1" fill="#111">APPLIER</text>
+</svg>
