@@ -3404,11 +3404,85 @@
       this._clearPending();
     }
 
+    // Remember every answered question on this form (keyed by its label) so the
+    // same question is auto-filled on future Bayt applications.
+    _captureAnswers(scope) {
+      try {
+        for (const el of $$('input, textarea, select', scope)) {
+          if (!isVis(el)) continue;
+          const t = (el.type || '').toLowerCase();
+          if (/^(hidden|submit|button|image|file|password)$/.test(t)) continue;
+          let q = ''; try { q = this.f.labelFor(el); } catch {}
+          if (!q) continue;
+          let val = '';
+          if (t === 'radio' || t === 'checkbox') {
+            if (el.checked) val = (el.closest('label')?.textContent || el.value || '').trim();
+          } else val = (el.value || '').trim();
+          if (val) { try { learnedAnswers.set(q, val); } catch {} }
+        }
+      } catch {}
+    }
+
+    // Fill the Bayt "Additional questions" from your profile + remembered
+    // answers, pause for you to complete anything still blank (buzzing you and
+    // pausing the auto-skip so you aren't cut off), and LEARN every answer for
+    // next time — then the caller submits.
+    async _answerAndLearn(form) {
+      const scope = (form && form !== document.body) ? form : ($('form') || document.body);
+
+      // Shared engine: answers from profile + LEARNED answers, and attaches
+      // learnFromField() to whatever it cannot fill.
+      try { await this.f.all(scope); } catch {}
+
+      const textFields = () => $$(
+        'textarea, input[type="text"], input[type="number"], input[type="url"], ' +
+        'input[type="email"], input[type="tel"], input:not([type])', scope
+      ).filter(el => isVis(el) && !el.disabled && !el.readOnly);
+
+      // Answer each blank question from profile+LEARNED (map consults learned
+      // first), then AI; start learning anything still unanswered.
+      for (const inp of textFields()) {
+        if ((inp.value || '').trim()) continue;
+        let q = ''; try { q = this.f.labelFor(inp); } catch {}
+        let ans = q ? this.f.map(q) : null;
+        if (!ans && q) { try { ans = await this.f.aiAnswer(q); } catch {} }
+        if (!ans) { if (q) learnFromField(inp, q); SPOT.pulse(inp, `❓ ${(q || 'question').slice(0, 40)}`); continue; }
+        SPOT.pulse(inp, `⌨️ ${q.slice(0, 40)}`);
+        try { await typeInto(inp, ans); } catch {}
+        await sleep(rand(250, 550));
+      }
+
+      // Remember whatever is filled so far.
+      this._captureAnswers(scope);
+
+      // Anything still blank → hand off to you. Pause the 60-90s skip timer so it
+      // can't cut you off mid-typing, learn your answers as you go, then resume.
+      const blanks = () => textFields().filter(el => !(el.value || '').trim());
+      if (blanks().length) {
+        blanks().forEach(el => { let q = ''; try { q = this.f.labelFor(el); } catch {} if (q) learnFromField(el, q); });
+        this._disarmJobTimer();
+        SPOT.attention(scope, '❓ Please answer the remaining question(s) — I\'ll remember your answers for next time, then submit.');
+        notifyUser('JobBot needs you', 'A Bayt question needs your answer — fill it and I\'ll remember it for next time.');
+        for (let i = 0; i < 240 && this.running; i++) {
+          await sleep(1000);
+          if (this.isConfirmationPage()) break;
+          this._captureAnswers(scope);        // learn continuously as you type
+          if (!blanks().length) break;        // all answered → submit
+          if (i > 0 && i % 45 === 0) notifyUser('JobBot still waiting', 'A Bayt question is still open — answer it and I\'ll remember it and continue.');
+        }
+        SPOT.clearAttention();
+        this._armJobTimer();
+      }
+
+      // Final capture just before the caller submits.
+      this._captureAnswers(scope);
+    }
+
     // Fill any prefilled/screening questions, then click "Apply now".
     async runApplication() {
       SPOT.status('Filling Bayt application…', 'applying');
       const form = $('form, .apply-form, [class*="apply-form"], [class*="application-form"]') || document.body;
-      try { await this.f.all(form); } catch {}
+      try { await this._answerAndLearn(form); } catch {}
       await sleep(rand(400, 800));
 
       let btn = this.applyNowBtn();
