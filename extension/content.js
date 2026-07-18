@@ -3285,12 +3285,13 @@
       this.f = f; this.applied = 0; this.skipped = 0; this.running = false;
       this._skipNow = false; this._jobTimer = null;
     }
-    _armJobTimer(ms = 90000) {
+    _armJobTimer(ms = rand(60000, 90000)) {
       clearTimeout(this._jobTimer);
       this._skipNow = false;
+      const secs = Math.round(ms / 1000);
       this._jobTimer = setTimeout(() => {
         this._skipNow = true;
-        SPOT.status('⏱ Job taking too long (90s) – skipping…', 'warning');
+        SPOT.status(`⏱ Job taking too long (${secs}s) – skipping…`, 'warning');
       }, ms);
     }
     _disarmJobTimer() { clearTimeout(this._jobTimer); this._skipNow = false; }
