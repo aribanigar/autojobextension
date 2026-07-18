@@ -49,6 +49,24 @@ document.addEventListener('DOMContentLoaded', async () => {
       banner.style.display = 'none';
       try { if (banner._latest) localStorage.setItem('jobbot_update_dismissed', banner._latest); } catch {}
     });
+
+    // Manual "Check for updates" link: force a fresh re-check and give feedback.
+    const link = el('check-updates');
+    link?.addEventListener('click', e => {
+      e.preventDefault();
+      const orig = link.textContent;
+      link.textContent = 'Checking…';
+      ask('CHECK_UPDATE').then(info => {
+        if (info && info.available && info.latest) {
+          try { localStorage.removeItem('jobbot_update_dismissed'); } catch {} // user explicitly asked, so re-show
+          render(info);
+          link.textContent = orig;
+        } else {
+          link.textContent = "You're up to date ✓";
+          setTimeout(() => { link.textContent = orig; }, 2500);
+        }
+      });
+    });
   })();
 
   // ── Tabs ─────────────────────────────────────────────────────────────────
