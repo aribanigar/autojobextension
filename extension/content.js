@@ -84,8 +84,11 @@
       if (setter) setter.call(el, el.value + ch);
       else el.value += ch;
       el.dispatchEvent(new Event('input', { bubbles: true }));
-      await sleep(rand(18, 55));
+      // Human rhythm: mostly quick keystrokes, with the occasional brief pause
+      // like a person thinking mid-answer — smoother than a constant machine rate.
+      await sleep(Math.random() < 0.08 ? rand(180, 420) : rand(22, 70));
     }
+    await sleep(rand(150, 350)); // brief settle/read before committing the answer
     el.dispatchEvent(new Event('change', { bubbles: true }));
     el.dispatchEvent(new Event('blur',   { bubbles: true }));
   }
@@ -2842,18 +2845,32 @@
     // user answers (the question changes), the drawer closes, or the apply
     // succeeds. The 90s auto-skip timer is disarmed so the user isn't rushed;
     // only a ~10-min no-response window falls through to a skip.
+    // The human's most recent answer bubble in the chatbot (their chip pick,
+    // radio label, or typed text all become a user message). Used to LEARN what
+    // the user answered so the same question is auto-filled next time.
+    _lastUserAnswer(drawer) {
+      const box = $('[class*="MessageContainer"], ul[id*="chatList"], ul[id*="Messages"]', drawer) || drawer;
+      const isUser = el => /\b(usr|user|self|right|my-?msg|userItem|sent|reply|answer)\b/i.test(el.getAttribute('class') || '');
+      const users = $$('li', box).filter(el => isVis(el) && isUser(el));
+      const last = users[users.length - 1];
+      const t = last ? (last.textContent || '').replace(/\s+/g, ' ').trim() : '';
+      return (t && t.length <= 300) ? t : '';
+    }
+
     async waitForHumanAnswer(question) {
       this._disarmJobTimer();
       const drawer = this.chatbot();
       SPOT.attention(drawer || document.body,
         `❓ Please answer this question — I'll continue automatically once you do:  "${(question || '').slice(0, 70)}"`);
       notifyUser('JobBot needs you', `A Naukri question needs your answer: "${(question || '').slice(0, 90)}". Type it and I'll continue.`);
+      // Remember the human's answer for next time so we never re-ask this question.
+      const learnIt = (d) => { try { const a = this._lastUserAnswer(d); if (a && question) learnedAnswers.set(question, a); } catch {} };
       for (let i = 0; i < 600 && this.running; i++) { // wait up to ~10 min
         await sleep(1000);
-        if (this.isApplied()) { SPOT.clearAttention(); return 'done'; }
+        if (this.isApplied()) { learnIt(this.chatbot() || drawer); SPOT.clearAttention(); return 'done'; }
         const d2 = this.chatbot();
-        if (!d2) { SPOT.clearAttention(); return 'continue'; }                     // drawer closed → moved on
-        if (this.chatQuestion(d2) !== question) { SPOT.clearAttention(); return 'continue'; } // answered → next question
+        if (!d2) { learnIt(drawer); SPOT.clearAttention(); return 'continue'; }                     // drawer closed → moved on
+        if (this.chatQuestion(d2) !== question) { learnIt(d2); SPOT.clearAttention(); return 'continue'; } // answered → next question
         if (i > 0 && i % 45 === 0) notifyUser('JobBot still waiting', 'A Naukri question is still open — please answer it and I\'ll continue.');
       }
       SPOT.clearAttention();
@@ -4063,6 +4080,24 @@
       }
     }
 
+    // A job is "already applied" if it's in our permanent memory (jobbot_applied_v2,
+    // so it survives re-scans and reloads), OR the agent's own per-card detector
+    // says so (Bayt.cardApplied), OR the card shows a plain "Applied" badge. Used
+    // to keep applied jobs out of "Select all" and off the tick overlay.
+    function isCardAlreadyApplied(card, id) {
+      try {
+        if (id && appliedSet.has(id)) return true;
+        if (typeof probe.cardApplied === 'function' && probe.cardApplied(card)) return true;
+        // Generic site badge: a leaf element whose exact text is "Applied" /
+        // "Already applied" (never "12 applied" — that requires the whole label
+        // to be just the word). Bounded to badge-ish nodes so it stays cheap.
+        if ($$('span, small, p, div, [class*="applied" i], [class*="status" i], [class*="tag" i], [class*="badge" i]', card)
+              .some(el => el.childElementCount === 0 && isVis(el)
+                       && /^(applied|already applied)$/i.test((el.textContent || '').trim()))) return true;
+      } catch {}
+      return false;
+    }
+
     // "Select all" pill: one click ticks every visible job card; flips to
     // "Clear all" when everything visible is already ticked.
     let selAllBtn = null;
@@ -4077,7 +4112,13 @@
         // "Select all (N)" / "Apply All" past the actual jobs on the page.
         cards = cards.filter(isJobCard);
         cards = cards.filter(c => !cards.some(o => o !== c && o.contains(c)));
-        const ids = cards.map(c => probe.cardId(c)).filter(Boolean);
+        // Never surface an ALREADY-APPLIED job — so "Select all" can't queue it
+        // and the count reflects only jobs that still need applying.
+        const ids = [];
+        for (const c of cards) {
+          const id = probe.cardId(c);
+          if (id && !isCardAlreadyApplied(c, id)) ids.push(id);
+        }
         return [...new Set(ids)];
       } catch { return []; }
     }
@@ -4155,7 +4196,12 @@
         const wrap = t.parentElement;
         const host = wrap?.parentElement;
         if (!host) { t.remove(); return; }
-        if (!isJobCard(host) || host.parentElement?.closest('[data-jobbotx-tick]')) {
+        // A card that has since become applied loses its tick and its selection —
+        // so an applied job can never stay queued.
+        const hid = probe.cardId(host);
+        const applied = hid && isCardAlreadyApplied(host, hid);
+        if (applied || !isJobCard(host) || host.parentElement?.closest('[data-jobbotx-tick]')) {
+          if (applied && hid) selectedSet.remove(hid);
           t.remove();
           if (wrap?.classList.contains('jobbotx-wrap') && !wrap.querySelector('.jobbotx-tick')) wrap.remove();
           if (host.dataset.jobbotxWasStatic) { host.style.position = ''; delete host.dataset.jobbotxWasStatic; }
@@ -4168,6 +4214,8 @@
         if (card.closest('[data-jobbotx-tick]') !== null && card.closest('[data-jobbotx-tick]') !== card) continue;
         const id = probe.cardId(card);
         if (!id) continue;
+        // Never render a tick on an already-applied job — it can't be re-applied.
+        if (isCardAlreadyApplied(card, id)) { card.setAttribute('data-jobbotx-tick', '1'); continue; }
         card.setAttribute('data-jobbotx-tick', '1');
 
         // Use a position:relative wrapper injected INSIDE the card so we never
