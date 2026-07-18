@@ -150,3 +150,25 @@ alter table purchases add column if not exists referrer_email text;
 alter table purchases add column if not exists discount_paise integer not null default 0;
 alter table purchases add column if not exists rewarded       boolean not null default false;
 alter table purchases add column if not exists duration_days  integer;   -- validity window for this purchase
+
+-- ─────────────────────────────────────────────────────────────────────────────
+-- Telemetry: anonymous field-health beacons (selector misses, agent errors,
+-- captchas, backend failures). Lets the owner SEE when a job site changes its
+-- DOM or an integration breaks — instead of finding out from user churn. No PII:
+-- an anonymous per-install id, the extension version, the platform, an event
+-- type + short detail code, and the page hostname (no path/query). Written by
+-- the public /api/telemetry endpoint; read only via the admin console.
+create table if not exists telemetry (
+  id         bigserial primary key,
+  anon_id    text,                                   -- random per-install uuid (not a user)
+  version    text,                                   -- extension version
+  platform   text,                                   -- linkedin | indeed | naukri | naukrigulf | bayt | null
+  type       text not null,                          -- selector_miss | agent_error | captcha | backend_error | …
+  detail     text,                                   -- short code / message (bounded)
+  host       text,                                   -- page hostname only
+  created_at timestamptz not null default now()
+);
+create index if not exists telemetry_created_idx  on telemetry (created_at desc);
+create index if not exists telemetry_type_idx     on telemetry (type);
+create index if not exists telemetry_platform_idx on telemetry (platform);
+alter table telemetry enable row level security;

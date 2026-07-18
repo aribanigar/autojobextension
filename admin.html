@@ -74,6 +74,7 @@
         <button data-tab="users">Users &amp; Access</button>
         <button data-tab="coupons">Referral Codes</button>
         <button data-tab="purchases">Purchases</button>
+        <button data-tab="health">Health</button>
       </div>
 
       <!-- LICENSE KEYS -->
@@ -178,6 +179,12 @@
 
       <!-- PURCHASES -->
       <section id="tab-purchases" style="display:none"><div id="purchases-list"></div></section>
+
+      <section id="tab-health" style="display:none">
+        <p style="color:#666;margin:0 0 10px">Anonymous field-health beacons from the extension — spot a job site changing its DOM or an integration breaking. Last 300 events.</p>
+        <div id="health-summary" style="margin-bottom:12px"></div>
+        <div id="health-list"></div>
+      </section>
     </div>
   </div>
 
@@ -204,12 +211,13 @@
 
     document.querySelectorAll('.tabs button').forEach(b=>b.onclick=()=>{
       document.querySelectorAll('.tabs button').forEach(x=>x.classList.remove('on')); b.classList.add('on');
-      ['keys','plans','users','coupons','purchases'].forEach(t=>$('#tab-'+t).style.display = t===b.dataset.tab?'':'none');
+      ['keys','plans','users','coupons','purchases','health'].forEach(t=>$('#tab-'+t).style.display = t===b.dataset.tab?'':'none');
       if(b.dataset.tab==='keys') loadKeys();
       if(b.dataset.tab==='plans') loadPlans();
       if(b.dataset.tab==='users') loadUsers();
       if(b.dataset.tab==='coupons') loadCoupons();
       if(b.dataset.tab==='purchases') loadPurchases();
+      if(b.dataset.tab==='health') loadTelemetry();
     });
 
     // LICENSE KEYS — issue for an email (lifetime/limited + optional password)
@@ -386,6 +394,30 @@
             <td>${esc(p.interval)}</td>
             <td style="color:var(--muted)">${new Date(p.created_at).toLocaleString()}</td></tr>`).join('')}</tbody></table>`;
       } catch(e){ $('#purchases-list').innerHTML='<p class="msg err">'+esc(e.message)+'</p>'; }
+    }
+
+    async function loadTelemetry() {
+      try {
+        const rows = await adminPost({ action:'list_telemetry' });
+        if (!rows.length) { $('#health-summary').innerHTML=''; $('#health-list').innerHTML='<p style="color:#666">No telemetry yet. (If the extension has run since the telemetry table was created, events will appear here.)</p>'; return; }
+        // 24h summary by type and by platform (all values escaped — the source is a public endpoint).
+        const dayAgo = Date.now() - 24*3600*1000;
+        const recent = rows.filter(r=>new Date(r.created_at).getTime() >= dayAgo);
+        const tally = (arr,k)=>{ const m={}; arr.forEach(r=>{ const v=r[k]||'—'; m[v]=(m[v]||0)+1; }); return Object.entries(m).sort((a,b)=>b[1]-a[1]); };
+        const chip = (label,n,warn)=>`<span style="display:inline-block;margin:2px 6px 2px 0;padding:3px 9px;border-radius:20px;font-size:12px;background:${warn?'#fde8e8':'#eef2ff'};color:${warn?'#b91c1c':'#3730a3'}">${esc(label)} · ${n}</span>`;
+        const WARN = /error|miss|fail|captcha|no_cards/;
+        $('#health-summary').innerHTML =
+          `<div style="margin-bottom:6px"><b>Last 24h — by event</b><br>${tally(recent,'type').map(([t,n])=>chip(t,n,WARN.test(t))).join('')||'—'}</div>`+
+          `<div><b>Last 24h — by platform</b><br>${tally(recent,'platform').map(([p,n])=>chip(p,n,false)).join('')||'—'}</div>`;
+        $('#health-list').innerHTML = `<table><thead><tr><th>When</th><th>Type</th><th>Platform</th><th>Detail</th><th>Host</th><th>Ver</th></tr></thead><tbody>${
+          rows.slice(0,300).map(r=>`<tr>
+            <td style="color:var(--muted);white-space:nowrap">${new Date(r.created_at).toLocaleString()}</td>
+            <td><span style="color:${WARN.test(r.type||'')?'#b91c1c':'#3730a3'};font-weight:600">${esc(r.type)}</span></td>
+            <td>${esc(r.platform||'—')}</td>
+            <td style="max-width:340px;overflow:hidden;text-overflow:ellipsis">${esc(r.detail||'')}</td>
+            <td style="color:var(--muted)">${esc(r.host||'')}</td>
+            <td style="color:var(--muted)">${esc(r.version||'')}</td></tr>`).join('')}</tbody></table>`;
+      } catch(e){ $('#health-list').innerHTML='<p class="msg err">'+esc(e.message)+'</p>'; }
     }
 
     function boot(){ $('#gate').style.display='none'; $('#app').style.display=''; loadKeys(); }

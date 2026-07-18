@@ -96,6 +96,37 @@ async function checkForUpdate() {
 chrome.runtime.onInstalled.addListener(() => { try { checkForUpdate(); } catch {} });
 chrome.runtime.onStartup.addListener(() => { try { checkForUpdate(); } catch {} });
 
+// ── Telemetry relay ──────────────────────────────────────────────────────────
+// POST an anonymous field-health beacon to the OWNER's backend (always the
+// default host, even if the user set a custom crmUrl). Fire-and-forget: never
+// awaited, never throws, wrapped so a failed beacon can't affect anything.
+function sendTelemetry(event) {
+  try {
+    fetch(`${DEFAULT_CRM}/api/telemetry`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(event || {}),
+      keepalive: true,
+    }).catch(() => {});
+  } catch {}
+}
+
+// Background-side beacon (e.g. backend unreachable). Deduped to ≤1 per key per
+// 5 min so a repeated failure doesn't spam. Reads the anon id + version inline.
+const _beaconSeen = new Map();
+function bgBeacon(type, detail) {
+  try {
+    const k = type + '|' + (detail || ''); const now = Date.now();
+    if (_beaconSeen.get(k) && now - _beaconSeen.get(k) < 300000) return;
+    _beaconSeen.set(k, now);
+    let ver = ''; try { ver = chrome.runtime.getManifest().version; } catch {}
+    chrome.storage.local.get('jobbot_anon', d => {
+      void chrome.runtime.lastError;
+      sendTelemetry({ anon_id: (d && d.jobbot_anon) || null, version: ver, platform: null, type, detail, host: 'background' });
+    });
+  } catch {}
+}
+
 function getPrefs() {
   return new Promise(res =>
     chrome.storage.local.get('jobbot_profile', d => res(d.jobbot_profile?.preferences || {})));
@@ -148,6 +179,7 @@ async function getLicense(force = false) {
       }
       return { active: false, reason: 'bad-key' }; // invalid/revoked
     } catch {
+      bgBeacon('backend_error', 'license unreachable');
       if (_licCache && _licCache.active && Date.now() - _licCache.ts < 24 * 3600 * 1000) return _licCache;
       return { active: false, reason: 'offline' };
     }
@@ -165,7 +197,8 @@ async function getLicense(force = false) {
     _licCache = { active: !!d.active, is_admin: !!d.is_admin, ts: Date.now() };
     return _licCache;
   } catch {
-    if (_licCache && _licCache.active && Date.now() - _licCache.ts < 24 * 3600 * 1000) return _licCache;
+    bgBeacon('backend_error', 'license unreachable');
+      if (_licCache && _licCache.active && Date.now() - _licCache.ts < 24 * 3600 * 1000) return _licCache;
     return { active: false, reason: 'offline' };
   }
 }
@@ -310,6 +343,11 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
       // Force a fresh check against the backend version.json.
       checkForUpdate().then(info => sendResponse(info)).catch(() => sendResponse({ available: false }));
       return true;
+
+    case 'TELEMETRY':
+      // Relay an anonymous field-health beacon from a content script.
+      sendTelemetry(msg.event);
+      break;
 
     case 'DO_UPDATE':
       // Start the update: open the new build's download (the zip is served with

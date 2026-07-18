@@ -26,6 +26,69 @@
   const sleep    = ms => new Promise(r => setTimeout(r, ms));
   const rand     = (lo, hi) => lo + Math.floor(Math.random() * (hi - lo));
 
+  // ── Telemetry (anonymous field-health beacons) ──────────────────────────────
+  // Fire-and-forget reports of selector misses / agent errors / captchas so the
+  // owner can SEE when a job site changes its DOM or an integration breaks. It
+  // NEVER blocks, NEVER throws, and dedupes to ≤1 per key per minute. Sent via the
+  // background worker (a content script can't cross-origin POST). No PII: an
+  // anonymous per-install id, version, platform, an event type + short detail, and
+  // the page hostname. If anything at all fails it's a silent no-op — it can't
+  // affect the agent or any integration.
+  const Telemetry = (() => {
+    let anon = '';
+    try {
+      chrome.storage.local.get('jobbot_anon', d => {
+        void chrome.runtime.lastError;
+        anon = (d && d.jobbot_anon) || '';
+        if (!anon) {
+          try { anon = (self.crypto && crypto.randomUUID) ? crypto.randomUUID() : 'a' + Math.random().toString(36).slice(2) + Date.now().toString(36); } catch { anon = 'a' + Date.now(); }
+          try { chrome.storage.local.set({ jobbot_anon: anon }); } catch {}
+        }
+      });
+    } catch {}
+    const seen = new Map();
+    return {
+      send(type, detail) {
+        try {
+          const key = type + '|' + (detail || '');
+          const now = Date.now();
+          if (seen.get(key) && now - seen.get(key) < 60000) return;   // ≤1/min per key
+          seen.set(key, now);
+          let ver = ''; try { ver = chrome.runtime.getManifest().version; } catch {}
+          chrome.runtime.sendMessage({
+            type: 'TELEMETRY',
+            event: {
+              anon_id: anon, version: ver, platform: PLATFORM || null,
+              type: String(type).slice(0, 40),
+              detail: detail ? String(detail).slice(0, 200) : null,
+              host: location.hostname,
+            },
+          }, () => void chrome.runtime.lastError);
+        } catch {}
+      },
+    };
+  })();
+
+  // Report uncaught errors that originate from OUR content script (never the host
+  // page's own JS). Passive — cannot affect page behaviour.
+  try {
+    window.addEventListener('error', e => {
+      try {
+        const f = e.filename || '';
+        if (!/content\.js|chrome-extension:/i.test(f)) return;
+        Telemetry.send('js_error', (e.message || 'error') + ' @' + f.split('/').pop() + ':' + (e.lineno || 0));
+      } catch {}
+    }, true);
+    window.addEventListener('unhandledrejection', e => {
+      try {
+        const r = e && e.reason;
+        const stack = r && r.stack || '';
+        if (!/content\.js|chrome-extension:/i.test(stack)) return;   // only ours
+        Telemetry.send('js_error', 'promise: ' + ((r && (r.message || r)) || '').toString().slice(0, 160));
+      } catch {}
+    }, true);
+  } catch {}
+
   // Compute age (whole years) from a date-of-birth string in common formats:
   // "1998-05-20", "20/05/1998", "20-05-1998", "May 20 1998", "20 May 1998".
   // Returns null if it can't be parsed sensibly.
@@ -545,6 +608,15 @@
       // by the tick boxes and ▶ button, which render before any run starts.
       ensure() { init(); },
       status(msg, type = 'info') {
+        // Passive telemetry: report genuine failures the agents surface here (all
+        // agents call this, so the locked LinkedIn/Indeed ones are covered without
+        // touching them). Wrapped so it can NEVER affect the status display.
+        try {
+          if (type === 'error') Telemetry.send('agent_error', msg);
+          else if (type === 'warning' && /not found|no apply|no easy apply|no cards|no new jobs|can'?t|couldn'?t|stuck|fail|won'?t accept|company site|external/i.test(msg || '')) {
+            Telemetry.send('agent_warning', msg);
+          }
+        } catch {}
         init();
         const [bg, fg] = CLR[type] || CLR.info;
         bar.style.cssText += `;background:${bg};color:${fg};`;
@@ -3797,6 +3869,8 @@
     // background (idempotent; safe to call on every watchdog/resume restart).
     KeepAlive.start();
 
+    try { Telemetry.send('run_start', PLATFORM); } catch {} // denominator for error-rate
+
     const f = new Filler(profile);
     Pacer.configure(profile?.preferences);   // human-pace rate limiter (off unless enabled)
     if      (PLATFORM === 'linkedin') agent = new LinkedInAgent(f);
@@ -4316,6 +4390,7 @@
           const here = CAPTCHA.present();
           if (running && here && !_captchaShown) {
             _captchaShown = true;
+            try { Telemetry.send('captcha', location.hostname); } catch {}
             SPOT.attention(CAPTCHA.el(), '🔐 Human check — please solve the "verify you\'re human" box; I\'ll continue automatically');
             notifyUser('JobBot needs you', 'A captcha appeared — solve it and the agent keeps going automatically.');
           } else if (_captchaShown && !here) {

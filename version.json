@@ -1,6 +1,6 @@
 {
-  "version": "1.5.4",
+  "version": "1.5.5",
   "url": "https://jobs.qckserve.in/jobbot-extension.zip",
-  "notes": "In-app update checker. Your saved details now carry across updates.",
+  "notes": "Anonymous field-health telemetry (admin Health tab). Data still carries across updates.",
   "min_supported": "1.0.0"
 }

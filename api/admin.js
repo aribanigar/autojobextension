@@ -287,6 +287,15 @@ export default async function handler(req, res) {
       return res.status(200).json({ ok: true });
     }
 
+    // ── Telemetry (field-health) ─────────────────────────────────────────────
+    // Recent anonymous beacons from the extension so the admin can spot a job
+    // site changing its DOM or an integration breaking. Returns [] gracefully if
+    // the telemetry table hasn't been created yet.
+    if (action === 'list_telemetry') {
+      const rows = await sb('telemetry?order=created_at.desc&limit=300').catch(() => []);
+      return res.status(200).json(Array.isArray(rows) ? rows : []);
+    }
+
     return res.status(400).json({ error: 'Unknown action' });
   } catch (e) {
     return res.status(502).json({ error: String(e.message || e) });
