@@ -5,97 +5,145 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
   <link rel="apple-touch-icon" href="/favicon.svg" />
-  <title>AutoApplier CRM – Application Tracker</title>
+  <link rel="stylesheet" href="https://cdn-uicons.flaticon.com/uicons-regular-rounded/css/uicons-regular-rounded.css" />
+  <title>AutoApplier CRM - Application Tracker</title>
   <style>
     :root {
-      --violet:#8b5cf6; --violet2:#7c3aed; --violet-dk:#6d28d9;
-      --bg:#0b0817; --card:#161029; --card2:#1d1636;
-      --text:#f1eefb; --muted:#9d95c0; --dim:#6f6790;
-      --border:rgba(139,92,246,.16); --border2:rgba(139,92,246,.32);
-      --green:#34d399; --red:#f87171; --amber:#fbbf24; --blue:#60a5fa;
+      --bg:#ffffff; --bg-soft:#f5f8ff; --card:#ffffff; --card2:#f4f7fe;
+      --border:rgba(15,23,42,.10); --border-hi:rgba(37,99,235,.40);
+      --accent:#2563eb; --accent-2:#3b82f6; --accent-dk:#1d4ed8; --accent-light:#1d4ed8;
+      --accent-dim:rgba(37,99,235,.08);
+      --text:#0f172a; --muted:#56617a; --dim:#8a93a6;
+      --green:#16a34a; --red:#dc2626; --amber:#d97706; --blue:#2563eb;
     }
     * { margin:0; padding:0; box-sizing:border-box; }
+    html { scroll-behavior:smooth; }
     body {
       font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Inter,Roboto,sans-serif;
-      background:radial-gradient(130% 55% at 50% -8%,rgba(124,58,237,.20),transparent 65%),var(--bg);
-      color:var(--text); min-height:100vh; font-size:14px; line-height:1.5;
+      background:var(--bg); color:var(--text); min-height:100vh; font-size:14px; line-height:1.55;
+      -webkit-font-smoothing:antialiased;
     }
     ::-webkit-scrollbar{width:10px;height:10px}
-    ::-webkit-scrollbar-thumb{background:var(--border2);border-radius:8px}
-    .container { max-width:1080px; margin:0 auto; padding:26px 24px 60px; }
-    header { display:flex; align-items:center; justify-content:space-between; gap:16px; padding:6px 0 22px; flex-wrap:wrap; }
-    h1 { font-size:22px; font-weight:800; letter-spacing:-.01em; }
-    h1 a { color:var(--muted); text-decoration:none; font-weight:500; }
-    h1 a:hover { color:var(--text); }
-    .live { display:inline-flex; align-items:center; gap:7px; font-size:12.5px; font-weight:600; color:var(--green); background:rgba(52,211,153,.1); border:1px solid rgba(52,211,153,.28); padding:5px 12px; border-radius:999px; }
+    ::-webkit-scrollbar-track{background:#eef2f9}
+    ::-webkit-scrollbar-thumb{background:#c7d2e5;border-radius:8px}
+    a{color:inherit}
+    i[class^="fi-"],i[class*=" fi-"]{display:inline-flex;align-items:center;line-height:0;vertical-align:-1px}
+
+    /* Nav */
+    nav{position:sticky;top:0;z-index:200;display:flex;align-items:center;justify-content:space-between;padding:15px 40px;background:rgba(255,255,255,.85);border-bottom:1px solid var(--border);backdrop-filter:blur(16px)}
+    .nav-logo{display:flex;align-items:center;gap:9px;font-size:18px;font-weight:800;letter-spacing:-.01em;color:var(--text);text-decoration:none}
+    .nav-logo span{font-size:20px}
+    .nav-links{display:none;gap:26px}
+    .nav-links a{font-size:14px;font-weight:600;color:var(--muted);text-decoration:none;transition:color .13s}
+    .nav-links a:hover{color:var(--text)}
+    #nav-right{display:flex;align-items:center;gap:12px}
+    @media(min-width:900px){.nav-links{display:flex}}
+
+    .btn-g{display:inline-flex;align-items:center;gap:7px;background:#fff;color:var(--text);border:1px solid var(--border);border-radius:10px;padding:9px 16px;font-size:14px;font-weight:600;text-decoration:none;cursor:pointer;transition:border-color .13s,color .13s}
+    .btn-g:hover{border-color:var(--border-hi);color:var(--accent)}
+
+    .container { max-width:1080px; margin:0 auto; padding:30px 24px 50px; }
+    .page-head{display:flex;align-items:flex-end;justify-content:space-between;gap:16px;flex-wrap:wrap;margin-bottom:24px}
+    .page-head h1 { font-size:26px; font-weight:800; letter-spacing:-.02em; }
+    .page-head p { color:var(--muted); font-size:14px; margin-top:3px; }
+    .live { display:inline-flex; align-items:center; gap:7px; font-size:12.5px; font-weight:700; color:var(--green); background:rgba(22,163,74,.1); border:1px solid rgba(22,163,74,.28); padding:6px 13px; border-radius:999px; }
     .live .dot { width:7px; height:7px; border-radius:50%; background:var(--green); animation:bl 1.2s infinite; }
-    .live.err { color:var(--red); background:rgba(248,113,113,.1); border-color:rgba(248,113,113,.28); }
+    .live.err { color:var(--red); background:rgba(220,38,38,.1); border-color:rgba(220,38,38,.28); }
     .live.err .dot { background:var(--red); animation:none; }
     @keyframes bl { 0%,100%{opacity:1} 50%{opacity:.25} }
 
-    .cards { display:grid; grid-template-columns:repeat(auto-fit,minmax(150px,1fr)); gap:12px; margin-bottom:22px; }
-    .card { background:var(--card); border:1px solid var(--border); border-radius:14px; padding:16px 18px; transition:border-color .15s,transform .15s; }
-    .card:hover { border-color:var(--border2); transform:translateY(-2px); }
-    .card .n { font-size:28px; font-weight:800; letter-spacing:-.02em; background:linear-gradient(120deg,var(--text),var(--violet)); -webkit-background-clip:text; background-clip:text; -webkit-text-fill-color:transparent; }
-    .card .l { font-size:11.5px; color:var(--muted); margin-top:2px; text-transform:uppercase; letter-spacing:.04em; font-weight:600; }
+    .cards { display:grid; grid-template-columns:repeat(auto-fit,minmax(150px,1fr)); gap:14px; margin-bottom:22px; }
+    .card { background:#fff; border:1px solid var(--border); border-radius:14px; padding:18px 20px; box-shadow:0 1px 3px rgba(15,23,42,.04); transition:border-color .15s,transform .15s,box-shadow .15s; }
+    .card:hover { border-color:var(--border-hi); transform:translateY(-2px); box-shadow:0 12px 26px -18px rgba(37,99,235,.4); }
+    .card .n { font-size:30px; font-weight:850; letter-spacing:-.02em; color:var(--accent); }
+    .card .l { font-size:11.5px; color:var(--muted); margin-top:2px; text-transform:uppercase; letter-spacing:.04em; font-weight:700; }
 
     .bar { display:flex; gap:10px; margin-bottom:16px; flex-wrap:wrap; }
     input, select, button, textarea {
-      background:var(--card); border:1px solid var(--border); color:var(--text);
+      background:#fff; border:1px solid var(--border); color:var(--text);
       border-radius:10px; padding:9px 13px; font-size:13.5px; font-family:inherit; transition:border-color .15s,box-shadow .15s;
     }
-    input:focus, select:focus { outline:none; border-color:var(--violet); box-shadow:0 0 0 3px rgba(124,58,237,.16); }
+    input:focus, select:focus { outline:none; border-color:var(--accent); box-shadow:0 0 0 3px rgba(37,99,235,.14); }
     button { cursor:pointer; font-weight:600; transition:filter .12s,background .15s,border-color .15s; }
-    button:hover { filter:brightness(1.08); }
-    .btn-v { background:linear-gradient(135deg,var(--violet),var(--violet-dk)); border:none; color:#fff; font-weight:700; box-shadow:0 6px 16px rgba(124,58,237,.32); }
+    button:hover { border-color:var(--border-hi); }
+    .btn-v { background:linear-gradient(135deg,var(--accent-2),var(--accent-dk)); border:none; color:#fff; font-weight:700; box-shadow:0 6px 16px rgba(37,99,235,.28); }
+    .btn-v:hover { filter:brightness(1.07); border:none; }
 
-    table { width:100%; border-collapse:collapse; background:var(--card); border:1px solid var(--border); border-radius:14px; overflow:hidden; }
+    .tablewrap { overflow-x:auto; border:1px solid var(--border); border-radius:14px; background:#fff; box-shadow:0 1px 3px rgba(15,23,42,.04); }
+    table { width:100%; border-collapse:collapse; }
     th, td { padding:12px 14px; text-align:left; font-size:13px; border-bottom:1px solid var(--border); vertical-align:middle; }
-    th { color:var(--dim); font-weight:700; font-size:11px; text-transform:uppercase; letter-spacing:.05em; background:var(--card2); }
+    th { color:var(--muted); font-weight:700; font-size:11px; text-transform:uppercase; letter-spacing:.05em; background:var(--card2); }
     tbody tr { transition:background .12s; }
-    tbody tr:hover { background:rgba(139,92,246,.05); }
+    tbody tr:hover { background:var(--bg-soft); }
     tr:last-child td { border-bottom:none; }
-    td a { color:#a78bfa; text-decoration:none; font-weight:600; } td a:hover { text-decoration:underline; }
+    td a { color:var(--accent-light); text-decoration:none; font-weight:600; } td a:hover { text-decoration:underline; }
     .plat { padding:3px 10px; border-radius:999px; font-size:10.5px; font-weight:800; text-transform:capitalize; }
-    .plat.linkedin { background:rgba(96,165,250,.15); color:var(--blue); }
-    .plat.indeed   { background:rgba(129,140,248,.15); color:#818cf8; }
-    .plat.naukri   { background:rgba(52,211,153,.15); color:var(--green); }
+    .plat.linkedin  { background:rgba(10,102,194,.12); color:#0a66c2; }
+    .plat.indeed    { background:rgba(37,87,167,.14); color:#2557a7; }
+    .plat.naukri    { background:rgba(24,117,229,.13); color:#1875e5; }
+    .plat.naukrigulf{ background:rgba(24,117,229,.13); color:#1875e5; }
+    .plat.bayt      { background:rgba(3,120,180,.13); color:#0378b4; }
     select.st { padding:5px 9px; font-size:12px; border-radius:8px; font-weight:700; }
     select.st.applied   { color:var(--blue); }   select.st.interview { color:var(--amber); }
     select.st.offer     { color:var(--green); }  select.st.rejected  { color:var(--red); }
     select.st.skipped   { color:var(--muted); }
     .fit { font-weight:800; } .fit.hi { color:var(--green); } .fit.mid { color:var(--amber); } .fit.lo { color:var(--red); }
     td input.notes { width:100%; min-width:140px; font-size:12.5px; padding:6px 9px; background:transparent; border-color:transparent; border-radius:7px; }
-    td input.notes:hover, td input.notes:focus { border-color:var(--border2); background:var(--bg); box-shadow:none; }
+    td input.notes:hover, td input.notes:focus { border-color:var(--border-hi); background:var(--bg-soft); box-shadow:none; }
     .del { background:transparent; border:none; color:var(--dim); font-size:15px; padding:2px 7px; border-radius:6px; }
-    .del:hover { color:var(--red); background:rgba(248,113,113,.1); filter:none; }
+    .del:hover { color:var(--red); background:rgba(220,38,38,.08); filter:none; border:none; }
 
-    .empty, .gate { text-align:center; padding:56px 24px; color:var(--muted); background:var(--card); border-radius:16px; border:1px solid var(--border); }
-    .gate { max-width:380px; margin:48px auto; }
+    .empty, .gate { text-align:center; padding:56px 24px; color:var(--muted); background:#fff; border-radius:16px; border:1px solid var(--border); }
+    .gate { max-width:400px; margin:40px auto; box-shadow:0 24px 60px -30px rgba(15,23,42,.25); }
     .gate h2 { color:var(--text); }
     .gate input { margin:8px 0; width:280px; }
     .gate .btn-v, .gate button { margin:4px 3px; }
     .err-msg { color:var(--red); font-size:13px; margin-top:10px; min-height:16px; }
+
+    /* Footer */
+    footer.site{border-top:1px solid var(--border);padding:26px 0;color:var(--dim);font-size:13px}
+    footer.site .wrap{max-width:1080px;margin:0 auto;padding:0 24px;display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap}
+    footer.site a{color:var(--muted);text-decoration:none}footer.site a:hover{color:var(--accent)}
+
+    @media(max-width:860px){ nav{padding:13px 20px} }
   </style>
 </head>
 <body>
+
+  <!-- Nav -->
+  <nav>
+    <a class="nav-logo" href="/"><span>🤖</span> AutoApplier</a>
+    <div class="nav-links">
+      <a href="/">Home</a>
+      <a href="/#how">How it works</a>
+      <a href="/#features">Features</a>
+      <a href="/checkout.html">Plans</a>
+    </div>
+    <div id="nav-right">
+      <a class="btn-g" href="/">← Home</a>
+    </div>
+  </nav>
+
   <div class="container">
-    <header>
-      <h1>📋 AutoApplier CRM <a href="/" style="font-size:13px;color:var(--muted)">← landing</a></h1>
+    <div class="page-head">
+      <div>
+        <h1>Application Tracker</h1>
+        <p>Every job the agent applies to lands here in real time.</p>
+      </div>
       <span id="live" class="live" style="display:none"><span class="dot"></span><span id="live-txt">live</span></span>
-    </header>
+    </div>
 
     <!-- License key + email/password gate -->
     <div id="gate" class="gate">
       <div style="font-size:34px">🔑</div>
       <h2 style="margin:10px 0 4px">Enter your license key</h2>
-      <p>Paste the key you were given — it opens your CRM.</p>
+      <p>Paste the key you were given to open your CRM.</p>
       <div style="display:flex;flex-direction:column;gap:10px;align-items:center;margin-top:14px">
         <input id="key-input" type="text" placeholder="AA-XXXX-XXXX-XXXX" autocomplete="off" style="width:280px;text-transform:uppercase;font-weight:600;letter-spacing:.04em" />
         <button class="btn-v" id="key-btn">Open CRM</button>
         <div id="key-err" class="err-msg"></div>
       </div>
-      <div style="margin:18px 0 8px;color:var(--muted);font-size:12px">— or log in with an email account —</div>
+      <div style="margin:18px 0 8px;color:var(--muted);font-size:12px">or log in with an email account</div>
       <div style="display:flex;flex-direction:column;gap:10px;align-items:center">
         <input id="email-input" type="email" placeholder="Email" autocomplete="email" style="width:280px" />
         <div style="position:relative;width:280px">
@@ -106,7 +154,7 @@
           <button class="btn-v" id="login-btn">Log in</button>
           <button id="signup-btn">Create account</button>
         </div>
-        <a href="#" id="forgot-btn" style="color:#a78bfa;font-size:12px;text-decoration:none">Forgot password?</a>
+        <a href="#" id="forgot-btn" style="color:var(--accent-light);font-size:12px;text-decoration:none">Forgot password?</a>
       </div>
       <div id="gate-err" class="err-msg"></div>
     </div>
@@ -130,6 +178,7 @@
         <select id="f-platform">
           <option value="">All platforms</option>
           <option>linkedin</option><option>indeed</option><option>naukri</option>
+          <option>naukrigulf</option><option>bayt</option>
         </select>
         <button id="btn-refresh">↻ Refresh</button>
         <button id="btn-logout" title="Forget API key">Log out</button>
@@ -138,6 +187,17 @@
       <div id="list"></div>
     </div>
   </div>
+
+  <footer class="site">
+    <div class="wrap">
+      <div class="nav-logo" style="font-size:15px"><span>🤖</span> AutoApplier</div>
+      <div>© <span id="yr"></span> AutoApplier. Automated job applications for LinkedIn, Indeed, Naukri and Bayt.</div>
+      <div style="display:flex;gap:18px">
+        <a href="/">Home</a>
+        <a href="/checkout.html">Plans</a>
+      </div>
+    </div>
+  </footer>
 
   <script>
     const $ = s => document.querySelector(s);
@@ -174,10 +234,10 @@
       $('#c-week').textContent = week;
 
       if (!rows.length) {
-        $('#list').innerHTML = '<div class="empty">📭 No applications tracked yet.<br><small>Run the AutoApplier agent with CRM sync configured in the extension popup — every application lands here in real time.</small></div>';
+        $('#list').innerHTML = '<div class="empty">📭 No applications tracked yet.<br><small>Run the AutoApplier agent with CRM sync configured in the extension popup. Every application lands here in real time.</small></div>';
         return;
       }
-      $('#list').innerHTML = `<table><thead><tr>
+      $('#list').innerHTML = `<div class="tablewrap"><table><thead><tr>
         <th>Job</th><th>Platform</th><th>Status</th><th>Fit</th><th>Notes</th><th>When</th><th></th>
       </tr></thead><tbody>${rows.map(r => `
         <tr data-id="${r.id}">
@@ -192,7 +252,7 @@
           <td><input class="notes" data-act="notes" value="${esc(r.notes || '')}" placeholder="add note…" /></td>
           <td style="white-space:nowrap;color:var(--muted)">${new Date(r.applied_at).toLocaleString()}</td>
           <td><button class="del" data-act="del" title="Delete">✕</button></td>
-        </tr>`).join('')}</tbody></table>`;
+        </tr>`).join('')}</tbody></table></div>`;
     }
 
     async function load(showErr = true) {
@@ -221,7 +281,7 @@
           if (!r.ok || !d.valid || !d.active) return logout(d.error || 'License key invalid or expired');
         } else {
           const r = await fetch('/api/license', { headers: { Authorization: 'Bearer ' + token } });
-          if (r.status === 401) return logout('Session expired — log in again');
+          if (r.status === 401) return logout('Session expired, log in again');
           const lic = await r.json();
           if (!lic.active) { location.href = '/checkout.html'; return; }
         }
@@ -319,6 +379,8 @@
       try { await api('/api/jobs?id=' + tr.dataset.id, { method: 'DELETE' }); load(false); }
       catch (err) { setLive(false, 'delete failed: ' + err.message); }
     });
+
+    document.getElementById('yr').textContent = new Date().getFullYear();
 
     if (licenseKey || token) start();
   </script>
