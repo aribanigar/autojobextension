@@ -14,7 +14,7 @@
       <span id="logo-icon" class="logo-icon">🤖</span>
       <div>
         <div class="logo-title">JobBot</div>
-        <div class="logo-sub">Auto Apply</div>
+        <div class="logo-sub">Auto Apply · <span id="app-ver">v—</span></div>
       </div>
     </div>
     <div class="header-right">
@@ -22,6 +22,25 @@
       <span id="run-pill" class="run-pill" style="display:none"><span class="run-dot"></span>Live</span>
     </div>
   </header>
+
+  <!-- ── Update banner (only shown when a newer build exists) ─────── -->
+  <div id="update-banner" style="display:none;margin:10px 12px 0;padding:10px 12px;border-radius:10px;background:linear-gradient(135deg,#7c3aed,#5b21b6);color:#fff;font-size:12.5px;box-shadow:0 6px 18px rgba(124,58,237,.35)">
+    <div style="display:flex;align-items:flex-start;gap:8px">
+      <span style="font-size:16px;line-height:1.2">⬆️</span>
+      <div style="flex:1;min-width:0">
+        <div style="font-weight:700">Update available <span id="update-ver"></span></div>
+        <div id="update-notes" style="opacity:.9;margin-top:2px"></div>
+      </div>
+      <button id="update-x" title="Dismiss" style="background:none;border:none;color:#fff;opacity:.7;cursor:pointer;font-size:15px;line-height:1">✕</button>
+    </div>
+    <button id="update-btn" style="margin-top:8px;width:100%;padding:8px;border:none;border-radius:8px;background:#fff;color:#5b21b6;font-weight:700;cursor:pointer">⬇️ Update now</button>
+    <div id="update-steps" style="display:none;margin-top:8px;opacity:.96;line-height:1.55">
+      <b>Almost there:</b><br>
+      1. The new <b>jobbot-extension.zip</b> is downloading — unzip it.<br>
+      2. Open <b>chrome://extensions</b> → JobBot → click <b>Reload</b> (or “Load unpacked” the new folder).<br>
+      Your saved profile, key &amp; history stay intact. ✓
+    </div>
+  </div>
 
   <!-- ── Stats ──────────────────────────────────────────────────── -->
   <div class="stats-row">

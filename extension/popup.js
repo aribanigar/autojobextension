@@ -9,6 +9,48 @@ document.addEventListener('DOMContentLoaded', async () => {
   let statsTimer = null;
   let statusTimer = null;
 
+  // ── In-app update checker ──────────────────────────────────────────────────
+  // Shows an "Update available" banner when the backend advertises a newer build,
+  // with a one-click download + reload steps. Fully self-contained and optional:
+  // if messaging fails the banner just stays hidden and the popup works normally.
+  (function initUpdateChecker() {
+    const el = id => document.getElementById(id);
+    const banner = el('update-banner');
+    try { const v = el('app-ver'); if (v) v.textContent = 'v' + chrome.runtime.getManifest().version; } catch {}
+    if (!banner) return;
+
+    const ask = type => new Promise(res => {
+      try { chrome.runtime.sendMessage({ type }, r => { void chrome.runtime.lastError; res(r || {}); }); }
+      catch { res({}); }
+    });
+
+    const render = info => {
+      if (!info || !info.available || !info.latest) { banner.style.display = 'none'; return; }
+      let dismissed = '';
+      try { dismissed = localStorage.getItem('jobbot_update_dismissed') || ''; } catch {}
+      if (dismissed === info.latest) { banner.style.display = 'none'; return; }
+      const vEl = el('update-ver'), nEl = el('update-notes');
+      if (vEl) vEl.textContent = 'v' + info.latest;
+      if (nEl) nEl.textContent = info.notes || '';
+      const steps = el('update-steps'); if (steps) steps.style.display = 'none';
+      banner._latest = info.latest;
+      banner.style.display = 'block';
+    };
+
+    ask('GET_UPDATE').then(render);      // fast: last-known
+    ask('CHECK_UPDATE').then(render);    // fresh: re-check now
+
+    el('update-btn')?.addEventListener('click', () => {
+      try { chrome.runtime.sendMessage({ type: 'DO_UPDATE' }, () => { void chrome.runtime.lastError; }); } catch {}
+      const steps = el('update-steps'); if (steps) steps.style.display = 'block';
+      const b = el('update-btn'); if (b) b.textContent = '⬇️ Downloading… follow the steps below';
+    });
+    el('update-x')?.addEventListener('click', () => {
+      banner.style.display = 'none';
+      try { if (banner._latest) localStorage.setItem('jobbot_update_dismissed', banner._latest); } catch {}
+    });
+  })();
+
   // ── Tabs ─────────────────────────────────────────────────────────────────
   document.querySelectorAll('.tab-btn').forEach(btn => {
     btn.addEventListener('click', () => {

@@ -47,6 +47,54 @@ function updateBadge() {
 const DEFAULT_CRM = 'https://jobs.qckserve.in';
 const crmBase = prefs => (prefs.crmUrl || DEFAULT_CRM).replace(/\/+$/, '');
 
+// ── In-app update checker ────────────────────────────────────────────────────
+// The extension ships as a downloadable zip (not the Web Store), so it can't
+// silently self-update. Instead we compare the INSTALLED version against a small
+// version.json on the backend; when a newer build exists the popup shows an
+// "Update available" banner with a one-click download. This is purely
+// informational and NON-BLOCKING: if the check fails, the server is older, or the
+// user stays on the old build, everything keeps working exactly as before. Old
+// builds without this code are completely unaffected — nothing is ever gated on
+// the version, so an out-of-date extension is never disabled.
+const VERSION_URL = () => `${DEFAULT_CRM}/version.json?t=${Date.now()}`;
+
+function cmpVer(a, b) {
+  const pa = String(a || '0').split('.').map(n => parseInt(n, 10) || 0);
+  const pb = String(b || '0').split('.').map(n => parseInt(n, 10) || 0);
+  for (let i = 0; i < Math.max(pa.length, pb.length); i++) {
+    const d = (pa[i] || 0) - (pb[i] || 0);
+    if (d) return d > 0 ? 1 : -1;
+  }
+  return 0;
+}
+
+async function checkForUpdate() {
+  const current = chrome.runtime.getManifest().version;
+  try {
+    const r = await fetch(VERSION_URL(), { cache: 'no-store' });
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    const d = await r.json();
+    const latest = String(d.version || '');
+    const info = {
+      current, latest,
+      available: !!latest && cmpVer(latest, current) > 0,
+      url: d.url || `${DEFAULT_CRM}/jobbot-extension.zip`,
+      notes: d.notes || '',
+      checkedAt: Date.now(),
+    };
+    try { chrome.storage.local.set({ jobbot_update: info }); } catch {}
+    return info;
+  } catch {
+    // Offline / old server / blocked — never disrupt the extension.
+    return { current, latest: current, available: false, checkedAt: Date.now() };
+  }
+}
+
+// Best-effort checks on install and browser startup (in addition to the popup
+// asking on open). Extra listeners are fine — they compose with the ones above.
+chrome.runtime.onInstalled.addListener(() => { try { checkForUpdate(); } catch {} });
+chrome.runtime.onStartup.addListener(() => { try { checkForUpdate(); } catch {} });
+
 function getPrefs() {
   return new Promise(res =>
     chrome.storage.local.get('jobbot_profile', d => res(d.jobbot_profile?.preferences || {})));
@@ -246,6 +294,34 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
     case 'GET_LICENSE':
       // Content script asks before starting the agent — no licence, no run.
       getLicense(msg.force).then(lic => sendResponse(lic));
+      return true;
+
+    case 'GET_UPDATE':
+      // Popup asks for the last-known update status (fast, from storage).
+      chrome.storage.local.get('jobbot_update', d => {
+        void chrome.runtime.lastError;
+        const cur = chrome.runtime.getManifest().version;
+        sendResponse(d.jobbot_update || { current: cur, latest: cur, available: false });
+      });
+      return true;
+
+    case 'CHECK_UPDATE':
+      // Force a fresh check against the backend version.json.
+      checkForUpdate().then(info => sendResponse(info)).catch(() => sendResponse({ available: false }));
+      return true;
+
+    case 'DO_UPDATE':
+      // Start the update: open the new build's download (the zip is served with
+      // Content-Disposition: attachment, so the browser downloads it). The popup
+      // shows the short reload steps. We never uninstall or touch user data —
+      // chrome.storage.local (profile, key, learned answers) is preserved because
+      // the manifest "key" pins a stable extension id across the update.
+      chrome.storage.local.get('jobbot_update', d => {
+        void chrome.runtime.lastError;
+        const url = (d.jobbot_update && d.jobbot_update.url) || `${DEFAULT_CRM}/jobbot-extension.zip`;
+        try { chrome.tabs.create({ url }); } catch {}
+        sendResponse({ ok: true, url });
+      });
       return true;
 
     case 'NOTIFY':
