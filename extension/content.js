@@ -235,10 +235,85 @@
     el.dispatchEvent(new MouseEvent('click', base));
   }
 
+  // ── Human pace (ToS-safe anti-captcha rate limiter) ─────────────────────────
+  // Volume/burst is the #1 trigger for reCAPTCHA Enterprise & other bot checks.
+  // When the user turns on "Human pace", we SPACE APPLICATIONS OUT: a randomized
+  // wait before each new application starts, an occasional longer break, and an
+  // optional daily cap. State lives in chrome.storage so pacing survives the page
+  // navigations between jobs. DISABLED by default → behaviour is byte-identical
+  // until the user opts in. It never solves or touches a captcha — it only makes
+  // the agent apply at a human rhythm so the grid rarely appears.
+  const Pacer = {
+    on: false, gapLo: 20000, gapHi: 45000, breakEvery: 8, breakLo: 90000, breakHi: 180000, daily: 0,
+    configure(prefs) {
+      const p = prefs || {};
+      this.on = !!p.humanPace;
+      this.daily = Math.max(0, Math.min(1000, parseInt(p.paceDaily, 10) || 0));
+    },
+    enabled() { return this.on; },
+    _get(keys) { return new Promise(res => { try { chrome.storage.local.get(keys, d => { void chrome.runtime.lastError; res(d || {}); }); } catch { res({}); } }); },
+    _set(obj) { try { chrome.storage.local.set(obj, () => void chrome.runtime.lastError); } catch {} },
+    async _wait(ms, note) {
+      const end = Date.now() + ms;
+      while (Date.now() < end) {
+        if (agent && agent.running === false) return;  // Stop pressed → bail immediately
+        if (note) SPOT.status(`${note} ${Math.ceil((end - Date.now()) / 1000)}s… (✕ to stop)`, 'info');
+        await sleep(Math.min(1000, end - Date.now()));
+      }
+    },
+    // Called once per application START. Returns false if the daily cap stopped the run.
+    async gate() {
+      if (!this.on) return true;
+      const st = await this._get(['jobbot_pace_last', 'jobbot_pace_since', 'jobbot_pace_day']);
+      // Daily cap → stop the run for the day.
+      if (this.daily > 0) {
+        const today = new Date().toISOString().slice(0, 10);
+        let day = st.jobbot_pace_day;
+        if (!day || day.d !== today) day = { d: today, n: 0 };
+        if (day.n >= this.daily) {
+          SPOT.status(`🛑 Daily limit of ${this.daily} reached — pausing until tomorrow (✕ to stop).`, 'info');
+          try { if (agent) agent.running = false; } catch {}
+          this._set({ jobbot_running: false });
+          return false;
+        }
+        this._set({ jobbot_pace_day: { d: today, n: day.n + 1 } });
+      }
+      // Inter-application wait since the previous application started.
+      const gap = rand(this.gapLo, this.gapHi);
+      const waitMs = (st.jobbot_pace_last || 0) + gap - Date.now();
+      if (waitMs > 0) await this._wait(waitMs, '⏳ Human pace — next application in');
+      if (agent && agent.running === false) return false;
+      this._set({ jobbot_pace_last: Date.now() });
+      // Occasional longer break.
+      let since = (st.jobbot_pace_since || 0) + 1;
+      if (this.breakEvery > 0 && since >= this.breakEvery) { since = 0; await this._wait(rand(this.breakLo, this.breakHi), '☕ Short break to stay human —'); }
+      this._set({ jobbot_pace_since: since });
+      return !(agent && agent.running === false);
+    },
+  };
+
+  // Is this the button that STARTS a new application (not a mid-flow Continue/
+  // Submit)? Used to place the pace wait before a fresh application begins.
+  function isApplyStartBtn(el) {
+    const t = (el.textContent || '').replace(/\s+/g, ' ').trim();
+    if (!t || t.length > 24) return false;
+    if (/continue|submit|next|review|save|sign\s*in|log\s*in|company|external/i.test(t)) return false;
+    return /^easy\s*apply$|^apply$|^apply now$|apply with indeed|^easily apply$/i.test(t);
+  }
+
   async function humanClick(el, msg = '') {
     if (!isVis(el)) return false;
     await yieldToLeadsLoft(); // don't fight if LeadsLoft is mid-action
     if (!isVis(el)) return false;
+    // Human pace: space out APPLICATION STARTS. Gated to Indeed/LinkedIn here
+    // (they have no per-job timer, so a pause can't trip a skip); Naukri/Bayt are
+    // paced in their own run loops before their job timer arms. No-op when the
+    // toggle is off, so every other click is unchanged.
+    if (Pacer.enabled() && (PLATFORM === 'indeed' || PLATFORM === 'linkedin') && isApplyStartBtn(el)) {
+      const ok = await Pacer.gate();
+      if (!ok) return false;   // daily cap stopped the run → don't click
+      if (!isVis(el)) return false;
+    }
     if (msg) SPOT.pulse(el, msg);
     el.scrollIntoView({ behavior: 'smooth', block: 'center' });
     await sleep(rand(250, 500));
@@ -3039,6 +3114,10 @@
           }
 
           // ── Found an unprocessed card ─────────────────────────────────────
+          // Human pace: wait BEFORE opening the job (before the per-job timer
+          // arms), so a pause can never trip the 90s skip. No-op unless enabled.
+          if (Pacer.enabled() && !(await Pacer.gate())) break; // daily cap → stop
+          if (!this.running) break;
           if (jid) attemptedSet.add(jid);
           card.scrollIntoView({ behavior: 'smooth', block: 'center' });
           await sleep(rand(600, 1100));
@@ -3381,6 +3460,11 @@
           const link = this.easyApplyLink(card);
           if (!link) { if (jid) attemptedSet.add(jid); continue; } // external / no easy-apply → skip
 
+          // Human pace: wait before starting a new application (the list page has
+          // no job timer armed yet, so a pause can't trip a skip). No-op if off.
+          if (Pacer.enabled() && !(await Pacer.gate())) break; // daily cap → stop
+          if (!this.running) break;
+
           if (jid) { attemptedSet.add(jid); this._setPending(jid); }
           card.scrollIntoView({ behavior: 'smooth', block: 'center' });
           await sleep(rand(500, 900));
@@ -3697,6 +3781,7 @@
     KeepAlive.start();
 
     const f = new Filler(profile);
+    Pacer.configure(profile?.preferences);   // human-pace rate limiter (off unless enabled)
     if      (PLATFORM === 'linkedin') agent = new LinkedInAgent(f);
     else if (PLATFORM === 'indeed')   agent = new IndeedAgent(f);
     else if (PLATFORM === 'naukri')   agent = new NaukriAgent(f);

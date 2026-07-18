@@ -145,8 +145,19 @@ document.addEventListener('DOMContentLoaded', async () => {
     s('p-crm-pass',  p.preferences?.crmPassword);
     s('p-gemini',    p.preferences?.geminiKey);
     c('p-ai',        p.preferences?.aiEnabled);
+    c('p-humanpace', p.preferences?.humanPace);
+    s('p-pace-daily', p.preferences?.paceDaily || 0);
+    syncPaceDaily();
     updateBuyLink(p.preferences?.crmUrl);
   }
+
+  // Show the daily-limit field only when Human pace is on.
+  function syncPaceDaily() {
+    const on = document.getElementById('p-humanpace')?.checked;
+    const wrap = document.getElementById('p-pace-daily-wrap');
+    if (wrap) wrap.style.display = on ? 'block' : 'none';
+  }
+  document.getElementById('p-humanpace')?.addEventListener('change', syncPaceDaily);
 
   // The subscription-plans (checkout) URL, from the configured backend or the
   // default. Never the extension itself.
@@ -281,6 +292,8 @@ document.addEventListener('DOMContentLoaded', async () => {
         crmPassword:       v('p-crm-pass'),
         geminiKey:         v('p-gemini'),
         aiEnabled:         c('p-ai'),
+        humanPace:         c('p-humanpace'),
+        paceDaily:         Math.max(0, Math.min(1000, parseInt(v('p-pace-daily'), 10) || 0)),
       },
     };
   }

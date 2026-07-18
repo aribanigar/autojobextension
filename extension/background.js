@@ -10,7 +10,8 @@ const DEFAULT_PROFILE = {
   },
   preferences: {
     workMode: 'hybrid', travelPercentage: '25',
-    willingToRelocate: false, onlyEasyApply: true, workAuth: true
+    willingToRelocate: false, onlyEasyApply: true, workAuth: true,
+    humanPace: false, paceDaily: 0
   }
 };
 
