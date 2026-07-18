@@ -3336,11 +3336,22 @@
     //   <div class="jb-easy-apply"><a … href="/en/job/apply/index/XXXXX/?…">Easy Apply</a></div>
     // An applied card has an EMPTY .jb-easy-apply (no link) + a .t-success note.
     easyApplyLink(card) {
-      return $(
-        '.jb-easy-apply a[href*="/job/apply/index/"], ' +
-        'a[href*="/en/job/apply/index/"]',
-        card
-      );
+      // 1) The explicit Easy-Apply slot with an apply href / onclick handler.
+      let a = $('.jb-easy-apply a[href*="/job/apply/"], .jb-easy-apply a[href*="apply/index"], ' +
+               '.jb-easy-apply a[onclick], .jb-easy-apply a.btn', card);
+      if (a && isVis(a)) return a;
+      // 2) Any apply-index / apply anchor anywhere in the card.
+      a = $('a[href*="/job/apply/index/"], a[href*="/en/job/apply/"], a[href*="/job/apply/"]', card);
+      if (a && isVis(a)) return a;
+      // 3) Match by the visible "Easy Apply" label (anchor or button).
+      a = $$('a, button', card).find(el => isVis(el)
+        && /easy\s*apply/i.test((el.textContent || el.getAttribute('title') || '').trim())
+        && !/applied/i.test(el.textContent || ''));
+      if (a) return a;
+      // 4) Any clickable child inside a populated easy-apply slot.
+      const slot = $('.jb-easy-apply', card);
+      if (slot) { const c = $('a[href], button, [onclick]', slot); if (c && isVis(c)) return c; }
+      return null;
     }
 
     // Already-applied card → skip. Bayt shows a green ".t-success" note
@@ -3546,8 +3557,15 @@
           if (jid && (appliedSet.has(jid) || attemptedSet.has(jid))) { if (jid) selectedSet.remove(jid); continue; }
           if (this.cardApplied(card)) { if (jid) { appliedSet.add(jid); selectedSet.remove(jid); } continue; }
 
-          const link = this.easyApplyLink(card);
-          if (!link) { if (jid) attemptedSet.add(jid); continue; } // external / no easy-apply → skip
+          let link = this.easyApplyLink(card);
+          if (!link && $('.jb-easy-apply', card)) {
+            // The Easy-Apply link often hydrates a beat after the card renders.
+            // Wait once and re-check before giving up on this card — do NOT mark
+            // it attempted, or a late link would be skipped for the whole run.
+            await sleep(rand(700, 1100));
+            link = this.easyApplyLink(card);
+          }
+          if (!link) continue; // genuinely no Easy Apply (external/company apply) → skip
 
           // Human pace: wait before starting a new application (the list page has
           // no job timer armed yet, so a pause can't trip a skip). No-op if off.
@@ -3560,21 +3578,36 @@
           SPOT.pulse(link, `Easy Apply: ${this.cardTitle(card)}`);
           await sleep(rand(400, 700));
 
-          link.setAttribute('target', '_self');
+          if (link.setAttribute) link.setAttribute('target', '_self');
           const before = location.href;
           realClick(link); // onclick="checkOnclickType(this);return false;" — JS-driven nav
           await sleep(rand(1800, 2800));
-          // The onclick returns false (blocks the default), so if nothing moved,
-          // navigate straight to the apply page href ourselves.
+          // The onclick returns false (blocks the default), so if nothing moved and
+          // it is a real link, navigate straight to its apply href ourselves.
           if (location.href === before && !this.isApplyPage()) {
-            try { location.assign(link.href); } catch { try { location.href = link.href; } catch {} }
-            await sleep(rand(1800, 2800));
+            const href = link.getAttribute && link.getAttribute('href');
+            if (href && /apply/i.test(href)) {
+              try { location.assign(href); } catch { try { location.href = href; } catch {} }
+              await sleep(rand(1800, 2800));
+            }
           }
           clicked = true;
           break; // page is navigating; run() resumes on the apply page
         }
 
         if (clicked) { this.running = false; return 'nav'; }
+
+        // Cards are present but none gave us an Easy-Apply link this pass. The
+        // buttons can load late, so wait once and re-scan before paginating away
+        // — this stops the agent from clicking through page after page without
+        // ever applying.
+        if (this.jobCards().length && !this._rescanned) {
+          this._rescanned = true;
+          SPOT.status('Waiting for Easy Apply buttons to load…', 'info');
+          await sleep(rand(1600, 2600));
+          continue;
+        }
+        this._rescanned = false;
 
         // No unapplied card left on this page → reveal more / go to next page.
         if (await this.loadMore()) continue;
