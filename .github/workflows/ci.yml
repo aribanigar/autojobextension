@@ -1,0 +1,77 @@
+name: CI
+
+# Lightweight safety net for a build-system-free repo: syntax-check every script,
+# validate the JSON, ensure manifest.json and version.json stay in lock-step, and
+# confirm the committed jobbot-extension.zip actually matches the extension/ source.
+# Runs on every push and PR. Pure verification — it never changes or deploys anything.
+
+on:
+  push:
+    branches: ['**']
+  pull_request:
+
+# Cancel superseded runs on the same ref to save minutes.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  checks:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      # ── Syntax checks (same as the manual ones in CLAUDE.md) ──────────────────
+      - name: Syntax-check content.js (IIFE)
+        run: node -e "new Function(require('fs').readFileSync('extension/content.js','utf8'))"
+
+      - name: Syntax-check background.js / popup.js / linkedin_autoapply.js
+        run: |
+          node --check extension/background.js
+          node --check extension/popup.js
+          node --check extension/linkedin_autoapply.js
+
+      - name: Syntax-check ESM serverless functions (api/*.js)
+        run: |
+          for f in api/*.js; do
+            echo "· $f"
+            node --input-type=module --check < "$f" || { echo "::error file=$f::syntax error"; exit 1; }
+          done
+
+      # ── JSON validity ─────────────────────────────────────────────────────────
+      - name: Validate JSON (manifest / version / vercel)
+        run: |
+          node -e "JSON.parse(require('fs').readFileSync('extension/manifest.json','utf8'))"
+          node -e "JSON.parse(require('fs').readFileSync('version.json','utf8'))"
+          node -e "JSON.parse(require('fs').readFileSync('vercel.json','utf8'))"
+
+      # ── manifest.json version must equal version.json version ────────────────
+      - name: Version sync (manifest.json == version.json)
+        run: |
+          M=$(node -p "require('./extension/manifest.json').version")
+          V=$(node -p "require('./version.json').version")
+          echo "manifest.json=$M  version.json=$V"
+          if [ "$M" != "$V" ]; then
+            echo "::error::manifest.json ($M) and version.json ($V) are out of sync — bump both together."
+            exit 1
+          fi
+
+      # ── Committed zip must match the extension/ source ───────────────────────
+      - name: Zip matches extension/ source
+        run: |
+          test -f jobbot-extension.zip || { echo "::error::jobbot-extension.zip is missing"; exit 1; }
+          tmp="$(mktemp -d)"
+          unzip -q jobbot-extension.zip -d "$tmp"
+          if diff -r extension "$tmp/extension" > "$tmp/diff.txt"; then
+            echo "zip matches extension/ source ✓"
+          else
+            echo "::error::jobbot-extension.zip is stale — rebuild it (zip -rq jobbot-extension.zip extension) after editing extension/."
+            cat "$tmp/diff.txt"
+            exit 1
+          fi
