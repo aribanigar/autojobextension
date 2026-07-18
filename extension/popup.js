@@ -330,6 +330,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       bump('s-li', res.stats.linkedin || 0);
       bump('s-in', res.stats.indeed   || 0);
       bump('s-nk', (res.stats.naukri || 0) + (res.stats.naukrigulf || 0)); // Naukri + Naukri Gulf combined (tracked separately in the backend)
+      bump('s-by', res.stats.bayt     || 0);
       bump('s-sk', res.stats.skipped  || 0);
     });
   }

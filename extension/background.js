@@ -15,8 +15,8 @@ const DEFAULT_PROFILE = {
   }
 };
 
-const VALID_PLATFORMS = ['linkedin', 'indeed', 'naukri', 'naukrigulf'];
-const stats = { linkedin: 0, indeed: 0, naukri: 0, naukrigulf: 0, skipped: 0 };
+const VALID_PLATFORMS = ['linkedin', 'indeed', 'naukri', 'naukrigulf', 'bayt'];
+const stats = { linkedin: 0, indeed: 0, naukri: 0, naukrigulf: 0, bayt: 0, skipped: 0 };
 
 // The agent must only ever run after an explicit Start click in THIS browser
 // session. Clear any stale running flag left behind by a crash/closed browser,
@@ -38,7 +38,7 @@ function persistStats() {
 }
 
 function updateBadge() {
-  const total = stats.linkedin + stats.indeed + stats.naukri + (stats.naukrigulf || 0);
+  const total = stats.linkedin + stats.indeed + stats.naukri + (stats.naukrigulf || 0) + (stats.bayt || 0);
   chrome.action.setBadgeText({ text: total > 0 ? String(total) : '' });
   chrome.action.setBadgeBackgroundColor({ color: '#7c3aed' });
 }
