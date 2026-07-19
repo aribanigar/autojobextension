@@ -685,10 +685,20 @@
         lock();
         box._loop = setInterval(lock, 300); // follow the element if the page scrolls
         try { // gentle audio nudge so the user notices even on another tab
-          const ac = new (window.AudioContext || window.webkitAudioContext)();
-          const o = ac.createOscillator(), g = ac.createGain();
-          o.connect(g); g.connect(ac.destination); o.frequency.value = 880;
-          g.gain.value = 0.05; o.start(); o.stop(ac.currentTime + 0.18);
+          // Only when the page has had a user gesture and the audio context is
+          // actually running — otherwise Chrome's autoplay policy just logs a
+          // warning and no sound plays anyway. Reuse one context (never leak a
+          // new one per call). The desktop notification still fires regardless.
+          const gestured = !('userActivation' in navigator) || navigator.userActivation.hasBeenActive;
+          const AC = window.AudioContext || window.webkitAudioContext;
+          if (gestured && AC) {
+            const ac = box._ac || (box._ac = new AC());
+            if (ac.state === 'running') {
+              const o = ac.createOscillator(), g = ac.createGain();
+              o.connect(g); g.connect(ac.destination); o.frequency.value = 880;
+              g.gain.value = 0.05; o.start(); o.stop(ac.currentTime + 0.18);
+            }
+          }
         } catch {}
       },
       clearAttention() {
