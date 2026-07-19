@@ -3906,7 +3906,12 @@
   // (autoplay policy) can NEVER affect the run itself. Top frame only.
   const KeepAlive = (() => {
     let ctx = null, osc = null, gain = null, resumer = null, watch = null, on = false;
-    const kick = () => { try { if (ctx && ctx.state === 'suspended') ctx.resume(); } catch {} };
+    // Only touch Web-Audio once the page has actually had a user gesture.
+    // Creating/resuming an AudioContext without one just gets suspended by
+    // Chrome's autoplay policy (so it can't keep the tab alive anyway) AND logs
+    // a console warning — so we defer until a gesture and avoid both.
+    const gestured = () => !('userActivation' in navigator) || navigator.userActivation.hasBeenActive;
+    const kick = () => { try { if (ctx && ctx.state === 'suspended' && gestured()) ctx.resume(); } catch {} };
     function build() {
       const AC = window.AudioContext || window.webkitAudioContext;
       if (!AC) return;
@@ -3923,25 +3928,21 @@
       osc.connect(gain).connect(ctx.destination);
       osc.start();
     }
+    // Build once (after a gesture), else just resume if suspended.
+    const ensure = () => { try { if (!ctx) { if (gestured()) { build(); kick(); } } else kick(); } catch {} };
     function start() {
       if (on || !IS_TOP) return;
       on = true;
       try {
-        build();
-        kick();
+        ensure();
         // Autoplay policy can leave the context suspended until a gesture / focus
-        // change — resume on any of these, and via a watchdog below.
-        resumer = () => kick();
+        // change — build/resume on any of these, and via a watchdog below.
+        resumer = () => ensure();
         document.addEventListener('visibilitychange', resumer, true);
         document.addEventListener('pointerdown', resumer, true);
         document.addEventListener('keydown', resumer, true);
-        // Keep it alive: resume if suspended, rebuild if the graph ever dies.
-        watch = setInterval(() => {
-          try {
-            if (!ctx) { build(); kick(); return; }
-            if (ctx.state === 'suspended') ctx.resume();
-          } catch {}
-        }, 4000);
+        // Keep it alive: build once a gesture lands, resume if suspended.
+        watch = setInterval(ensure, 4000);
       } catch {}
     }
     function stop() {
