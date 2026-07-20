@@ -284,6 +284,11 @@
   // click event. el.click() fires with clientX=0/clientY=0 which Indeed's anti-bot checks
   // can detect; dispatchEvent(new MouseEvent('click', …)) carries real coordinates.
   function realClick(el) {
+    // A detached node can't receive a real click (the event never reaches the
+    // page's delegated React handlers), and dispatching one on a submit button
+    // whose form has detached just logs "Form submission canceled because the
+    // form is not connected". Bail — callers' retry loops re-find the live node.
+    if (!el || !el.isConnected) return;
     const r = el.getBoundingClientRect();
     const cx = r.left + r.width * (0.35 + Math.random() * 0.3);
     const cy = r.top + r.height * (0.35 + Math.random() * 0.3);
@@ -297,8 +302,10 @@
     el.dispatchEvent(new MouseEvent('mousedown', base));
     el.dispatchEvent(new PointerEvent('pointerup',   ptr));
     el.dispatchEvent(new MouseEvent('mouseup',   base));
-    // Coordinate-bearing click so React / anti-bot checks see non-zero clientX/Y
-    el.dispatchEvent(new MouseEvent('click', base));
+    // Coordinate-bearing click so React / anti-bot checks see non-zero clientX/Y.
+    // The press/release can trigger a re-render that detaches the element; only
+    // click if it's still connected (avoids the "form is not connected" warning).
+    if (el.isConnected) el.dispatchEvent(new MouseEvent('click', base));
   }
 
   // ── Human pace (ToS-safe anti-captcha rate limiter) ─────────────────────────
