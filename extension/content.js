@@ -3983,6 +3983,7 @@
       const msg = lic.reason === 'no-key'  ? '🔑 Enter your license key in Prefs, then press Start'
                 : lic.reason === 'bad-key' ? '🔑 Invalid or revoked license key — check it in Prefs'
                 : lic.reason === 'expired' ? '⌛ Your license key has expired — get a new one from the admin'
+                : lic.reason === 'device'  ? '🔒 This key is now active on another device. Open Prefs and press Save & Activate to use it here.'
                 : lic.reason === 'offline' ? '🔒 Could not verify your key (offline). Check your connection.'
                 : '🔑 Enter a valid license key in Prefs to start';
       SPOT.status(msg, 'error');

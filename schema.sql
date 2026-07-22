@@ -117,6 +117,12 @@ alter table license_keys add column if not exists lifetime    boolean not null d
 alter table license_keys add column if not exists purchase_id uuid;
 create index if not exists license_keys_email_idx on license_keys (email);
 
+-- Single-device binding: a key is active on ONE device at a time. Claiming the
+-- key on a new device overwrites device_id; the previous device's next check
+-- then fails with device_conflict and it logs out. (Safe to re-run.)
+alter table license_keys add column if not exists device_id      text;
+alter table license_keys add column if not exists device_seen_at timestamptz;
+
 -- Every purchase records the key it generated (idempotency + lookup).
 alter table purchases add column if not exists license_key text;
 

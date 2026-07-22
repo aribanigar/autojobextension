@@ -159,8 +159,24 @@ async function getCrmToken(force = false) {
 // endpoint. A definitive "not active" blocks immediately; a network error falls
 // back to the last known-good result for up to 24h so a transient outage never
 // locks out a paying user.
+// Stable per-device id (this browser install). Used to bind a license key to a
+// single device — activating the key elsewhere logs this device out.
+async function getDeviceId() {
+  const d = await new Promise(res => {
+    try { chrome.storage.local.get('jobbot_device_id', x => { void chrome.runtime.lastError; res(x || {}); }); }
+    catch { res({}); }
+  });
+  let id = d.jobbot_device_id;
+  if (!id) {
+    try { id = (self.crypto && crypto.randomUUID) ? crypto.randomUUID() : null; } catch { id = null; }
+    if (!id) id = 'dev_' + Math.random().toString(36).slice(2) + Date.now().toString(36);
+    try { chrome.storage.local.set({ jobbot_device_id: id }); } catch {}
+  }
+  return id;
+}
+
 let _licCache = null; // { active, expires_at, ts }
-async function getLicense(force = false) {
+async function getLicense(force = false, claim = false) {
   const prefs = await getPrefs();
   const base = crmBase(prefs);
   if (!force && _licCache && Date.now() - _licCache.ts < 5 * 60 * 1000) return _licCache;
@@ -168,12 +184,14 @@ async function getLicense(force = false) {
   // ── Primary: admin-issued license KEY ──────────────────────────────────────
   if (prefs.licenseKey) {
     try {
+      const deviceId = await getDeviceId();
       const r = await fetch(`${base}/api/license-key`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ key: prefs.licenseKey }),
+        body: JSON.stringify({ key: prefs.licenseKey, device_id: deviceId, claim: !!claim }),
       });
       const d = await r.json().catch(() => ({}));
       if (r.ok && d.valid) {
+        if (d.device_conflict) { _licCache = { active: false, reason: 'device', ts: Date.now() }; return _licCache; }
         _licCache = { active: !!d.active, expires_at: d.expires_at, reason: d.active ? undefined : 'expired', ts: Date.now() };
         return _licCache;
       }
@@ -327,7 +345,8 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
 
     case 'GET_LICENSE':
       // Content script asks before starting the agent — no licence, no run.
-      getLicense(msg.force).then(lic => sendResponse(lic));
+      // claim:true (from popup "Save & Activate") binds the key to this device.
+      getLicense(msg.force, msg.claim).then(lic => sendResponse(lic));
       return true;
 
     case 'GET_UPDATE':

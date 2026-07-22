@@ -197,20 +197,23 @@ document.addEventListener('DOMContentLoaded', async () => {
     const note = document.getElementById('p-license-note');
     await persistProfile(readForm());               // save the key + all prefs
     if (note) { note.style.color = ''; note.textContent = 'Activating…'; }
+    // claim:true — this explicit activation binds the key to THIS device (and
+    // takes it over from any other device it was active on).
     const lic = await new Promise(res => {
-      try { chrome.runtime.sendMessage({ type: 'GET_LICENSE', force: true }, r => { void chrome.runtime.lastError; res(r || {}); }); }
+      try { chrome.runtime.sendMessage({ type: 'GET_LICENSE', force: true, claim: true }, r => { void chrome.runtime.lastError; res(r || {}); }); }
       catch { res({}); }
     });
     if (!note) return;
     if (lic.active) {
       note.style.color = '#34d399';
       note.textContent = lic.expires_at
-        ? `✓ Activated — valid until ${new Date(lic.expires_at).toLocaleDateString()}`
-        : '✓ Activated — you can Start the agent now';
+        ? `✓ Activated on this device — valid until ${new Date(lic.expires_at).toLocaleDateString()}`
+        : '✓ Activated on this device — you can Start the agent now';
     } else {
       note.style.color = '#f87171';
       note.textContent =
-        lic.reason === 'expired' ? 'This key has expired — ask the admin for a new one'
+        lic.reason === 'device'  ? 'This key is active on another device — activating here has logged that one out'
+      : lic.reason === 'expired' ? 'This key has expired — ask the admin for a new one'
       : lic.reason === 'bad-key' ? 'Invalid or revoked key — check it and try again'
       : lic.reason === 'no-key'  ? 'Enter a license key above (or an email/password in Advanced)'
       : lic.reason === 'offline' ? 'Could not reach the server — check your connection'
