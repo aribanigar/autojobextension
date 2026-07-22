@@ -273,7 +273,20 @@
       "button[data-live-test-easy-apply-submit-button],button[data-live-test-easy-apply-review-button]," +
       'button[aria-label="Continue to next step"],button[aria-label="Submit application"],button[aria-label="Review your application"]'
     );
-    if (btn) { const c = btn.closest("form, .artdeco-modal, div[role='dialog'], .jobs-easy-apply-modal"); if (c && visible(c)) return c; }
+    if (btn) {
+      // Known modal containers first.
+      let c = btn.closest("form, .artdeco-modal, [role='dialog'], dialog, .jobs-easy-apply-modal, .jobs-easy-apply-content, [data-test-modal-id]");
+      // Unknown container (LinkedIn's newer Easy Apply markup): climb to the
+      // nearest ancestor that actually holds the step's form fields so the loop
+      // can proceed and click Next — instead of skipping the whole job.
+      if (!(c && visible(c))) {
+        c = btn.parentElement;
+        for (let n = btn.parentElement, hops = 0; n && n !== document.body && hops < 8; n = n.parentElement, hops++) {
+          if (n.querySelector("input, select, textarea, [role='radio'], [role='combobox'], [role='listbox']")) { c = n; break; }
+        }
+      }
+      if (c && visible(c)) return c;
+    }
     // New SDUI apply step: scope is the panel that holds the <footer> step button.
     const sdui = sduiApplyPanel();
     if (sdui && visible(sdui)) return sdui;

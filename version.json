@@ -1,5 +1,5 @@
 {
-  "version": "1.6.2",
+  "version": "1.6.3",
   "url": "https://jobs.qckserve.in/jobbot-extension.zip",
   "notes": "Anonymous field-health telemetry (admin Health tab). Data still carries across updates.",
   "min_supported": "1.0.0"
