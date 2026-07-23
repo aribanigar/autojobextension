@@ -287,6 +287,20 @@ export default async function handler(req, res) {
       return res.status(200).json({ ok: true });
     }
 
+    // Reset / unlock a key's device binding. Clears the bound device + switch
+    // history so the customer can re-activate on their current machine, and
+    // lifts an auto-lock (status 'locked' → 'active'; a 'revoked' key stays
+    // revoked). This is the "my key got locked, please unlock it" support action.
+    if (action === 'reset_device') {
+      const { id } = req.body || {};
+      if (!id) return res.status(400).json({ error: 'id required' });
+      const rows = await sb(`license_keys?id=eq.${encodeURIComponent(id)}&select=status`).catch(() => []);
+      const patch = { device_id: null, device_bound_at: null, device_seen_at: null, device_history: [] };
+      if (rows[0]?.status === 'locked') patch.status = 'active';
+      await sb(`license_keys?id=eq.${encodeURIComponent(id)}`, { method: 'PATCH', body: JSON.stringify(patch) }).catch(() => {});
+      return res.status(200).json({ ok: true });
+    }
+
     // ── Telemetry (field-health) ─────────────────────────────────────────────
     // Recent anonymous beacons from the extension so the admin can spot a job
     // site changing its DOM or an integration breaking. Returns [] gracefully if

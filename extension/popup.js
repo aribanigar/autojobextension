@@ -212,7 +212,8 @@ document.addEventListener('DOMContentLoaded', async () => {
     } else {
       note.style.color = '#f87171';
       note.textContent =
-        lic.reason === 'device'  ? 'This key is active on another device — activating here has logged that one out'
+        lic.reason === 'locked'  ? 'This key is locked for use on too many devices — contact the admin to unlock it'
+      : lic.reason === 'device'  ? 'This key is active on another device — activating here has logged that one out'
       : lic.reason === 'expired' ? 'This key has expired — ask the admin for a new one'
       : lic.reason === 'bad-key' ? 'Invalid or revoked key — check it and try again'
       : lic.reason === 'no-key'  ? 'Enter a license key above (or an email/password in Advanced)'

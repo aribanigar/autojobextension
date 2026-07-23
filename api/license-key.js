@@ -47,29 +47,78 @@ export default async function handler(req, res) {
 
     const active = lifetime || (!!expires_at && new Date(expires_at).getTime() > now);
 
-    // ── Single-device binding (only when the caller sends a device_id) ─────────
+    // Anti-sharing thresholds. A genuine user has a laptop + maybe a desktop and
+    // switches occasionally; a shared key hops across many devices and switches
+    // often. Crossing either bound auto-LOCKS the key until an admin resets it.
+    const DEVICE_LIMIT_30D = 4;   // distinct devices allowed in a rolling 30 days
+    const SWITCH_LIMIT_24H = 8;   // device takeovers allowed in a rolling 24 hours
+    const nowIso = new Date(now).toISOString();
+    const pushHist = (hist, id) => [...hist, { id, at: nowIso }].slice(-60);
+
+    // ── Single-device binding + anti-sharing throttle ─────────────────────────
     let device_conflict = false;
-    if (active && deviceId) {
+    let locked = lk.status === 'locked';   // an admin-resettable auto-lock
+    if (active && !locked && deviceId) {
       const bound = String(lk.device_id || '').trim();
       const patchId = `license_keys?id=eq.${encodeURIComponent(lk.id)}`;
+      const history = Array.isArray(lk.device_history) ? lk.device_history : [];
       try {
         if (claim) {
-          // Explicit activation on THIS device → take it over.
-          const body = (bound === deviceId)
-            ? { device_seen_at: new Date(now).toISOString() }
-            : { device_id: deviceId, device_seen_at: new Date(now).toISOString() };
-          await sb(patchId, { method: 'PATCH', body: JSON.stringify(body) });
+          if (!bound || bound === deviceId) {
+            // First activation on this device, or re-activating the same one.
+            await sb(patchId, {
+              method: 'PATCH',
+              body: JSON.stringify({
+                device_id: deviceId,
+                device_bound_at: bound ? (lk.device_bound_at || nowIso) : nowIso,
+                device_seen_at: nowIso,
+                device_history: bound === deviceId ? history : pushHist(history, deviceId),
+              }),
+            });
+          } else {
+            // Takeover attempt from a NEW device → run the anti-sharing checks.
+            const cut24 = now - 24 * 3600e3, cut30 = now - 30 * 864e5;
+            const distinct = new Set(history.filter(h => new Date(h.at).getTime() >= cut30).map(h => h.id));
+            distinct.add(deviceId);
+            const switches24 = history.filter(h => new Date(h.at).getTime() >= cut24).length + 1;
+            if (distinct.size > DEVICE_LIMIT_30D || switches24 > SWITCH_LIMIT_24H) {
+              // Too many devices / too much switching → lock; admin must unlock.
+              await sb(patchId, { method: 'PATCH', body: JSON.stringify({ status: 'locked' }) });
+              locked = true;
+            } else {
+              // Within limits → hand the key over to this device.
+              await sb(patchId, {
+                method: 'PATCH',
+                body: JSON.stringify({
+                  device_id: deviceId, device_bound_at: nowIso, device_seen_at: nowIso,
+                  device_history: pushHist(history, deviceId),
+                }),
+              });
+            }
+          }
         } else if (bound && bound !== deviceId) {
-          // A verify from a different device → this device is locked out.
+          // A verify from a different device → this device is locked out (the
+          // key is currently held elsewhere). Not a takeover: it must re-Activate.
           device_conflict = true;
         } else {
           // Same device, or not bound yet → refresh last-seen (bind if empty).
-          const body = bound
-            ? { device_seen_at: new Date(now).toISOString() }
-            : { device_id: deviceId, device_seen_at: new Date(now).toISOString() };
-          await sb(patchId, { method: 'PATCH', body: JSON.stringify(body) });
+          await sb(patchId, {
+            method: 'PATCH',
+            body: JSON.stringify(bound
+              ? { device_seen_at: nowIso }
+              : { device_id: deviceId, device_bound_at: nowIso, device_seen_at: nowIso, device_history: pushHist(history, deviceId) }),
+          });
         }
       } catch { /* column missing / db hiccup → skip enforcement, never block a valid key */ }
+    }
+
+    if (locked) {
+      return res.status(200).json({
+        valid: true, active: false, locked: true, lifetime,
+        expires_at: lifetime ? null : expires_at, validity_days: lk.validity_days,
+        label: lk.label || null, email: lk.email || null,
+        error: 'This key is locked for use on too many devices. Contact the admin to unlock it.',
+      });
     }
 
     if (device_conflict) {

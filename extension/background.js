@@ -191,6 +191,7 @@ async function getLicense(force = false, claim = false) {
       });
       const d = await r.json().catch(() => ({}));
       if (r.ok && d.valid) {
+        if (d.locked) { _licCache = { active: false, reason: 'locked', ts: Date.now() }; return _licCache; }
         if (d.device_conflict) { _licCache = { active: false, reason: 'device', ts: Date.now() }; return _licCache; }
         _licCache = { active: !!d.active, expires_at: d.expires_at, reason: d.active ? undefined : 'expired', ts: Date.now() };
         return _licCache;

@@ -123,6 +123,13 @@ create index if not exists license_keys_email_idx on license_keys (email);
 alter table license_keys add column if not exists device_id      text;
 alter table license_keys add column if not exists device_seen_at timestamptz;
 
+-- Anti-sharing throttle: device_bound_at = when the current device claimed the
+-- key; device_history = [{id, at}] of recent device takeovers. Crossing the
+-- device-count / switch-rate limits sets status='locked' (an admin resets it via
+-- reset_device). (Safe to re-run.)
+alter table license_keys add column if not exists device_bound_at timestamptz;
+alter table license_keys add column if not exists device_history  jsonb not null default '[]'::jsonb;
+
 -- Every purchase records the key it generated (idempotency + lookup).
 alter table purchases add column if not exists license_key text;
 
