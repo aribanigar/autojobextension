@@ -1156,6 +1156,44 @@
       return el.placeholder || el.name || '';
     }
 
+    // Semantic fallback: LinkedIn's newer Easy Apply (SDUI) renders fields with
+    // hashed/obfuscated class names and aria-labels that don't always match a
+    // map() rule — so the visible label alone can miss "the details you saved"
+    // (name, email, phone, city, postal code…). Every browser-fillable field
+    // still carries reliable machine hints (input type + the HTML autocomplete
+    // token + name/id/placeholder). Turn those into a canonical question so
+    // map() can answer from the profile. Company/title are checked BEFORE the
+    // generic "name" so "Company name" isn't read as the person's name.
+    attrHint(el) {
+      const ac = (el.getAttribute('autocomplete') || '').toLowerCase();
+      const parts = [ac, el.name || '', el.id || '', el.getAttribute('placeholder') || '']
+        .join(' ').toLowerCase();
+      const type = (el.type || '').toLowerCase();
+
+      // Leading word boundaries only (no trailing) so camelCase attribute names
+      // like "companyName" / "phoneNumber" still match after lower-casing.
+      if (type === 'email' || /\bemail/.test(parts)) return 'email';
+      if (type === 'tel'   || /\b(telephone|phone|mobile)|\btel\b/.test(parts)) return 'phone number';
+      if (/\bgiven[\s._-]?name|\bfirst[\s._-]?name|\bfname\b/.test(parts)) return 'first name';
+      if (/\bfamily[\s._-]?name|\blast[\s._-]?name|\blname\b|\bsurname/.test(parts)) return 'last name';
+      if (/\borganization[\s._-]?title|\bjob[\s._-]?title/.test(parts)) return 'current title';
+      if (/\borgani[sz]ation|\bcompany|\bemployer/.test(parts)) return 'current company';
+      if (/\bpostal[\s._-]?code|\bzip|\bpin[\s._-]?code|\bpost[\s._-]?code|\bpostcode/.test(parts)) return 'postal code';
+      if (/\baddress[\s._-]?level2|\bcity|\btown\b/.test(parts)) return 'city';
+      if (/\bstreet[\s._-]?address|\baddress[\s._-]?line[12]|\baddress[\s._-]?level1|\baddress|\blocation/.test(parts)) return 'current location';
+      // Generic full name last (must not fire on company/user/file "name" fields).
+      if (/name/.test(parts) && !/company|organi|employer|user|file|display|nick|screen/.test(parts)) return 'full name';
+      return '';
+    }
+
+    // Resolve an answer from the visible label first, then fall back to the
+    // field's machine hints — so a poorly-labelled input still autofills.
+    answerFor(el, label) {
+      let ans = this.map(label);
+      if (!ans) { const h = this.attrHint(el); if (h && h !== (label || '').toLowerCase().trim()) ans = this.map(h); }
+      return ans;
+    }
+
     async fillRadios(root) {
       const groups = new Map();
       $$('input[type="radio"]', root).forEach(r => {
@@ -1210,10 +1248,10 @@
       for (const inp of inputs) {
         if (inp.value?.trim()) continue;
         const label = this.labelFor(inp);
-        let ans     = this.map(label);
+        let ans     = this.answerFor(inp, label);       // label first, then field hints
         if (!ans) ans = await this.aiAnswer(label);   // AI fallback for unknown questions
         if (ans) {
-          SPOT.pulse(inp, `Filling: "${label.substring(0, 48)}"`);
+          SPOT.pulse(inp, `Filling: "${(label || this.attrHint(inp)).substring(0, 48)}"`);
           await typeInto(inp, ans);
           await sleep(rand(100, 250));
         } else if (label) {
@@ -1227,7 +1265,7 @@
       for (const sel of $$('select', root).filter(isVis)) {
         if (sel.value && sel.value !== '' && sel.value !== '0' && sel.value !== '-1') continue;
         const label = this.labelFor(sel);
-        let ans     = this.map(label);
+        let ans     = this.answerFor(sel, label);
         if (!ans) {
           const optTexts = $$('option', sel).map(o => o.textContent.trim()).filter(t => t && !/^select/i.test(t));
           ans = await this.aiAnswer(label, optTexts);  // AI picks from the real options
@@ -1247,7 +1285,7 @@
       const cbs = $$('[role="combobox"]', root).filter(isVis);
       for (const cb of cbs) {
         const label = this.labelFor(cb);
-        const ans   = this.map(label);
+        const ans   = this.answerFor(cb, label);
         if (!ans) { if (label) learnFromField(cb, label); continue; }
 
         cb.click();

@@ -440,6 +440,26 @@
   }
   function looksLikeExperience(str) { return /experien|years|how many|number of|notice period|salary|ctc|expected/i.test(str || ""); }
 
+  // Machine-hint fallback: newer LinkedIn Easy Apply fields carry weak/hashed
+  // labels but reliable input hints (type + autocomplete + name/id/placeholder).
+  // Turn those into a canonical label that answerForLabel() can resolve, so the
+  // saved contact details autofill even when the visible label doesn't match.
+  function attrLabel(el) {
+    const type = (el.type || "").toLowerCase();
+    const parts = [(el.getAttribute("autocomplete") || ""), el.name || "", el.id || "", el.getAttribute("placeholder") || ""].join(" ").toLowerCase();
+    if (type === "email" || /\bemail/.test(parts)) return "email";
+    if (type === "tel"   || /\b(telephone|phone|mobile)|\btel\b/.test(parts)) return "phone";
+    if (/\bgiven[\s._-]?name|\bfirst[\s._-]?name|\bfname\b/.test(parts)) return "first name";
+    if (/\bfamily[\s._-]?name|\blast[\s._-]?name|\blname\b|\bsurname/.test(parts)) return "last name";
+    if (/\borganization[\s._-]?title|\bjob[\s._-]?title/.test(parts)) return "current title";
+    if (/\borgani[sz]ation|\bcompany|\bemployer/.test(parts)) return "current company";
+    if (/\bpostal[\s._-]?code|\bzip|\bpin[\s._-]?code|\bpost[\s._-]?code|\bpostcode/.test(parts)) return "postal code";
+    if (/\baddress[\s._-]?level2|\bcity|\btown\b/.test(parts)) return "city";
+    if (/\bstreet[\s._-]?address|\baddress[\s._-]?line[12]|\baddress[\s._-]?level1|\baddress|\blocation/.test(parts)) return "location";
+    if (/name/.test(parts) && !/company|organi|employer|user|file|display|nick|screen/.test(parts)) return "full name";
+    return "";
+  }
+
   // ─────────────────── form autofill ─────────────────────────
   function labelForField(scope, el) {
     let label = "";
@@ -456,7 +476,7 @@
       if (cur && cur !== "Select an option") return;
       const opts = Array.from(sel.options).filter(o => { const v = (o.value || "").trim(); return v && v !== "Select an option"; });
       if (!opts.length) return;
-      const profileAns = (answerForLabel(labelForField(scope, sel)) || "").toString().toLowerCase();
+      const profileAns = (answerForLabel(labelForField(scope, sel)) || answerForLabel(attrLabel(sel)) || "").toString().toLowerCase();
       const byText = t => opts.find(o => (o.textContent || "").trim().toLowerCase() === t);
       const byContains = t => opts.find(o => (o.textContent || "").trim().toLowerCase().includes(t));
       const pick = opts.find(o => /@/.test(o.value || o.textContent))
@@ -473,7 +493,8 @@
       if (el.value && el.value.trim()) return;
       const required = el.required || el.getAttribute("aria-required") === "true";
       const label = labelForField(scope, el);
-      const fromProfile = answerForLabel(label);
+      let fromProfile = answerForLabel(label);
+      if ((fromProfile == null || fromProfile === "")) { const h = attrLabel(el); if (h) fromProfile = answerForLabel(h); }
       if (fromProfile != null && fromProfile !== "") { setNativeValue(el, fromProfile); return; }
       if (!required) return;
       setNativeValue(el, type === "number" || looksLikeExperience(label) ? APPLY_PROFILE.years_of_experience : APPLY_PROFILE.years_of_experience);
