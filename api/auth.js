@@ -75,6 +75,10 @@ export default async function handler(req, res) {
   const { action, email: rawEmail, password, newPassword, token: resetToken } = req.body || {};
   const email = String(rawEmail || '').trim().toLowerCase();
   const emailOk = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+  // Lead-capture fields collected at signup (optional; stored so the owner can
+  // follow up). Bounded so a bad request can't write huge values.
+  const name  = String((req.body && req.body.name)  || '').trim().slice(0, 120);
+  const phone = String((req.body && req.body.phone) || '').trim().slice(0, 40);
 
   try {
     // ── Forgot: email a reset link (needs only an email) ────────────────────
@@ -123,6 +127,53 @@ export default async function handler(req, res) {
       return res.status(200).json({ ok: true });
     }
 
+    // ── Google sign-in / sign-up (no password) ─────────────────────────────
+    // The frontend sends the Google ID token (`credential`) from Google Identity
+    // Services. We verify it against Google's tokeninfo endpoint (zero-dependency),
+    // confirm it was issued for OUR app, then find-or-create the account and issue
+    // our own session token — identical to the email/password path afterwards.
+    if (action === 'google') {
+      const credential = String((req.body && req.body.credential) || '');
+      if (!credential) return res.status(400).json({ error: 'Missing Google credential' });
+      let payload;
+      try {
+        const gr = await fetch('https://oauth2.googleapis.com/tokeninfo?id_token=' + encodeURIComponent(credential));
+        payload = await gr.json();
+        if (!gr.ok || !payload || !payload.email) throw new Error('invalid');
+      } catch {
+        return res.status(401).json({ error: 'Could not verify Google sign-in — please try again' });
+      }
+      const clientId = (process.env.GOOGLE_CLIENT_ID || '').trim();
+      if (clientId && payload.aud !== clientId) {
+        return res.status(401).json({ error: 'Google sign-in is not configured for this site' });
+      }
+      if (payload.email_verified === false || payload.email_verified === 'false') {
+        return res.status(401).json({ error: 'Your Google email is not verified' });
+      }
+      const gEmail = String(payload.email).trim().toLowerCase();
+      const gName  = String(payload.name || '').trim().slice(0, 120);
+      const gToken = randomBytes(32).toString('hex');
+      const adminEmail = (process.env.ADMIN_EMAIL || '').trim().toLowerCase();
+      const existingG = await sb(`users?email=eq.${encodeURIComponent(gEmail)}&select=id,is_admin`);
+      if (existingG.length) {
+        await sb(`users?id=eq.${existingG[0].id}`, { method: 'PATCH', body: JSON.stringify({ token: gToken }) });
+        return res.status(200).json({ token: gToken, email: gEmail, is_admin: !!existingG[0].is_admin || (!!adminEmail && gEmail === adminEmail) });
+      }
+      // New Google user → create with a random (unusable) password hash so the
+      // account has a valid credential row; they can set a password later via forgot.
+      const gBase = { email: gEmail, password_hash: hashPassword(randomBytes(24).toString('hex')), token: gToken };
+      const gFull = { ...gBase }; if (gName) gFull.name = gName;
+      let gCreated;
+      try {
+        gCreated = await sb('users', { method: 'POST', body: JSON.stringify([gFull]) });
+      } catch (err) {
+        if (/name|phone|column|PGRST204|schema cache/i.test(String(err.message))) {
+          gCreated = await sb('users', { method: 'POST', body: JSON.stringify([gBase]) });
+        } else throw err;
+      }
+      return res.status(201).json({ token: gToken, email: gEmail, is_admin: !!(gCreated?.[0]?.is_admin) || (!!adminEmail && gEmail === adminEmail) });
+    }
+
     // ── Signup / login (require a valid email + password) ───────────────────
     if (!emailOk) return res.status(400).json({ error: 'Enter a valid email address' });
     if (!password || String(password).length < 6) return res.status(400).json({ error: 'Password must be at least 6 characters' });
@@ -134,10 +185,20 @@ export default async function handler(req, res) {
 
     if (action === 'signup') {
       if (existing.length) return res.status(409).json({ error: 'An account with this email already exists – log in instead' });
-      const created = await sb('users', {
-        method: 'POST',
-        body: JSON.stringify([{ email, password_hash: hashPassword(String(password)), token }]),
-      });
+      const baseRow = { email, password_hash: hashPassword(String(password)), token };
+      const fullRow = { ...baseRow };
+      if (name)  fullRow.name  = name;
+      if (phone) fullRow.phone = phone;
+      let created;
+      try {
+        created = await sb('users', { method: 'POST', body: JSON.stringify([fullRow]) });
+      } catch (err) {
+        // Pre-migration DB (no name/phone columns yet) → never block signup;
+        // insert the account with the base fields only.
+        if (/name|phone|column|PGRST204|schema cache/i.test(String(err.message))) {
+          created = await sb('users', { method: 'POST', body: JSON.stringify([baseRow]) });
+        } else throw err;
+      }
       return res.status(201).json({ token, email, is_admin: admin(created?.[0]) });
     }
 

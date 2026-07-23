@@ -81,7 +81,14 @@ export default async function handler(req, res) {
     }
 
     if (action === 'list_users') {
-      const users = await sb('users?select=email,created_at,is_admin&order=created_at.desc&limit=1000');
+      // Include the lead-capture fields (name, phone) so the console can show who
+      // to contact. Falls back gracefully on a pre-migration DB without them.
+      let users;
+      try {
+        users = await sb('users?select=email,name,phone,created_at,is_admin&order=created_at.desc&limit=1000');
+      } catch {
+        users = await sb('users?select=email,created_at,is_admin&order=created_at.desc&limit=1000');
+      }
       const nowIso = new Date().toISOString();
       const active = await sb(
         `purchases?status=in.(paid,active)&or=(expires_at.is.null,expires_at.gte.${encodeURIComponent(nowIso)})&select=user_email,interval,expires_at`

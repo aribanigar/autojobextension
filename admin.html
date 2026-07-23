@@ -482,14 +482,19 @@
     async function loadUsers() {
       try {
         const users = await adminPost({ action:'list_users' });
-        $('#users-list').innerHTML = `<table><thead><tr><th>Email</th><th>Licensed</th><th>Type</th><th>Expires</th><th></th></tr></thead><tbody>${
-          users.map(u=>`<tr>
-            <td>${esc(u.email)}</td>
+        const digits = p => String(p||'').replace(/[^\d+]/g,'');
+        $('#users-list').innerHTML = `<table><thead><tr><th>Name</th><th>Email</th><th>Phone</th><th>Licensed</th><th>Type</th><th>Expires</th><th></th></tr></thead><tbody>${
+          users.map(u=>{
+            const phone = u.phone ? `<a href="tel:${esc(digits(u.phone))}">${esc(u.phone)}</a> · <a href="https://wa.me/${esc(digits(u.phone).replace(/^\+/,''))}" target="_blank" rel="noopener">WA</a>` : '<span style="color:var(--muted)">–</span>';
+            return `<tr>
+            <td>${u.name?esc(u.name):'<span style="color:var(--muted)">–</span>'}</td>
+            <td><a href="mailto:${esc(u.email)}">${esc(u.email)}</a></td>
+            <td style="white-space:nowrap">${phone}</td>
             <td><span class="pill ${u.licensed?'yes':'no'}">${u.licensed?'yes':'no'}</span></td>
             <td>${u.interval?esc(u.interval):'–'}</td>
             <td style="color:var(--muted)">${u.expires_at?new Date(u.expires_at).toLocaleDateString():(u.licensed?'lifetime':'–')}</td>
             <td><button class="mini" data-del="${esc(u.email)}">Delete</button></td>
-          </tr>`).join('')}</tbody></table>`;
+          </tr>`;}).join('')}</tbody></table>`;
         $('#users-list').querySelectorAll('[data-del]').forEach(b=>b.onclick=async()=>{ if(confirm('Delete '+b.dataset.del+'?')){ await adminPost({action:'delete_user',email:b.dataset.del}); loadUsers(); } });
       } catch(e){ $('#users-list').innerHTML='<p class="msg err">'+esc(e.message)+'</p>'; }
     }

@@ -403,9 +403,21 @@
       display: flex; align-items: center; justify-content: center;
       font-size: 12px; font-weight: 700; color: var(--accent);
     }
-    .uname { font-size: 14px; }
+    .uname { font-size: 14px; font-weight: 600; }
     .udate { font-size: 12px; color: var(--muted); }
+    .ucontacts { font-size: 12px; margin: 2px 0; display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+    .ucontacts a { color: var(--accent-light); text-decoration: none; }
+    .ucontacts a:hover { text-decoration: underline; }
+    .ucontacts .dot { color: var(--muted); opacity: .5; }
+    .lead-pill { display: inline-block; font-size: 10px; font-weight: 700; letter-spacing: .03em;
+      padding: 1px 7px; border-radius: 999px; vertical-align: middle; margin-left: 4px; }
+    .lead-cust { background: rgba(34,197,94,.16); color: #16a34a; border: 1px solid rgba(34,197,94,.35); }
+    .lead-new  { background: rgba(245,158,11,.16); color: #b45309; border: 1px solid rgba(245,158,11,.35); }
     .empty { text-align: center; padding: 20px; font-size: 13px; color: var(--muted); }
+    /* Google sign-in */
+    .gbtn-wrap { display: flex; justify-content: center; margin: 4px 0 2px; }
+    .auth-or { display: flex; align-items: center; gap: 10px; margin: 16px 0 4px; color: var(--muted); font-size: 12px; }
+    .auth-or::before, .auth-or::after { content: ""; flex: 1; height: 1px; background: var(--border); }
 
     /* Toast */
     #toast {
@@ -548,7 +560,7 @@
           <h1>Auto apply to jobs on <span class="grad">LinkedIn, Indeed, Naukri and Bayt</span></h1>
           <p class="lead">AutoApplier is a browser extension that does your job applications for you. You run a normal search on any supported job board, press Start, and the agent opens each listing, fills in the application, answers the screening questions from your saved profile, submits it, and moves straight on to the next job. You stay in control and can stop it at any time.</p>
           <div class="hero-cta">
-            <button class="btn btn-primary btn-lg" onclick="gotoLogin()">Start applying on autopilot <i class="fi-rr-arrow-right"></i></button>
+            <button class="btn btn-primary btn-lg" onclick="gotoSignup()">Start applying on autopilot <i class="fi-rr-arrow-right"></i></button>
             <a class="btn btn-ghost btn-lg" href="#how">See how it works</a>
           </div>
           <div class="feature-list">
@@ -564,32 +576,73 @@
           </div>
         </div>
 
-        <!-- Login / access card -->
+        <!-- Login / signup / access card -->
         <div class="auth-card" id="auth-card">
-          <h2>Welcome back</h2>
-          <p class="sub">Sign in to download the extension and access your account.</p>
-          <form id="login-form" onsubmit="Auth.login(event)">
-            <div class="field">
-              <label>Email</label>
-              <input type="email" id="f-email" placeholder="you@example.com" autocomplete="email" required />
-            </div>
-            <div class="field">
-              <label>Password</label>
-              <div style="position:relative">
-                <input type="password" id="f-pass" placeholder="••••••••" autocomplete="current-password" required style="padding-right:44px" />
-                <button type="button" id="f-eye" title="Show/hide" style="position:absolute;right:12px;top:50%;transform:translateY(-50%);background:none;border:none;color:var(--muted);cursor:pointer;font-size:15px">👁</button>
+
+          <!-- Sign in -->
+          <div id="signin-pane">
+            <h2>Welcome back</h2>
+            <p class="sub">Sign in to download the extension and access your account.</p>
+            <div id="g-signin" class="gbtn-wrap" style="display:none"></div>
+            <div id="g-or-signin" class="auth-or" style="display:none">or</div>
+            <form id="login-form" onsubmit="Auth.login(event)">
+              <div class="field">
+                <label>Email</label>
+                <input type="email" id="f-email" placeholder="you@example.com" autocomplete="email" required />
               </div>
-            </div>
-            <div style="text-align:right;margin-top:-4px"><a href="#" id="f-forgot" style="font-size:12px;color:var(--accent-light);text-decoration:none">Forgot password?</a></div>
-            <div class="ferr" id="login-err"></div>
-            <button type="submit" id="login-btn" class="btn btn-primary btn-lg" style="width:100%;margin-top:4px;">
-              Sign In
-            </button>
-          </form>
-          <p style="font-size:12px;color:var(--muted);text-align:center;margin-top:18px;">
-            No account? <a href="/checkout.html" style="color:var(--accent-light);font-weight:600;text-decoration:none">Buy a plan to get instant access</a><br>
-            <span style="opacity:.75">or contact your administrator.</span>
-          </p>
+              <div class="field">
+                <label>Password</label>
+                <div style="position:relative">
+                  <input type="password" id="f-pass" placeholder="••••••••" autocomplete="current-password" required style="padding-right:44px" />
+                  <button type="button" id="f-eye" title="Show/hide" style="position:absolute;right:12px;top:50%;transform:translateY(-50%);background:none;border:none;color:var(--muted);cursor:pointer;font-size:15px">👁</button>
+                </div>
+              </div>
+              <div style="text-align:right;margin-top:-4px"><a href="#" id="f-forgot" style="font-size:12px;color:var(--accent-light);text-decoration:none">Forgot password?</a></div>
+              <div class="ferr" id="login-err"></div>
+              <button type="submit" id="login-btn" class="btn btn-primary btn-lg" style="width:100%;margin-top:4px;">
+                Sign In
+              </button>
+            </form>
+            <p style="font-size:13px;color:var(--muted);text-align:center;margin-top:18px;">
+              No account? <a href="#" id="to-signup" style="color:var(--accent-light);font-weight:600;text-decoration:none">Create a free account</a>
+            </p>
+          </div>
+
+          <!-- Sign up (lead capture) -->
+          <div id="signup-pane" style="display:none">
+            <h2>Create your free account</h2>
+            <p class="sub">Sign up in seconds to see how AutoApplier works and unlock a plan.</p>
+            <div id="g-signup" class="gbtn-wrap" style="display:none"></div>
+            <div id="g-or-signup" class="auth-or" style="display:none">or sign up with email</div>
+            <form id="signup-form" onsubmit="Auth.signup(event)">
+              <div class="field">
+                <label>Full name</label>
+                <input type="text" id="s-name" placeholder="Your name" autocomplete="name" required />
+              </div>
+              <div class="field">
+                <label>Email</label>
+                <input type="email" id="s-email" placeholder="you@example.com" autocomplete="email" required />
+              </div>
+              <div class="field">
+                <label>Phone / WhatsApp</label>
+                <input type="tel" id="s-phone" placeholder="+91 90000 00000" autocomplete="tel" required />
+              </div>
+              <div class="field">
+                <label>Password</label>
+                <div style="position:relative">
+                  <input type="password" id="s-pass" placeholder="At least 6 characters" autocomplete="new-password" minlength="6" required style="padding-right:44px" />
+                  <button type="button" id="s-eye" title="Show/hide" style="position:absolute;right:12px;top:50%;transform:translateY(-50%);background:none;border:none;color:var(--muted);cursor:pointer;font-size:15px">👁</button>
+                </div>
+              </div>
+              <div class="ferr" id="signup-err"></div>
+              <button type="submit" id="signup-btn" class="btn btn-primary btn-lg" style="width:100%;margin-top:4px;">
+                Create account
+              </button>
+            </form>
+            <p style="font-size:13px;color:var(--muted);text-align:center;margin-top:18px;">
+              Already have an account? <a href="#" id="to-signin" style="color:var(--accent-light);font-weight:600;text-decoration:none">Sign in</a>
+            </p>
+          </div>
         </div>
       </div>
     </div>
@@ -1218,9 +1271,63 @@
       btn.disabled = false; btn.textContent = 'Sign In';
     },
 
+    async signup(e) {
+      e.preventDefault();
+      const name  = document.getElementById('s-name').value.trim();
+      const email = document.getElementById('s-email').value.trim();
+      const phone = document.getElementById('s-phone').value.trim();
+      const pass  = document.getElementById('s-pass').value;
+      const btn   = document.getElementById('signup-btn');
+      const errEl = document.getElementById('signup-err');
+      errEl.classList.remove('show'); errEl.style.color = '';
+      if (pass.length < 6) { errEl.textContent = 'Password must be at least 6 characters'; errEl.classList.add('show'); return; }
+      btn.disabled = true; btn.textContent = 'Creating account…';
+      try {
+        const r = await post('/api/auth', { action: 'signup', name, email, phone, password: pass });
+        const d = await r.json();
+        if (r.ok) {
+          const s = { token: d.token, email: d.email, role: 'user' };
+          Session.save(s);
+          Views.showDashboard(s);
+          toast('Account created — welcome to AutoApplier!', 'ok');
+        } else {
+          errEl.textContent = d.error || 'Could not create your account';
+          errEl.classList.add('show');
+          // Already registered → nudge them to the sign-in pane.
+          if (r.status === 409) showAuthPane('signin');
+        }
+      } catch {
+        errEl.textContent = 'Network error, please try again';
+        errEl.classList.add('show');
+      }
+      btn.disabled = false; btn.textContent = 'Create account';
+    },
+
+    // Google Identity Services callback → verify server-side, then sign in.
+    async google(credential) {
+      const errEl = document.getElementById(
+        document.getElementById('signup-pane')?.style.display !== 'none' ? 'signup-err' : 'login-err');
+      try {
+        const r = await post('/api/auth', { action: 'google', credential });
+        const d = await r.json();
+        if (r.ok) {
+          const s = { token: d.token, email: d.email, role: 'user' };
+          Session.save(s);
+          Views.showDashboard(s);
+          toast('Signed in with Google — welcome!', 'ok');
+        } else if (errEl) {
+          errEl.textContent = d.error || 'Google sign-in failed';
+          errEl.classList.add('show');
+        }
+      } catch {
+        if (errEl) { errEl.textContent = 'Network error during Google sign-in'; errEl.classList.add('show'); }
+      }
+    },
+
     logout() {
       Session.clear();
       Views.session = null;
+      showAuthPane('signin');
       Views.showLanding();
     },
 
@@ -1246,6 +1353,33 @@
     const p = document.getElementById('f-pass'); p.type = p.type === 'password' ? 'text' : 'password';
   });
   document.getElementById('f-forgot')?.addEventListener('click', e => { e.preventDefault(); Auth.forgot(); });
+
+  // Sign-in ⇄ sign-up toggle inside the auth card.
+  function showAuthPane(which) {
+    const si = document.getElementById('signin-pane');
+    const su = document.getElementById('signup-pane');
+    if (!si || !su) return;
+    const signup = which === 'signup';
+    si.style.display = signup ? 'none' : 'block';
+    su.style.display = signup ? 'block' : 'none';
+    setTimeout(() => {
+      const f = document.getElementById(signup ? 's-name' : 'f-email');
+      if (f) f.focus({ preventScroll: true });
+    }, 60);
+  }
+  document.getElementById('to-signup')?.addEventListener('click', e => { e.preventDefault(); showAuthPane('signup'); });
+  document.getElementById('to-signin')?.addEventListener('click', e => { e.preventDefault(); showAuthPane('signin'); });
+  document.getElementById('s-eye')?.addEventListener('click', () => {
+    const p = document.getElementById('s-pass'); p.type = p.type === 'password' ? 'text' : 'password';
+  });
+
+  // Reveal the landing view and open the sign-up card (hero CTA for new users).
+  function gotoSignup() {
+    Views.showLanding();
+    showAuthPane('signup');
+    const card = document.getElementById('auth-card');
+    if (card) card.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  }
 
   // Referral card — load the user's code/link when the dashboard shows
   async function loadReferral(session) {
@@ -1328,18 +1462,32 @@
           list.innerHTML = '<div class="empty">No registered users yet.</div>';
           return;
         }
-        list.innerHTML = users.map((u, i) => `
+        const digits = p => String(p || '').replace(/[^\d+]/g, '');
+        list.innerHTML = users.map((u, i) => {
+          const label = u.name || u.email;
+          const licPill = u.licensed
+            ? '<span class="lead-pill lead-cust" title="Has an active plan">Customer</span>'
+            : '<span class="lead-pill lead-new" title="Signed up, no active plan">Lead</span>';
+          const contacts = [];
+          contacts.push(`<a href="mailto:${esc(u.email)}" title="Email">✉ ${esc(u.email)}</a>`);
+          if (u.phone) {
+            const d = digits(u.phone);
+            contacts.push(`<a href="tel:${esc(d)}" title="Call">☎ ${esc(u.phone)}</a>`);
+            contacts.push(`<a href="https://wa.me/${esc(d.replace(/^\+/, ''))}" target="_blank" rel="noopener" title="WhatsApp">WhatsApp</a>`);
+          }
+          return `
           <div class="user-row" id="ur${i}">
             <div class="user-info">
-              <div class="avatar">${esc(u.email[0].toUpperCase())}</div>
+              <div class="avatar">${esc(String(label)[0].toUpperCase())}</div>
               <div>
-                <div class="uname">${esc(u.email)}</div>
+                <div class="uname">${esc(label)} ${licPill}</div>
+                <div class="ucontacts">${contacts.join('<span class="dot">·</span>')}</div>
                 <div class="udate">Joined ${u.created_at ? new Date(u.created_at).toLocaleDateString('en-US', {month:'short',day:'numeric',year:'numeric'}) : '-'}</div>
               </div>
             </div>
             <button class="btn btn-danger-soft" data-email="${esc(u.email)}" onclick="Admin.deleteUser(this)">Remove</button>
-          </div>
-        `).join('');
+          </div>`;
+        }).join('');
       } catch (e) {
         list.innerHTML = `<div class="empty" style="color:var(--danger)">${esc(e.message)}</div>`;
       }
@@ -1436,6 +1584,41 @@
     }
   }
 
+  // ── Google Identity Services (optional) ────────────────────────────────────
+  // Only activates if GOOGLE_CLIENT_ID is configured on the backend. If it isn't,
+  // nothing loads and the email/password forms work exactly as before.
+  async function initGoogle() {
+    let cfg = {};
+    try { cfg = await fetch('/api/config').then(r => r.json()); } catch { return; }
+    const clientId = cfg && cfg.googleClientId;
+    if (!clientId) return; // not configured → skip silently
+    await new Promise((resolve) => {
+      const sc = document.createElement('script');
+      sc.src = 'https://accounts.google.com/gsi/client';
+      sc.async = true; sc.defer = true;
+      sc.onload = resolve; sc.onerror = resolve;
+      document.head.appendChild(sc);
+    });
+    if (!window.google?.accounts?.id) return;
+    window.google.accounts.id.initialize({
+      client_id: clientId,
+      callback: (resp) => { if (resp && resp.credential) Auth.google(resp.credential); },
+    });
+    const render = (id, text) => {
+      const el = document.getElementById(id);
+      if (!el) return;
+      window.google.accounts.id.renderButton(el, {
+        type: 'standard', theme: 'outline', size: 'large', shape: 'pill',
+        text, logo_alignment: 'center', width: 300,
+      });
+    };
+    render('g-signin', 'signin_with');
+    render('g-signup', 'signup_with');
+    ['g-signin', 'g-or-signin', 'g-signup', 'g-or-signup'].forEach(id => {
+      const el = document.getElementById(id); if (el) el.style.display = '';
+    });
+  }
+
   // ── Boot ──────────────────────────────────────────────────────────────────
   (function init() {
     const yr = document.getElementById('yr'); if (yr) yr.textContent = new Date().getFullYear();
@@ -1445,6 +1628,7 @@
     } else {
       Views.showLanding();
     }
+    initGoogle();
   })();
 </script>
 </body>

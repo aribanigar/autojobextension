@@ -45,6 +45,11 @@ alter table users add column if not exists is_admin boolean not null default fal
 alter table users add column if not exists reset_token   text;
 alter table users add column if not exists reset_expires timestamptz;
 
+-- Lead capture: signups collect a name + phone so the owner can follow up with
+-- people who registered but haven't bought yet. (Safe to re-run.)
+alter table users add column if not exists name  text;
+alter table users add column if not exists phone text;
+
 -- Plans the admin creates in the admin panel. price_paise is in paise (₹1 = 100).
 -- interval 'once' = lifetime one-time purchase; 'monthly' = Razorpay subscription.
 -- features is a free-form JSON map of feature-flags the admin can toggle per plan.
