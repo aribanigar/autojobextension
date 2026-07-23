@@ -68,6 +68,16 @@ export default async function handler(req, res) {
   cors(res);
   if (req.method === 'OPTIONS') return res.status(204).end();
   if (req.method !== 'POST') return res.status(405).json({ error: 'POST only' });
+
+  // Public front-end config (no secrets). Folded into this existing endpoint on
+  // purpose: the Hobby plan caps a deployment at 12 serverless functions, so a
+  // dedicated /api/config file would push us over and fail the build. A Google
+  // OAuth *client id* is public by design, so it's safe to return here. Handled
+  // before the Supabase check so it works even without a DB configured.
+  if (req.body && req.body.action === 'config') {
+    return res.status(200).json({ googleClientId: (process.env.GOOGLE_CLIENT_ID || '').trim() });
+  }
+
   if (!process.env.SUPABASE_URL || !process.env.SUPABASE_SERVICE_KEY) {
     return res.status(500).json({ error: 'Backend not configured: set SUPABASE_URL and SUPABASE_SERVICE_KEY' });
   }
