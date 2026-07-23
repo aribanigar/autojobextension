@@ -419,6 +419,77 @@
     .auth-or { display: flex; align-items: center; gap: 10px; margin: 16px 0 4px; color: var(--muted); font-size: 12px; }
     .auth-or::before, .auth-or::after { content: ""; flex: 1; height: 1px; background: var(--border); }
 
+    /* ── Subscribe / plans section ─────────────────────────────────────────── */
+    .sub-hero {
+      text-align: center; padding: 30px 24px 6px; margin-bottom: 22px;
+    }
+    .sub-badge {
+      display: inline-flex; align-items: center; gap: 6px;
+      background: var(--accent-dim); color: var(--accent);
+      font-size: 12px; font-weight: 700; letter-spacing: .02em;
+      padding: 5px 13px; border-radius: 999px; margin-bottom: 14px;
+    }
+    .sub-hero h2 { font-size: clamp(24px, 3.4vw, 34px); line-height: 1.12; margin: 0 0 12px; letter-spacing: -.02em; }
+    .sub-hero p { max-width: 640px; margin: 0 auto; color: var(--muted); font-size: 15px; line-height: 1.6; }
+    .sub-logos { display: flex; flex-wrap: wrap; justify-content: center; align-items: center; gap: 30px; margin-top: 20px; opacity: .95; }
+    .sub-logos img { height: 24px; width: auto; filter: grayscale(.1); }
+
+    .sub-benefits {
+      display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+      gap: 12px; margin-bottom: 24px;
+    }
+    .sub-benefit {
+      display: flex; gap: 12px; align-items: flex-start;
+      background: var(--bg-soft); border: 1px solid var(--border); border-radius: 12px; padding: 15px 16px;
+    }
+    .sub-benefit .bi {
+      flex-shrink: 0; width: 34px; height: 34px; border-radius: 9px;
+      background: var(--accent-dim); color: var(--accent);
+      display: flex; align-items: center; justify-content: center; font-size: 15px;
+    }
+    .sub-benefit b { display: block; font-size: 14px; margin-bottom: 2px; }
+    .sub-benefit span { font-size: 12.5px; color: var(--muted); line-height: 1.45; }
+
+    .plans-grid {
+      display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+      gap: 16px; margin-bottom: 26px; max-width: 720px; margin-left: auto; margin-right: auto;
+    }
+    .plan-card {
+      position: relative; background: var(--card); border: 1.5px solid var(--border);
+      border-radius: 16px; padding: 24px 22px; box-shadow: 0 10px 30px rgba(37,99,235,.06);
+      transition: border-color .15s, box-shadow .15s, transform .15s;
+    }
+    .plan-card:hover { border-color: var(--accent); box-shadow: 0 16px 40px rgba(37,99,235,.14); transform: translateY(-2px); }
+    .plan-card-top { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 8px; }
+    .plan-card-top h3 { font-size: 19px; margin: 0; }
+    .plan-tag { font-size: 11px; font-weight: 700; color: var(--accent); background: var(--accent-dim); padding: 3px 9px; border-radius: 999px; white-space: nowrap; }
+    .plan-price { font-size: 34px; font-weight: 800; letter-spacing: -.02em; margin: 6px 0 4px; }
+    .plan-price small { font-size: 14px; font-weight: 600; color: var(--muted); }
+    .plan-desc { font-size: 13px; color: var(--muted); margin: 0 0 12px; }
+    .plan-feats { list-style: none; padding: 0; margin: 14px 0 18px; display: flex; flex-direction: column; gap: 9px; }
+    .plan-feats li { position: relative; padding-left: 26px; font-size: 13.5px; line-height: 1.4; }
+    .plan-feats li::before {
+      content: "✓"; position: absolute; left: 0; top: -1px;
+      width: 18px; height: 18px; border-radius: 50%; background: rgba(34,197,94,.15); color: #16a34a;
+      display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 800;
+    }
+    .plan-buy { width: 100%; }
+    .plan-loading { grid-column: 1 / -1; text-align: center; color: var(--muted); font-size: 14px; padding: 30px; }
+
+    .sub-steps {
+      display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px; margin-bottom: 14px;
+    }
+    .sub-step { display: flex; gap: 12px; align-items: flex-start; padding: 4px 6px; }
+    .sub-step .n {
+      flex-shrink: 0; width: 26px; height: 26px; border-radius: 50%;
+      background: var(--accent); color: #fff; font-size: 13px; font-weight: 800;
+      display: flex; align-items: center; justify-content: center;
+    }
+    .sub-step b { display: block; font-size: 13.5px; margin-bottom: 2px; }
+    .sub-step span { font-size: 12px; color: var(--muted); line-height: 1.45; }
+    .sub-havekey { text-align: center; font-size: 13px; color: var(--muted); margin: 6px 0 24px; }
+    .sub-havekey a { color: var(--accent-light); font-weight: 600; text-decoration: none; }
+
     /* Toast */
     #toast {
       position: fixed; bottom: 24px; right: 24px;
@@ -981,7 +1052,44 @@
     <p>Your activation key, extension download, and account settings — all in one place.</p>
   </div>
 
-  <!-- Access-needed banner (no active key or plan yet) -->
+  <!-- Subscribe / plans — shown only when the account has no active licence yet.
+       This is the primary call to action for a new signup. -->
+  <div id="plans-section" style="display:none">
+    <div class="sub-hero">
+      <span class="sub-badge"><i class="fi-rr-rocket"></i> One step to go</span>
+      <h2>Activate AutoApplier and let it apply for you</h2>
+      <p>Choose a plan to unlock the extension. It then applies on your behalf across
+        <strong>LinkedIn</strong>, <strong>Indeed</strong>, <strong>Naukri</strong> and <strong>Bayt</strong> —
+        opening each job, filling the form, answering the screening questions from your profile,
+        and moving straight to the next one.</p>
+      <div class="sub-logos">
+        <img src="/assets/logos/linkedin.png" alt="LinkedIn" />
+        <img src="/assets/logos/indeed.png" alt="Indeed" />
+        <img src="/assets/logos/naukri.png" alt="Naukri" />
+        <img src="/assets/logos/bayt.png" alt="Bayt" />
+      </div>
+    </div>
+
+    <div class="sub-benefits">
+      <div class="sub-benefit"><span class="bi"><i class="fi-rr-bolt"></i></span><div><b>Apply on autopilot</b><span>Work through page after page of jobs while you do something else.</span></div></div>
+      <div class="sub-benefit"><span class="bi"><i class="fi-rr-comment-check"></i></span><div><b>Answers questions for you</b><span>Screening questions filled from your saved profile, with smart memory.</span></div></div>
+      <div class="sub-benefit"><span class="bi"><i class="fi-rr-shield-check"></i></span><div><b>You stay in control</b><span>Runs in your own browser, human-like pacing, stop anytime.</span></div></div>
+      <div class="sub-benefit"><span class="bi"><i class="fi-rr-key"></i></span><div><b>One key, everywhere</b><span>The same key runs the extension and this dashboard.</span></div></div>
+    </div>
+
+    <div id="plans-grid" class="plans-grid"><div class="plan-loading">Loading plans…</div></div>
+
+    <div class="sub-steps">
+      <div class="sub-step"><span class="n">1</span><div><b>Choose a plan</b><span>Pay securely online with Razorpay — cards, UPI, netbanking.</span></div></div>
+      <div class="sub-step"><span class="n">2</span><div><b>Get your key instantly</b><span>Your activation key appears the moment payment succeeds.</span></div></div>
+      <div class="sub-step"><span class="n">3</span><div><b>Activate</b><span>Paste the key into the extension and this dashboard.</span></div></div>
+      <div class="sub-step"><span class="n">4</span><div><b>Start applying</b><span>Open a job board, run a search, and press Start.</span></div></div>
+    </div>
+
+    <p class="sub-havekey">Already have an activation key from an admin? <a href="#key-card" id="sub-usekey">Enter it below instead.</a></p>
+  </div>
+
+  <!-- Access-needed banner (legacy; superseded by #plans-section, kept hidden) -->
   <div id="lic-banner" style="display:none;background:linear-gradient(135deg,rgba(245,158,11,.16),rgba(245,158,11,.05));border:1px solid rgba(245,158,11,.35);border-radius:14px;padding:18px 22px;margin-bottom:22px">
     <div style="font-weight:700;margin-bottom:4px">🔑 Enter your activation key to unlock</div>
     <div style="font-size:13px;color:var(--muted);margin-bottom:12px">You're signed in. Paste the activation key your admin gave you in the box below to unlock the agent and CRM, or buy a plan.</div>
@@ -1007,7 +1115,7 @@
   </div>
 
   <!-- Download -->
-  <div class="dl-card">
+  <div class="dl-card" id="dl-card">
     <div class="dl-icon">⬇️</div>
     <h2>Download Jobs Extension</h2>
     <a class="btn btn-primary btn-lg" href="/jobbot-extension.zip" download="jobs-extension.zip">
@@ -1030,7 +1138,7 @@
   </script>
 
   <!-- Install & Activate -->
-  <div class="card guide-card">
+  <div class="card guide-card" id="guide-card">
     <div class="guide-head">
       <div class="guide-ico"><i class="fi-rr-rocket"></i></div>
       <div>
@@ -1180,6 +1288,12 @@
         if (acct) acct.style.display = 'block';
         if (keyCard) keyCard.style.display = 'block';
         ap.style.display = 'none';
+        // Mirror the session into the checkout/CRM token keys so a signed-in user
+        // goes straight into Razorpay checkout without logging in again.
+        try {
+          localStorage.setItem('jobbot_crm_token', s.token);
+          localStorage.setItem('jobbot_crm_email', s.email);
+        } catch {}
         if (typeof refreshAccess === 'function') refreshAccess(s);
       }
       // Everyone signed in gets a referral link + change-password card.
@@ -1193,7 +1307,22 @@
     const banner = document.getElementById('lic-banner');
     const ok = document.getElementById('lic-ok'), until = document.getElementById('lic-until');
     const fmt = iso => new Date(iso).toLocaleDateString('en-IN', { day:'2-digit', month:'short', year:'numeric' });
-    if (banner) banner.style.display = 'none';
+
+    // Toggle the whole dashboard between "needs to subscribe" and "activated".
+    //  - Not licensed → lead with the plans section; hide download + install.
+    //  - Licensed     → show the green note, download, and install guide.
+    const setLicensed = (isLic) => {
+      const plans = document.getElementById('plans-section');
+      const dl    = document.getElementById('dl-card');
+      const guide = document.getElementById('guide-card');
+      if (plans) plans.style.display = isLic ? 'none' : 'block';
+      if (dl)    dl.style.display    = isLic ? '' : 'none';
+      if (guide) guide.style.display = isLic ? '' : 'none';
+      if (ok)    ok.style.display    = isLic ? 'block' : 'none';
+      if (!isLic) loadDashPlans();
+    };
+
+    if (banner) banner.style.display = 'none';  // legacy banner stays hidden
     if (ok) ok.style.display = 'none';
 
     // 0) Auto-fetch a key issued to this account (purchase or admin grant), so
@@ -1214,7 +1343,8 @@
       try {
         const d = await fetch('/api/license-key', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ key }) }).then(r => r.json());
         if (d.valid && d.active) {
-          if (ok) { ok.style.display = 'block'; if (until) until.textContent = d.expires_at ? 'key valid until ' + fmt(d.expires_at) : 'key active'; }
+          if (until) until.textContent = d.expires_at ? 'key valid until ' + fmt(d.expires_at) : 'key active';
+          setLicensed(true);
           return;
         }
       } catch {}
@@ -1223,12 +1353,50 @@
     try {
       const d = await fetch('/api/license', { headers: { Authorization: 'Bearer ' + s.token } }).then(r => r.json());
       if (d.active) {
-        if (ok) { ok.style.display = 'block'; if (until) until.textContent = d.expires_at ? 'valid until ' + fmt(d.expires_at) : 'lifetime access'; }
+        if (until) until.textContent = d.expires_at ? 'valid until ' + fmt(d.expires_at) : 'lifetime access';
+        setLicensed(true);
         return;
       }
     } catch {}
-    // 3) Neither → prompt for the activation key
-    if (banner) banner.style.display = 'block';
+    // 3) Neither → lead with the subscribe / plans section.
+    setLicensed(false);
+  }
+
+  // Load the live plans into the dashboard subscribe section. Buttons deep-link
+  // into the existing Razorpay checkout with the plan preselected.
+  let _dashPlansLoaded = false;
+  async function loadDashPlans() {
+    const grid = document.getElementById('plans-grid');
+    if (!grid || _dashPlansLoaded) return;
+    try {
+      const plans = await fetch('/api/plans').then(r => r.json());
+      if (!Array.isArray(plans) || !plans.length) {
+        grid.innerHTML = '<div class="plan-loading">Plans are being set up — please check back shortly.</div>';
+        return;
+      }
+      grid.innerHTML = plans.map(p => {
+        const feats = p.features && typeof p.features === 'object'
+          ? Object.entries(p.features).filter(([,v]) => v).map(([k]) => k) : [];
+        const validity = p.interval === 'monthly' ? 'Renews monthly'
+          : (p.duration_days ? p.duration_days + ' days access' : 'Lifetime access');
+        const price = '₹' + (p.price_paise / 100).toLocaleString('en-IN');
+        return `<div class="plan-card">
+          <div class="plan-card-top"><h3>${esc(p.name)}</h3><span class="plan-tag">${validity}</span></div>
+          <div class="plan-price">${price}<small>${p.interval === 'monthly' ? ' / month' : ' one-time'}</small></div>
+          ${p.description ? `<p class="plan-desc">${esc(p.description)}</p>` : ''}
+          <ul class="plan-feats">
+            <li>Auto-apply on LinkedIn, Indeed, Naukri &amp; Bayt</li>
+            <li>Answers screening questions from your profile</li>
+            <li>Keeps applying across pages until you stop</li>
+            ${feats.map(f => `<li>${esc(f)}</li>`).join('')}
+          </ul>
+          <a class="btn btn-primary btn-lg plan-buy" href="/checkout.html?plan=${encodeURIComponent(p.id)}">Subscribe now <i class="fi-rr-arrow-right"></i></a>
+        </div>`;
+      }).join('');
+      _dashPlansLoaded = true;
+    } catch {
+      grid.innerHTML = '<div class="plan-loading">Could not load plans. Refresh the page to try again.</div>';
+    }
   }
 
   // ── Auth ──────────────────────────────────────────────────────────────────
