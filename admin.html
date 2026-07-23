@@ -84,6 +84,19 @@
     footer.site .wrap{max-width:1080px;margin:0 auto;padding:0 24px;display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap}
     footer.site a{color:var(--muted);text-decoration:none}footer.site a:hover{color:var(--accent)}
     @media(max-width:860px){nav{padding:13px 20px}}
+    /* Subscribers overview */
+    .sstats{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;margin-bottom:16px}
+    .sstat{background:#fff;border:1px solid var(--border);border-radius:14px;padding:16px 18px;box-shadow:0 1px 3px rgba(15,23,42,.04)}
+    .sstat-n{font-size:26px;font-weight:850;letter-spacing:-.02em;color:var(--accent)}
+    .sstat-n.amber{color:var(--amber)} .sstat-n.red{color:var(--red)} .sstat-n.green{color:var(--green)}
+    .sstat-l{font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.04em;font-weight:700;margin-top:3px}
+    .subs-bar{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:14px}
+    .chip{background:#fff;border:1px solid var(--border);color:var(--muted);font-weight:700;padding:7px 13px;border-radius:999px;font-size:12.5px;cursor:pointer}
+    .chip:hover{border-color:var(--border-hi);color:var(--text)}
+    .chip.on{background:linear-gradient(135deg,var(--accent-2),var(--accent-dk));border-color:transparent;color:#fff}
+    .pill.exp{background:rgba(217,119,6,.14);color:var(--amber)}
+    .pill.life{background:rgba(37,99,235,.12);color:var(--accent)}
+    .pill.rev{background:rgba(15,23,42,.06);color:var(--muted)}
   </style>
 </head>
 <body>
@@ -112,7 +125,8 @@
 
     <div id="app" style="display:none">
       <div class="tabs">
-        <button data-tab="keys" class="on">License Keys</button>
+        <button data-tab="subscribers" class="on">Subscribers</button>
+        <button data-tab="keys">License Keys</button>
         <button data-tab="plans">Plans</button>
         <button data-tab="users">Users &amp; Access</button>
         <button data-tab="coupons">Referral Codes</button>
@@ -120,8 +134,32 @@
         <button data-tab="health">Health</button>
       </div>
 
+      <!-- SUBSCRIBERS — who has access and until when (built from keys + plans) -->
+      <section id="tab-subscribers">
+        <div class="card">
+          <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-bottom:10px">
+            <h2 style="margin:0">Subscribers <span style="font-size:12px;color:var(--muted);font-weight:400">who has access, and until when</span></h2>
+            <div style="display:flex;gap:8px">
+              <button class="mini" id="subs-refresh">↻ Refresh</button>
+              <button class="btn-v mini" id="subs-export">⬇ Export CSV</button>
+            </div>
+          </div>
+          <div class="sstats" id="subs-stats"></div>
+          <div class="subs-bar">
+            <input id="subs-search" placeholder="Search email / name…" style="flex:1;min-width:180px" />
+            <span class="chip on" data-f="active">Active</span>
+            <span class="chip" data-f="expiring">Expiring &le; 7d</span>
+            <span class="chip" data-f="expired">Expired</span>
+            <span class="chip" data-f="lifetime">Lifetime</span>
+            <span class="chip" data-f="all">All</span>
+            <span style="margin-left:auto;font-size:12px;color:var(--muted)" id="subs-count"></span>
+          </div>
+          <div id="subs-list"><div class="empty">Loading…</div></div>
+        </div>
+      </section>
+
       <!-- LICENSE KEYS -->
-      <section id="tab-keys">
+      <section id="tab-keys" style="display:none">
         <div class="card">
           <h2>Give access to an email <span style="font-size:12px;color:var(--muted);font-weight:400">(free lifetime or limited)</span></h2>
           <div class="grid">
@@ -266,7 +304,8 @@
 
     document.querySelectorAll('.tabs button').forEach(b=>b.onclick=()=>{
       document.querySelectorAll('.tabs button').forEach(x=>x.classList.remove('on')); b.classList.add('on');
-      ['keys','plans','users','coupons','purchases','health'].forEach(t=>$('#tab-'+t).style.display = t===b.dataset.tab?'':'none');
+      ['subscribers','keys','plans','users','coupons','purchases','health'].forEach(t=>$('#tab-'+t).style.display = t===b.dataset.tab?'':'none');
+      if(b.dataset.tab==='subscribers') loadSubscribers();
       if(b.dataset.tab==='keys') loadKeys();
       if(b.dataset.tab==='plans') loadPlans();
       if(b.dataset.tab==='users') loadUsers();
@@ -475,7 +514,148 @@
       } catch(e){ $('#health-list').innerHTML='<p class="msg err">'+esc(e.message)+'</p>'; }
     }
 
-    function boot(){ $('#gate').style.display='none'; $('#app').style.display=''; loadKeys(); }
+    // ── SUBSCRIBERS overview (who has access + until when) ─────────────────────
+    // Built entirely from existing data: license keys + licensed accounts.
+    let SUBS = [], subsFilter = 'active', subsSearch = '';
+
+    async function loadSubscribers() {
+      const list = $('#subs-list'); list.innerHTML = '<div class="empty">Loading…</div>';
+      try {
+        const [keys, users, purchases] = await Promise.all([
+          adminPost({ action: 'list_keys' }).catch(() => []),
+          adminPost({ action: 'list_users' }).catch(() => []),
+          adminPost({ action: 'list_purchases' }).catch(() => []),
+        ]);
+        const now = Date.now();
+        const map = new Map();
+        const put = (id, rec) => {
+          const cur = map.get(id);
+          if (!cur) { map.set(id, rec); return; }
+          cur.sources = Array.from(new Set([...cur.sources, ...rec.sources]));
+          if (rec.lifetime) cur.lifetime = true;
+          if (rec.active) cur.revoked = false; else if (rec.revoked && !cur.active) cur.revoked = true;
+          if (rec.active) cur.active = true;
+          const a = cur.expires ? new Date(cur.expires).getTime() : (cur.lifetime ? Infinity : 0);
+          const b = rec.expires ? new Date(rec.expires).getTime() : (rec.lifetime ? Infinity : 0);
+          if (b > a) cur.expires = rec.expires;
+          if (rec.activated && (!cur.activated || new Date(rec.activated) < new Date(cur.activated))) cur.activated = rec.activated;
+          if (rec.plan && (cur.plan === '—' || !cur.plan)) cur.plan = rec.plan;
+        };
+
+        (Array.isArray(keys) ? keys : []).forEach(k => {
+          const email = (k.email || '').trim().toLowerCase();
+          const id = email || ('key:' + (k.label || k.key || k.id));
+          const revoked = k.status === 'revoked';
+          const lifetime = !!k.lifetime;
+          const expires = lifetime ? null : (k.expires_at || null);
+          put(id, {
+            who: k.email || k.label || k.key, sources: ['Key'], lifetime, revoked,
+            expires, activated: k.activated_at || null,
+            plan: lifetime ? 'Lifetime key' : (k.validity_days ? k.validity_days + '-day key' : 'Key'),
+            active: revoked ? false : (lifetime || (!!expires && new Date(expires).getTime() > now)),
+          });
+        });
+
+        (Array.isArray(users) ? users : []).forEach(u => {
+          if (!u.licensed) return;
+          const email = (u.email || '').trim().toLowerCase();
+          const lifetime = !u.expires_at && u.interval !== 'monthly';
+          const expires = u.expires_at || null;
+          put(email || u.email, {
+            who: u.email, sources: ['Plan'], lifetime, revoked: false,
+            expires, activated: u.created_at || null,
+            plan: u.interval === 'monthly' ? 'Monthly plan' : (expires ? 'Timed plan' : 'Lifetime plan'),
+            active: lifetime || (!!expires && new Date(expires).getTime() > now),
+          });
+        });
+
+        SUBS = Array.from(map.values()).map(r => {
+          const exp = r.expires ? new Date(r.expires).getTime() : null;
+          let status, daysLeft = null;
+          if (r.revoked && !r.active) status = 'revoked';
+          else if (r.lifetime) status = 'lifetime';
+          else if (exp && exp > now) { daysLeft = Math.ceil((exp - now) / 864e5); status = daysLeft <= 7 ? 'expiring' : 'active'; }
+          else status = 'expired';
+          return { ...r, status, daysLeft };
+        });
+
+        const revenue = (Array.isArray(purchases) ? purchases : [])
+          .filter(p => ['paid', 'active'].includes(p.status))
+          .reduce((s, p) => s + (p.amount_paise || 0), 0) / 100;
+
+        const S = { active: 0, expiring: 0, expired: 0, lifetime: 0 };
+        SUBS.forEach(r => {
+          if (r.status === 'expiring') { S.expiring++; S.active++; }
+          else if (r.status === 'active') S.active++;
+          else if (r.status === 'lifetime') { S.lifetime++; S.active++; }
+          else if (r.status === 'expired') S.expired++;
+        });
+        $('#subs-stats').innerHTML = [
+          ['Active subscribers', S.active, ''],
+          ['Expiring in 7 days', S.expiring, 'amber'],
+          ['Expired', S.expired, 'red'],
+          ['Lifetime', S.lifetime, ''],
+          ['Revenue', '₹' + revenue.toLocaleString('en-IN'), 'green'],
+        ].map(([l, n, c]) => `<div class="sstat"><div class="sstat-n ${c}">${n}</div><div class="sstat-l">${l}</div></div>`).join('');
+
+        renderSubs();
+      } catch (e) { list.innerHTML = '<p class="msg err">' + esc(e.message) + '</p>'; }
+    }
+
+    function subsMatch(r) {
+      if (subsSearch && !((r.who || '').toLowerCase().includes(subsSearch))) return false;
+      if (subsFilter === 'all') return true;
+      if (subsFilter === 'active') return ['active', 'expiring', 'lifetime'].includes(r.status);
+      return r.status === subsFilter;
+    }
+    function renderSubs() {
+      const rows = SUBS.filter(subsMatch).sort((a, b) => {
+        const av = a.expires ? new Date(a.expires).getTime() : (a.lifetime ? 8.64e15 : 0);
+        const bv = b.expires ? new Date(b.expires).getTime() : (b.lifetime ? 8.64e15 : 0);
+        return av - bv;
+      });
+      const fmt = d => d ? new Date(d).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }) : '—';
+      const pill = s => { const c = s === 'active' ? 'on' : s === 'lifetime' ? 'life' : s === 'expiring' ? 'exp' : s === 'revoked' ? 'rev' : 'off'; return `<span class="pill ${c}">${s}</span>`; };
+      $('#subs-count').textContent = rows.length + ' shown';
+      $('#subs-list').innerHTML = !rows.length
+        ? '<div class="empty">No subscribers in this view.</div>'
+        : `<table><thead><tr><th>Subscriber</th><th>Access via</th><th>Plan</th><th>Status</th><th>Activated</th><th>Expires</th><th>Days left</th></tr></thead><tbody>${
+          rows.map(r => `<tr>
+            <td style="font-weight:600">${esc(r.who || '—')}</td>
+            <td style="color:var(--muted)">${esc(r.sources.join(' + '))}</td>
+            <td>${esc(r.plan || '—')}</td>
+            <td>${pill(r.status)}</td>
+            <td style="color:var(--muted)">${fmt(r.activated)}</td>
+            <td style="color:var(--muted)">${r.lifetime ? 'never' : fmt(r.expires)}</td>
+            <td>${r.status === 'lifetime' ? '∞' : (r.daysLeft == null ? '—' : (r.daysLeft < 0 ? 'expired' : r.daysLeft + 'd'))}</td>
+          </tr>`).join('')
+        }</tbody></table>`;
+    }
+    function exportSubs() {
+      const rows = SUBS.filter(subsMatch);
+      const q = v => '"' + String(v == null ? '' : v).replace(/"/g, '""') + '"';
+      const head = ['Subscriber', 'Access via', 'Plan', 'Status', 'Activated', 'Expires', 'Days left'];
+      const body = rows.map(r => [
+        r.who, r.sources.join(' + '), r.plan, r.status,
+        r.activated ? new Date(r.activated).toISOString().slice(0, 10) : '',
+        r.lifetime ? 'never' : (r.expires ? new Date(r.expires).toISOString().slice(0, 10) : ''),
+        r.status === 'lifetime' ? '' : (r.daysLeft == null ? '' : r.daysLeft),
+      ].map(q).join(','));
+      const blob = new Blob([[head.map(q).join(',')].concat(body).join('\n')], { type: 'text/csv' });
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = 'autoapplier-subscribers-' + new Date().toISOString().slice(0, 10) + '.csv';
+      document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(a.href);
+    }
+    $('#subs-refresh')?.addEventListener('click', loadSubscribers);
+    $('#subs-export')?.addEventListener('click', exportSubs);
+    $('#subs-search')?.addEventListener('input', e => { subsSearch = (e.target.value || '').trim().toLowerCase(); renderSubs(); });
+    document.querySelectorAll('#tab-subscribers .chip[data-f]').forEach(c => c.onclick = () => {
+      document.querySelectorAll('#tab-subscribers .chip').forEach(x => x.classList.remove('on'));
+      c.classList.add('on'); subsFilter = c.dataset.f; renderSubs();
+    });
+
+    function boot(){ $('#gate').style.display='none'; $('#app').style.display=''; loadSubscribers(); }
     document.getElementById('yr').textContent = new Date().getFullYear();
     if (token) boot();
   </script>
