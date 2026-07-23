@@ -292,7 +292,39 @@
     footer.site a:hover { color: var(--accent); }
 
     /* ── Dashboard ───────────────────────────────────── */
-    #view-dashboard { max-width: 720px; margin: 0 auto; padding: 48px 24px 80px; }
+    #view-dashboard { position: relative; max-width: 760px; margin: 0 auto; padding: 40px 24px 90px; }
+    /* Smart layered background: soft gradient blobs + a faint dot grid that
+       fades out toward the bottom. Full-bleed, sits behind the cards. */
+    #view-dashboard::before {
+      content: ''; position: fixed; inset: 0; z-index: -2; pointer-events: none;
+      background:
+        radial-gradient(42% 42% at 10% 6%,  rgba(59,130,246,.16), transparent 60%),
+        radial-gradient(40% 40% at 92% 2%,  rgba(37,99,235,.12),  transparent 60%),
+        radial-gradient(48% 48% at 84% 92%, rgba(96,165,250,.12), transparent 62%),
+        radial-gradient(46% 46% at 6% 96%,  rgba(129,140,248,.10),transparent 62%),
+        var(--bg-soft);
+    }
+    #view-dashboard::after {
+      content: ''; position: fixed; inset: 0; z-index: -1; pointer-events: none;
+      background-image: radial-gradient(rgba(37,99,235,.07) 1px, transparent 1.4px);
+      background-size: 24px 24px;
+      -webkit-mask-image: radial-gradient(80% 55% at 50% -5%, #000 30%, transparent 78%);
+              mask-image: radial-gradient(80% 55% at 50% -5%, #000 30%, transparent 78%);
+    }
+    /* Welcome header */
+    .dash-hero { margin-bottom: 26px; }
+    .dash-hero .dash-badge {
+      display: inline-flex; align-items: center; gap: 7px; font-size: 12px; font-weight: 700;
+      letter-spacing: .04em; color: var(--accent); background: rgba(255,255,255,.7);
+      border: 1px solid var(--border); border-radius: 20px; padding: 5px 13px; margin-bottom: 14px;
+      backdrop-filter: blur(6px);
+    }
+    .dash-hero .dash-badge .d { width: 7px; height: 7px; border-radius: 50%; background: var(--green); box-shadow: 0 0 0 3px rgba(22,163,74,.18); }
+    .dash-hero h1 { font-size: clamp(26px, 3.4vw, 34px); font-weight: 850; letter-spacing: -.02em; }
+    .dash-hero h1 .grad { background: linear-gradient(120deg, var(--accent) 10%, #60a5fa); -webkit-background-clip: text; background-clip: text; color: transparent; }
+    .dash-hero p { color: var(--muted); font-size: 15px; margin-top: 6px; }
+    /* Cards pop a little more against the coloured background */
+    #view-dashboard .card, #view-dashboard .dl-card { box-shadow: 0 10px 30px -18px rgba(37,99,235,.28), 0 2px 8px rgba(15,23,42,.05); }
     .section-label {
       font-size: 11px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase;
       color: var(--muted); margin-bottom: 14px;
@@ -865,6 +897,13 @@
 <!-- ══ View: Dashboard ══ -->
 <div id="view-dashboard" class="view">
 
+  <!-- Welcome header -->
+  <div class="dash-hero">
+    <span class="dash-badge"><span class="d"></span> Signed in</span>
+    <h1>Welcome back<span class="grad" id="dash-name"></span></h1>
+    <p>Your activation key, extension download, and account settings — all in one place.</p>
+  </div>
+
   <!-- Access-needed banner (no active key or plan yet) -->
   <div id="lic-banner" style="display:none;background:linear-gradient(135deg,rgba(245,158,11,.16),rgba(245,158,11,.05));border:1px solid rgba(245,158,11,.35);border-radius:14px;padding:18px 22px;margin-bottom:22px">
     <div style="font-weight:700;margin-bottom:4px">🔑 Enter your activation key to unlock</div>
@@ -1036,6 +1075,8 @@
         <span class="user-pill">${esc(s.email)}</span>
         <button class="btn btn-ghost btn-sm" onclick="Auth.logout()">Sign Out</button>
       `;
+      const dn = document.getElementById('dash-name');
+      if (dn) { const local = String(s.email || '').split('@')[0]; dn.textContent = local ? ', ' + local : ''; }
       const ap = document.getElementById('admin-panel');
       const banner = document.getElementById('lic-banner');
       const acct = document.getElementById('acct-card');
