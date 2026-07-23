@@ -166,12 +166,12 @@
   <!-- Hero -->
   <div class="hero">
     <div class="wrap">
-      <h1>Simple, one-time pricing</h1>
-      <p>Unlock the AutoApplier extension and CRM. One payment, secure checkout via Razorpay, and you create your account in a single step.</p>
+      <h1>Simple, transparent pricing</h1>
+      <p>Unlock the AutoApplier extension and CRM. Pick a plan, pay securely via Razorpay, and create your account in a single step.</p>
       <div class="trust-row">
         <span><i class="fi-rr-lock"></i> Secure Razorpay checkout</span>
         <span><i class="fi-rr-bolt"></i> Instant access</span>
-        <span><i class="fi-rr-browser"></i> Works on Chrome &amp; Edge</span>
+        <span id="hero-cur"><i class="fi-rr-globe"></i> Prices in your local currency</span>
       </div>
       <div class="ref-wrap">
         <input id="ref-code" placeholder="Referral / discount code (optional)" autocomplete="off" />
@@ -319,6 +319,10 @@
           </div>`;
         }).join('');
         document.querySelectorAll('.buy[data-id]').forEach(b => b.onclick = () => start(b.dataset.id, b.dataset.name));
+        // Reflect the visitor's detected currency in the hero.
+        const cur = plans[0] && plans[0].currency;
+        const hc = $('#hero-cur');
+        if (cur && hc) hc.innerHTML = '<i class="fi-rr-globe"></i> Prices shown in ' + cur;
       } catch (e) { $('#msg').className='msg err'; $('#msg').textContent = 'Could not load plans: ' + e.message; }
     }
 
