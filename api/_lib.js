@@ -26,18 +26,49 @@ export async function issueKeyForEmail(email, { validity_days = 30, lifetime = f
 }
 
 // Ensure a purchase has a linked license key whose expiry matches the purchase.
-// Idempotent: creates the key once, then keeps its expiry in sync on renewals.
+// Idempotent per purchase: creates the key once, then keeps its expiry in sync.
+//
+// A single payment fans out to several near-simultaneous callers — the client
+// /checkout?verify=1 plus the subscription.activated AND subscription.charged
+// webhooks — which would otherwise each create a key (the buyer ends up with
+// two or three). Guards, in order:
+//   1) purchase already linked        → renewal: extend that key.
+//   2) a key already exists for this purchase_id (another caller beat us) →
+//      adopt it instead of making another. The key row itself carries
+//      purchase_id, so this holds even before purchases.license_key is written.
+//   3) otherwise create one, then self-heal: if a concurrent caller also just
+//      created one, keep the earliest (deterministic) and delete OUR extra.
+// We only ever delete a key we just created this call and never returned to any
+// client, so no activated key or CRM data is ever affected.
 export async function syncPurchaseKey(purchase) {
   if (!purchase || !purchase.user_email) return null;
   const lifetime = !purchase.expires_at; // null expiry = lifetime
+  const pid = purchase.id ? encodeURIComponent(purchase.id) : null;
+  const syncExpiry = key => sb(`license_keys?key=eq.${encodeURIComponent(key)}`, {
+    method: 'PATCH',
+    body: JSON.stringify({ expires_at: purchase.expires_at || null, lifetime, status: 'active' }),
+  }).catch(() => {});
+  const linkPurchase = key => pid && sb(`purchases?id=eq.${pid}`, {
+    method: 'PATCH', body: JSON.stringify({ license_key: key }),
+  }).catch(() => {});
+
+  // 1) Already linked → renewal.
   if (purchase.license_key) {
-    // Renewal — extend the existing key to the purchase's new expiry.
-    await sb(`license_keys?key=eq.${encodeURIComponent(purchase.license_key)}`, {
-      method: 'PATCH',
-      body: JSON.stringify({ expires_at: purchase.expires_at || null, lifetime, status: 'active' }),
-    }).catch(() => {});
+    await syncExpiry(purchase.license_key);
     return purchase.license_key;
   }
+
+  // 2) Adopt a key another caller already created for this purchase.
+  if (pid) {
+    const existing = await sb(`license_keys?purchase_id=eq.${pid}&order=created_at.asc,key.asc&select=key`).catch(() => []);
+    if (Array.isArray(existing) && existing.length) {
+      await syncExpiry(existing[0].key);
+      await linkPurchase(existing[0].key);
+      return existing[0].key;
+    }
+  }
+
+  // 3) Create the key.
   const now = new Date();
   const rows = await sb('license_keys', {
     method: 'POST',
@@ -49,10 +80,21 @@ export async function syncPurchaseKey(purchase) {
       purchase_id: purchase.id,
     }]),
   });
-  await sb(`purchases?id=eq.${encodeURIComponent(purchase.id)}`, {
-    method: 'PATCH', body: JSON.stringify({ license_key: rows[0].key }),
-  }).catch(() => {});
-  return rows[0].key;
+  let myKey = rows[0].key;
+
+  // Self-heal the concurrent-create race: if an earlier key now exists for this
+  // purchase, drop the one we just made and use the earliest (deterministic
+  // winner, same for every caller). Deleting our own brand-new, never-returned
+  // key is safe.
+  if (pid) {
+    const all = await sb(`license_keys?purchase_id=eq.${pid}&order=created_at.asc,key.asc&select=key`).catch(() => []);
+    if (Array.isArray(all) && all.length > 1 && all[0].key !== myKey) {
+      await sb(`license_keys?key=eq.${encodeURIComponent(myKey)}`, { method: 'DELETE' }).catch(() => {});
+      myKey = all[0].key;
+    }
+    await linkPurchase(myKey);
+  }
+  return myKey;
 }
 
 export function cors(res, methods = 'GET,POST,PATCH,DELETE,OPTIONS') {
