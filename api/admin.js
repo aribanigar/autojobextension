@@ -154,12 +154,51 @@ export default async function handler(req, res) {
     }
 
     if (action === 'create_plan') {
-      const { name, description = '', price_paise, interval = 'once', duration_days = null, features = {}, active = true } = req.body || {};
-      if (!name || !Number.isInteger(price_paise) || price_paise < 0) {
-        return res.status(400).json({ error: 'name and a non-negative integer price_paise are required' });
-      }
+      const { name, description = '', price_paise, interval = 'once', duration_days = null, features = {}, active = true, prices = null } = req.body || {};
+      if (!name) return res.status(400).json({ error: 'name is required' });
       if (!['once', 'monthly'].includes(interval)) return res.status(400).json({ error: "interval must be 'once' or 'monthly'" });
       const dur = duration_days ? Number(duration_days) : null; // one-time validity; null = lifetime
+
+      // ── Geo-priced plan: a per-region { IN, AE, US, GB, DEFAULT } price map ──
+      if (prices && typeof prices === 'object' && Object.keys(prices).length) {
+        const CUR = { IN: 'INR', AE: 'AED', US: 'USD', GB: 'GBP', DEFAULT: 'USD' };
+        const norm = {};
+        for (const [region, e] of Object.entries(prices)) {
+          if (!e || !Number.isFinite(+e.amount) || +e.amount < 0) continue;
+          const currency = ['INR', 'AED', 'USD', 'GBP'].includes(e.currency) ? e.currency : (CUR[region] || 'USD');
+          const entry = { currency, amount: Math.round(+e.amount), razorpay_plan_id: e.razorpay_plan_id || null };
+          if (interval === 'monthly' && !entry.razorpay_plan_id) {
+            if (!razorpayConfigured()) return res.status(400).json({ error: 'Razorpay keys not set — cannot create a recurring plan' });
+            try {
+              const rp = await rzp('plans', {
+                method: 'POST',
+                body: JSON.stringify({ period: 'monthly', interval: 1, item: { name: `${name} — ${region}`, amount: entry.amount, currency, description: description || name } }),
+              });
+              entry.razorpay_plan_id = rp.id;
+            } catch (err) {
+              return res.status(400).json({ error: `Razorpay could not create a ${currency} plan for ${region}: ${String(err.message || err)}. Enable international payments on Razorpay, or paste a razorpay_plan_id for ${region} manually.` });
+            }
+          }
+          norm[region] = entry;
+        }
+        if (!Object.keys(norm).length) return res.status(400).json({ error: 'Provide at least one region price' });
+        // Legacy back-compat fields so any INR-only path keeps working: prefer IN,
+        // else DEFAULT, else the first configured region.
+        const legacy = norm.IN || norm.DEFAULT || Object.values(norm)[0];
+        const rows = await sb('plans', {
+          method: 'POST',
+          body: JSON.stringify([{
+            name, description, price_paise: legacy.amount, interval, duration_days: dur,
+            razorpay_plan_id: norm.IN?.razorpay_plan_id || null, features, active, prices: norm,
+          }]),
+        });
+        return res.status(201).json(rows[0]);
+      }
+
+      // ── Legacy single-price (INR) plan — unchanged behaviour ────────────────
+      if (!Number.isInteger(price_paise) || price_paise < 0) {
+        return res.status(400).json({ error: 'name and a non-negative integer price_paise are required' });
+      }
       let razorpay_plan_id = null;
       if (interval === 'monthly') {
         if (!razorpayConfigured()) return res.status(400).json({ error: 'Razorpay keys not set — cannot create a recurring plan' });
@@ -177,7 +216,7 @@ export default async function handler(req, res) {
       const { id, ...fields } = req.body || {};
       if (!id) return res.status(400).json({ error: 'id required' });
       const allowed = {};
-      for (const k of ['name', 'description', 'price_paise', 'duration_days', 'features', 'active']) if (k in fields) allowed[k] = fields[k];
+      for (const k of ['name', 'description', 'price_paise', 'duration_days', 'features', 'active', 'prices']) if (k in fields) allowed[k] = fields[k];
       const rows = await sb(`plans?id=eq.${encodeURIComponent(id)}`, { method: 'PATCH', body: JSON.stringify(allowed) });
       return res.status(200).json(rows[0] || null);
     }

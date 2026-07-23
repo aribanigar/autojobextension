@@ -302,12 +302,17 @@
           const feats = p.features && typeof p.features === 'object' ? Object.entries(p.features).filter(([,v])=>v).map(([k])=>k) : [];
           const validity = p.interval==='monthly' ? 'Auto-renews monthly'
             : (p.duration_days ? `${p.duration_days} days access` : 'Lifetime access');
+          const sym = p.symbol || '₹';
+          const amt = (p.amount != null ? p.amount : p.price_paise) / 100;
+          const money = sym === '₹'
+            ? `₹${amt.toLocaleString('en-IN')}`
+            : `${sym}${sym.length > 1 ? ' ' : ''}${amt.toLocaleString('en-US')}`;
           return `<div class="plan">
             <div class="plan-top">
               <h3>${esc(p.name)}</h3>
               <span class="plan-badge">${validity}</span>
             </div>
-            <div class="price">₹${(p.price_paise/100).toLocaleString('en-IN')}<small>${p.interval==='monthly'?'/ month':'one-time'}</small></div>
+            <div class="price">${money}<small>${p.interval==='monthly'?'/ month':'one-time'}</small></div>
             <p>${esc(p.description||'')}</p>
             ${feats.length?`<ul class="feat">${feats.map(f=>`<li>${esc(f)}</li>`).join('')}</ul>`:''}
             <button class="buy" data-id="${p.id}" data-name="${esc(p.name)}">Get this plan <i class="fi-rr-arrow-right"></i></button>

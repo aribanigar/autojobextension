@@ -97,6 +97,58 @@ export async function syncPurchaseKey(purchase) {
   return myKey;
 }
 
+// ── Geo pricing ──────────────────────────────────────────────────────────────
+// Prices are stored per REGION on plans.prices (JSONB). A visitor only ever sees
+// the price for THEIR region — resolved server-side from Vercel's edge country
+// header — so prices in other regions stay private (never sent to the browser).
+// Regions: IN (India, ₹), AE (Middle East, AED), US (USA, $), GB (UK, £), plus a
+// DEFAULT for the rest of the world. Amounts are in the currency's smallest unit
+// (paise/fils/cents = major × 100), matching Razorpay.
+export const CURRENCY_SYMBOL = { INR: '₹', AED: 'AED', USD: '$', GBP: '£' };
+export const PRICE_REGIONS = ['IN', 'AE', 'US', 'GB', 'DEFAULT'];
+const MIDDLE_EAST = new Set(['AE', 'SA', 'QA', 'KW', 'BH', 'OM', 'JO', 'LB', 'EG', 'IQ', 'YE', 'PS', 'SY']);
+
+export function regionForCountry(cc) {
+  cc = String(cc || '').toUpperCase();
+  if (cc === 'IN') return 'IN';
+  if (cc === 'US') return 'US';
+  if (cc === 'GB' || cc === 'UK') return 'GB';
+  if (MIDDLE_EAST.has(cc)) return 'AE';
+  return 'DEFAULT';
+}
+
+// Trust ONLY Vercel's edge-set country in production (the client can't spoof it
+// there — Vercel overwrites any inbound value). Fall back to ?cc= only when that
+// header is absent (local/preview), which also means a visitor can never probe
+// another region's price in production.
+export function countryFromReq(req) {
+  const vercel = req.headers && req.headers['x-vercel-ip-country'];
+  if (vercel) return String(vercel).toUpperCase();
+  const q = req.query && (req.query.cc || req.query.country);
+  return String(q || '').toUpperCase();
+}
+
+// The single price a region should see for a plan. Resolution: the region's own
+// entry → DEFAULT (rest of world) → legacy price_paise/INR. Never another
+// specific region, so an IN visitor can't be shown the US/AE/GB price and vice
+// versa. Plans with no prices map behave exactly as before (everyone sees INR).
+export function priceForPlan(plan, region) {
+  const prices = (plan && plan.prices && typeof plan.prices === 'object') ? plan.prices : {};
+  const entry = (prices[region] && Number.isFinite(+prices[region].amount)) ? prices[region]
+    : (prices.DEFAULT && Number.isFinite(+prices.DEFAULT.amount)) ? prices.DEFAULT : null;
+  if (entry) {
+    const currency = CURRENCY_SYMBOL[entry.currency] ? entry.currency : 'INR';
+    return {
+      region: prices[region] === entry ? region : 'DEFAULT',
+      currency, symbol: CURRENCY_SYMBOL[currency],
+      amount: Math.max(0, Math.round(+entry.amount)),
+      razorpay_plan_id: entry.razorpay_plan_id || null,
+    };
+  }
+  // Legacy single-currency plan (no regional prices configured).
+  return { region: 'IN', currency: 'INR', symbol: '₹', amount: plan.price_paise || 0, razorpay_plan_id: plan.razorpay_plan_id || null };
+}
+
 export function cors(res, methods = 'GET,POST,PATCH,DELETE,OPTIONS') {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', methods);

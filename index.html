@@ -1379,7 +1379,10 @@
           ? Object.entries(p.features).filter(([,v]) => v).map(([k]) => k) : [];
         const validity = p.interval === 'monthly' ? 'Renews monthly'
           : (p.duration_days ? p.duration_days + ' days access' : 'Lifetime access');
-        const price = '₹' + (p.price_paise / 100).toLocaleString('en-IN');
+        const sym = p.symbol || '₹';
+        const amt = (p.amount != null ? p.amount : p.price_paise) / 100;
+        const price = sym === '₹' ? '₹' + amt.toLocaleString('en-IN')
+          : sym + (sym.length > 1 ? ' ' : '') + amt.toLocaleString('en-US');
         return `<div class="plan-card">
           <div class="plan-card-top"><h3>${esc(p.name)}</h3><span class="plan-tag">${validity}</span></div>
           <div class="plan-price">${price}<small>${p.interval === 'monthly' ? ' / month' : ' one-time'}</small></div>

@@ -70,6 +70,13 @@ alter table plans enable row level security;
 -- Add duration to existing installs (safe to re-run)
 alter table plans add column if not exists duration_days integer;
 
+-- Geo pricing: per-region price map, e.g.
+--   { "IN": {"currency":"INR","amount":79900,"razorpay_plan_id":"plan_x"},
+--     "AE": {"currency":"AED","amount":10000,"razorpay_plan_id":"plan_y"}, ... }
+-- amount is in the currency's smallest unit (paise/fils/cents). Empty {} = use
+-- the legacy price_paise/INR fields (existing plans keep working unchanged).
+alter table plans add column if not exists prices jsonb not null default '{}'::jsonb;
+
 -- One row per checkout attempt / active licence. status drives access:
 --   created  → order/subscription made, not paid yet
 --   paid     → one-time payment captured (lifetime access)
@@ -168,6 +175,10 @@ alter table purchases add column if not exists referrer_email text;
 alter table purchases add column if not exists discount_paise integer not null default 0;
 alter table purchases add column if not exists rewarded       boolean not null default false;
 alter table purchases add column if not exists duration_days  integer;   -- validity window for this purchase
+
+-- Geo pricing: which currency + region a purchase was charged in. (Safe to re-run.)
+alter table purchases add column if not exists currency text;
+alter table purchases add column if not exists region   text;
 
 -- ─────────────────────────────────────────────────────────────────────────────
 -- Telemetry: anonymous field-health beacons (selector misses, agent errors,

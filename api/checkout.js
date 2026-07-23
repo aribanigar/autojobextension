@@ -7,6 +7,7 @@ import {
   cors, sb, backendConfigured, getUserByToken,
   rzp, razorpayConfigured, verifyHmac,
   validateCoupon, applyReferral, syncPurchaseKey,
+  regionForCountry, countryFromReq, priceForPlan,
 } from './_lib.js';
 
 export default async function handler(req, res) {
@@ -71,15 +72,24 @@ export default async function handler(req, res) {
     const plan = planRows[0];
     if (!plan) return res.status(404).json({ error: 'Plan not found or inactive' });
 
+    // Geo price: charge in the visitor's own region currency (resolved from the
+    // Vercel edge country). Falls back to the plan's legacy INR price when the
+    // plan has no regional prices configured, so existing plans are unchanged.
+    const region = regionForCountry(countryFromReq(req));
+    const pr = priceForPlan(plan, region);
+    const currency = pr.currency;
+
     // Referral / discount code. Discount applies to one-time plans; for monthly
     // subscriptions the code still records the referrer (rewarded on payment)
-    // but does not change the recurring amount.
-    let coupon = null, discount_paise = 0, amount = plan.price_paise;
+    // but does not change the recurring amount. Coupons are INR-denominated, so
+    // the amount discount only applies when charging in INR; for other
+    // currencies the referrer is still recorded but the price isn't altered.
+    let coupon = null, discount_paise = 0, amount = pr.amount;
     if (code) {
-      const v = await validateCoupon(code, plan.price_paise, user.email); // throws if invalid
+      const v = await validateCoupon(code, pr.amount, user.email); // throws if invalid
       if (v) {
         coupon = v.coupon;
-        if (plan.interval !== 'monthly') { discount_paise = v.discount_paise; amount = v.final_paise; }
+        if (plan.interval !== 'monthly' && currency === 'INR') { discount_paise = v.discount_paise; amount = v.final_paise; }
       }
     }
     const referrer_email = coupon?.owner_email || null;
@@ -106,12 +116,15 @@ export default async function handler(req, res) {
 
     let order_id = null, subscription_id = null;
     if (plan.interval === 'monthly') {
-      if (!plan.razorpay_plan_id) return res.status(400).json({ error: 'This plan has no Razorpay plan id' });
+      // Use the region's own Razorpay subscription plan (created in that
+      // currency). Falls back to the legacy INR plan id for unconfigured regions.
+      const rzpPlanId = pr.razorpay_plan_id || plan.razorpay_plan_id;
+      if (!rzpPlanId) return res.status(400).json({ error: 'This plan is not available in your region yet.' });
       const sub = await rzp('subscriptions', {
         method: 'POST',
         body: JSON.stringify({
-          plan_id: plan.razorpay_plan_id, total_count: 120, customer_notify: 1,
-          notes: { email: user.email },
+          plan_id: rzpPlanId, total_count: 120, customer_notify: 1,
+          notes: { email: user.email, region },
         }),
       });
       subscription_id = sub.id;
@@ -119,29 +132,34 @@ export default async function handler(req, res) {
       const order = await rzp('orders', {
         method: 'POST',
         body: JSON.stringify({
-          amount, currency: 'INR',
-          receipt: `jb_${Date.now()}`, notes: { email: user.email, plan: plan.name },
+          amount, currency,
+          receipt: `jb_${Date.now()}`, notes: { email: user.email, plan: plan.name, region },
         }),
       });
       order_id = order.id;
     }
 
-    const purchaseRows = await sb('purchases', {
-      method: 'POST',
-      body: JSON.stringify([{
-        user_email: user.email, plan_id: plan.id, interval: plan.interval,
-        duration_days: plan.duration_days || null,
-        amount_paise: amount, discount_paise, coupon_code: couponCode, referrer_email,
-        status: 'created',
-        razorpay_order_id: order_id, razorpay_subscription_id: subscription_id,
-      }]),
-    });
+    // currency/region are stored best-effort — wrapped so a pre-migration DB
+    // without those columns still records the purchase.
+    const basePurchase = {
+      user_email: user.email, plan_id: plan.id, interval: plan.interval,
+      duration_days: plan.duration_days || null,
+      amount_paise: amount, discount_paise, coupon_code: couponCode, referrer_email,
+      status: 'created',
+      razorpay_order_id: order_id, razorpay_subscription_id: subscription_id,
+    };
+    let purchaseRows;
+    try {
+      purchaseRows = await sb('purchases', { method: 'POST', body: JSON.stringify([{ ...basePurchase, currency, region }]) });
+    } catch {
+      purchaseRows = await sb('purchases', { method: 'POST', body: JSON.stringify([basePurchase]) });
+    }
 
     return res.status(200).json({
       key_id: process.env.RAZORPAY_KEY_ID,
       purchase_id: purchaseRows[0].id,
       order_id, subscription_id,
-      amount, discount_paise, list_price: plan.price_paise,
+      amount, currency, symbol: pr.symbol, discount_paise, list_price: pr.amount,
       interval: plan.interval, name: plan.name, email: user.email,
     });
   } catch (e) {
