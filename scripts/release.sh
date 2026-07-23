@@ -176,10 +176,18 @@ node -e '
 ' "$VERSION" "$NEW" "$NOTES_SET" "$NOTES"
 ok "version.json -> v$NEW$([ "$NOTES_SET" = 1 ] && echo ' (+notes)')"
 
-# ── rebuild the zip from source (deterministic-ish: drop the old first) ───────
+# ── rebuild the DOWNLOAD zip: obfuscated so customers can't clone the code ────
+# (source under extension/ stays readable — the owner develops from it). Falls
+# back to a plain zip only if the build tool isn't installed, with a warning.
 rm -f "$ZIP"
-zip -rq "$ZIP" extension
-ok "$ZIP rebuilt from extension/"
+if [ -d ".build-tools/node_modules/javascript-obfuscator" ]; then
+  node scripts/build-extension-zip.mjs
+  ok "$ZIP rebuilt (obfuscated) from extension/"
+else
+  echo "WARNING: .build-tools not installed — shipping READABLE code. Run: npm --prefix .build-tools install" >&2
+  zip -rq "$ZIP" extension
+  ok "$ZIP rebuilt (PLAIN/readable) from extension/"
+fi
 
 # ── verify what we just produced ─────────────────────────────────────────────
 preflight

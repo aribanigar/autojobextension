@@ -1,0 +1,2 @@
+{ "name": "aa-build-tools", "private": true, "version": "1.0.0",
+  "dependencies": { "javascript-obfuscator": "^4.1.1" } }

@@ -1,0 +1,4 @@
+
+# Extension build tool (obfuscator) — keep manifest + lockfile, ignore installed deps + dist
+.build-tools/node_modules/
+.build-tools/dist/
