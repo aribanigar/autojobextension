@@ -780,15 +780,65 @@
   const learnedAnswers = (() => {
     let store = {};
     let resolveReady; const ready = new Promise(r => (resolveReady = r));
+
+    // Canonicalize common wording variants so re-phrasings collapse to one key.
+    const SYN = { yrs:'year', yr:'year', years:'year', exp:'experience', experiences:'experience',
+                  mob:'mobile', mos:'month', months:'month', ctc:'salary', lpa:'salary',
+                  dob:'birth', no:'number', num:'number', nums:'number', addr:'address', ph:'phone' };
+    // Normalize a question label → a stable key: lowercase, drop leading
+    // numbering ("1.", "Q2)", "question 3 -"), strip punctuation, collapse space.
     const norm = q => String(q || '').toLowerCase()
-      .replace(/[*:?()\[\].,<>/\\]/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 140);
+      .replace(/^\s*(?:q(?:uestion)?\s*)?\d+\s*[.):\-]\s*/i, ' ')
+      .replace(/[*:?()\[\]{}.,<>/\\!"'’“”_#+=—–\-]+/g, ' ')
+      .replace(/\s+/g, ' ').trim().slice(0, 160);
+
+    // Significant tokens for fuzzy matching (drop filler words, stem plurals).
+    const STOP = new Set(('a an the is are am was were be been being do does did done have has had ' +
+      'you your yours yourself to of in on at for and or with from as by please enter provide give ' +
+      'select choose specify what which who whom how this that these those it its we our they them ' +
+      'i me my mine any all if then else about into per will would can could should may might here ' +
+      'there field question answer also just only more most very kindly currently').split(/\s+/));
+    const stem = w => (w.length > 4 && w.endsWith('s')) ? w.slice(0, -1) : w;
+    const toks = q => {
+      const out = new Set();
+      norm(q).split(' ').forEach(w => { if (!w) return; w = SYN[w] || w; if (w.length >= 2 && !STOP.has(w)) out.add(stem(w)); });
+      return out;
+    };
+
     try {
       chrome.storage.local.get('jobbot_learned', d => { if (d.jobbot_learned) store = d.jobbot_learned; resolveReady(); });
     } catch { resolveReady(); }
-    const persist = () => { try { chrome.storage.local.set({ jobbot_learned: store }); } catch {} };
+    const persist = () => {
+      try {
+        const keys = Object.keys(store);
+        if (keys.length > 600) keys.slice(0, keys.length - 600).forEach(k => delete store[k]);
+        chrome.storage.local.set({ jobbot_learned: store });
+      } catch {}
+    };
     return {
       ready,
-      get: q => { const k = norm(q); return k && k.length >= 4 ? (store[k] || null) : null; },
+      get: q => {
+        const k = norm(q);
+        if (!k || k.length < 4) return null;
+        if (store[k]) return store[k];                     // 1) exact wording
+        const qt = toks(q);
+        if (qt.size < 2) return null;                      // too little signal to match safely
+        // 2) fuzzy: closest previously-answered question. Requires at least two
+        //    shared significant tokens AND either strong overlap (re-worded) or
+        //    full containment (added/removed words) — so a genuinely different
+        //    question (e.g. "expected" vs "current" salary) is never answered.
+        let best = null, bestScore = 0;
+        for (const sk of Object.keys(store)) {
+          const st = toks(sk); if (st.size < 2) continue;
+          let inter = 0; qt.forEach(w => { if (st.has(w)) inter++; });
+          if (inter < 2) continue;
+          const jaccard = inter / (qt.size + st.size - inter);
+          const contain = inter / Math.min(qt.size, st.size);
+          const score = (jaccard >= 0.6 || contain >= 0.85) ? Math.max(jaccard, contain) : 0;
+          if (score > bestScore) { bestScore = score; best = sk; }
+        }
+        return best ? store[best] : null;
+      },
       set: (q, a) => {
         const k = norm(q); const v = String(a == null ? '' : a).trim();
         if (!k || k.length < 4 || !v || v.length > 600) return;
