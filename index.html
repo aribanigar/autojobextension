@@ -1589,7 +1589,7 @@
   // nothing loads and the email/password forms work exactly as before.
   async function initGoogle() {
     let cfg = {};
-    try { cfg = await fetch('/api/config').then(r => r.json()); } catch { return; }
+    try { cfg = await post('/api/auth', { action: 'config' }).then(r => r.json()); } catch { return; }
     const clientId = cfg && cfg.googleClientId;
     if (!clientId) return; // not configured → skip silently
     await new Promise((resolve) => {
