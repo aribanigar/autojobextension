@@ -192,12 +192,21 @@
           <h2>Create a plan</h2>
           <div class="grid">
             <div><label>Name</label><input id="p-name" placeholder="Pro" style="width:100%"></div>
-            <div><label>Price (₹)</label><input id="p-price" type="number" min="0" placeholder="499" style="width:100%"></div>
             <div><label>Billing</label><select id="p-interval" style="width:100%"><option value="once">One-time</option><option value="monthly">Monthly subscription</option></select></div>
             <div><label>Validity (days)</label><input id="p-days" type="number" min="0" placeholder="30 · blank = lifetime" style="width:100%"></div>
             <div><label>Active</label><select id="p-active" style="width:100%"><option value="true">Yes</option><option value="false">No</option></select></div>
           </div>
           <div style="font-size:12px;color:var(--muted);margin-top:4px">Validity = how many days one purchase unlocks access (e.g. 30, 90, 365). Leave blank for lifetime. (Monthly plans renew automatically and ignore this.)</div>
+
+          <label style="margin-top:14px;display:block">Regional pricing — each visitor sees only their own region's price</label>
+          <div class="grid" style="margin-top:6px">
+            <div><label style="font-weight:600">🇮🇳 India (₹)</label><input id="p-price-IN" type="number" min="0" step="0.01" placeholder="799" style="width:100%"></div>
+            <div><label style="font-weight:600">🇦🇪 Middle East (AED)</label><input id="p-price-AE" type="number" min="0" step="0.01" placeholder="100" style="width:100%"></div>
+            <div><label style="font-weight:600">🇺🇸 USA ($)</label><input id="p-price-US" type="number" min="0" step="0.01" placeholder="9.99" style="width:100%"></div>
+            <div><label style="font-weight:600">🇬🇧 UK (£)</label><input id="p-price-GB" type="number" min="0" step="0.01" placeholder="7.99" style="width:100%"></div>
+            <div><label style="font-weight:600">🌍 Rest of world ($)</label><input id="p-price-DEFAULT" type="number" min="0" step="0.01" placeholder="optional" style="width:100%"></div>
+          </div>
+          <div style="font-size:12px;color:var(--muted);margin-top:4px">Fill the regions you sell in (amounts in each currency's main unit — e.g. 799, 100, 9.99). Monthly plans auto-create a Razorpay subscription plan in each currency (needs international payments enabled on Razorpay). Leave a region blank to hide the plan there; blank regions fall back to “Rest of world”, or India if that's also blank.</div>
           <label>Description</label><textarea id="p-desc" rows="2" style="width:100%" placeholder="What this plan includes"></textarea>
           <label>Features (one per line, shown as ticks on checkout)</label>
           <textarea id="p-feats" rows="3" style="width:100%" placeholder="LinkedIn auto-apply&#10;Indeed auto-apply&#10;AI smart answers"></textarea>
@@ -428,22 +437,40 @@
     $('#p-create').onclick = async () => {
       const features = {};
       $('#p-feats').value.split('\n').map(s=>s.trim()).filter(Boolean).forEach(f=>features[f]=true);
+      // Build the per-region price map from whichever regions the admin filled.
+      const REG = [['IN','INR'],['AE','AED'],['US','USD'],['GB','GBP'],['DEFAULT','USD']];
+      const prices = {};
+      REG.forEach(([r,cur]) => {
+        const v = $('#p-price-'+r).value;
+        if (v !== '' && !isNaN(parseFloat(v))) prices[r] = { currency: cur, amount: Math.round(parseFloat(v)*100) };
+      });
+      if (!Object.keys(prices).length) { $('#p-msg').className='msg err'; $('#p-msg').textContent='Enter a price for at least one region'; return; }
+      $('#p-msg').className='msg'; $('#p-msg').textContent='Creating plan…';
       try {
         await adminPost({ action:'create_plan', name:$('#p-name').value.trim(), description:$('#p-desc').value.trim(),
-          price_paise: Math.round(parseFloat($('#p-price').value||'0')*100), interval:$('#p-interval').value,
+          interval:$('#p-interval').value,
           duration_days: $('#p-days').value ? parseInt($('#p-days').value,10) : null,
-          active:$('#p-active').value==='true', features });
+          active:$('#p-active').value==='true', features, prices });
         $('#p-msg').className='msg ok'; $('#p-msg').textContent='Plan created';
-        $('#p-name').value=$('#p-price').value=$('#p-days').value=$('#p-desc').value=$('#p-feats').value=''; loadPlans();
+        ['p-name','p-days','p-desc','p-feats','p-price-IN','p-price-AE','p-price-US','p-price-GB','p-price-DEFAULT'].forEach(id=>{ if($('#'+id)) $('#'+id).value=''; });
+        loadPlans();
       } catch(e){ $('#p-msg').className='msg err'; $('#p-msg').textContent=e.message; }
     };
     async function loadPlans() {
       try {
         const plans = await adminPost({ action:'list_plans' });
-        $('#plans-list').innerHTML = `<table><thead><tr><th>Name</th><th>Price</th><th>Billing</th><th>Validity</th><th>Active</th><th></th></tr></thead><tbody>${
+        const SYM = { INR:'₹', AED:'AED', USD:'$', GBP:'£' };
+        const priceCell = p => {
+          const m = p.prices && typeof p.prices==='object' ? p.prices : null;
+          if (m && Object.keys(m).length) {
+            return Object.entries(m).map(([r,e]) => `<div>${r}: <b>${SYM[e.currency]||''}${(e.amount/100).toLocaleString()}</b></div>`).join('');
+          }
+          return `₹${(p.price_paise/100).toLocaleString('en-IN')}`;
+        };
+        $('#plans-list').innerHTML = `<table><thead><tr><th>Name</th><th>Price (by region)</th><th>Billing</th><th>Validity</th><th>Active</th><th></th></tr></thead><tbody>${
           plans.map(p=>`<tr>
             <td>${esc(p.name)}<div style="color:var(--muted);font-size:12px">${esc(p.description||'')}</div></td>
-            <td>₹${(p.price_paise/100).toLocaleString('en-IN')}</td>
+            <td style="font-size:12.5px">${priceCell(p)}</td>
             <td>${p.interval==='monthly'?'Monthly':'One-time'}</td>
             <td>${p.interval==='monthly'?'per cycle':(p.duration_days?p.duration_days+' days':'lifetime')}</td>
             <td><span class="pill ${p.active?'on':'off'}">${p.active?'active':'inactive'}</span></td>
