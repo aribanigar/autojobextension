@@ -27,6 +27,42 @@ import { sb, backendConfigured, rzp, razorpayConfigured, issueKeyForEmail } from
 const ADMIN_EMAIL    = (process.env.ADMIN_EMAIL    || 'arfatshah.qa@gmail.com').trim();
 const ADMIN_PASSWORD = (process.env.ADMIN_PASSWORD || 'Autoapplier@54321').trim();
 
+// Normalize an admin-supplied per-region price map and, for monthly plans,
+// ensure each region has a Razorpay subscription plan in its currency. Reuses an
+// existing Razorpay plan id when the region's amount+currency is unchanged (a
+// Razorpay plan's amount is immutable, so a changed price needs a fresh plan).
+// Throws a descriptive error if Razorpay rejects a currency. Shared by
+// create_plan and update_plan so editing behaves exactly like creating.
+async function normalizeRegionPrices({ name, description, interval, prices, oldPrices = {} }) {
+  const DEFCUR = { IN: 'INR', AE: 'AED', US: 'USD', GB: 'GBP', DEFAULT: 'USD' };
+  const norm = {};
+  for (const [region, e] of Object.entries(prices || {})) {
+    if (!e || !Number.isFinite(+e.amount) || +e.amount < 0) continue;
+    const currency = ['INR', 'AED', 'USD', 'GBP'].includes(e.currency) ? e.currency : (DEFCUR[region] || 'USD');
+    const amount = Math.round(+e.amount);
+    let razorpay_plan_id = e.razorpay_plan_id || null;
+    if (interval === 'monthly' && !razorpay_plan_id) {
+      const old = oldPrices[region];
+      if (old && old.currency === currency && Math.round(+old.amount) === amount && old.razorpay_plan_id) {
+        razorpay_plan_id = old.razorpay_plan_id; // unchanged → reuse existing Razorpay plan
+      } else {
+        if (!razorpayConfigured()) throw new Error('Razorpay keys not set — cannot create a recurring plan');
+        try {
+          const rp = await rzp('plans', {
+            method: 'POST',
+            body: JSON.stringify({ period: 'monthly', interval: 1, item: { name: `${name} — ${region}`, amount, currency, description: description || name } }),
+          });
+          razorpay_plan_id = rp.id;
+        } catch (err) {
+          throw new Error(`Razorpay could not create a ${currency} plan for ${region}: ${String(err.message || err)}. Enable international payments on Razorpay, or paste a razorpay_plan_id for ${region} manually.`);
+        }
+      }
+    }
+    norm[region] = { currency, amount, razorpay_plan_id };
+  }
+  return norm;
+}
+
 function cors(res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'POST,OPTIONS');
@@ -161,26 +197,9 @@ export default async function handler(req, res) {
 
       // ── Geo-priced plan: a per-region { IN, AE, US, GB, DEFAULT } price map ──
       if (prices && typeof prices === 'object' && Object.keys(prices).length) {
-        const CUR = { IN: 'INR', AE: 'AED', US: 'USD', GB: 'GBP', DEFAULT: 'USD' };
-        const norm = {};
-        for (const [region, e] of Object.entries(prices)) {
-          if (!e || !Number.isFinite(+e.amount) || +e.amount < 0) continue;
-          const currency = ['INR', 'AED', 'USD', 'GBP'].includes(e.currency) ? e.currency : (CUR[region] || 'USD');
-          const entry = { currency, amount: Math.round(+e.amount), razorpay_plan_id: e.razorpay_plan_id || null };
-          if (interval === 'monthly' && !entry.razorpay_plan_id) {
-            if (!razorpayConfigured()) return res.status(400).json({ error: 'Razorpay keys not set — cannot create a recurring plan' });
-            try {
-              const rp = await rzp('plans', {
-                method: 'POST',
-                body: JSON.stringify({ period: 'monthly', interval: 1, item: { name: `${name} — ${region}`, amount: entry.amount, currency, description: description || name } }),
-              });
-              entry.razorpay_plan_id = rp.id;
-            } catch (err) {
-              return res.status(400).json({ error: `Razorpay could not create a ${currency} plan for ${region}: ${String(err.message || err)}. Enable international payments on Razorpay, or paste a razorpay_plan_id for ${region} manually.` });
-            }
-          }
-          norm[region] = entry;
-        }
+        let norm;
+        try { norm = await normalizeRegionPrices({ name, description, interval, prices }); }
+        catch (err) { return res.status(400).json({ error: String(err.message || err) }); }
         if (!Object.keys(norm).length) return res.status(400).json({ error: 'Provide at least one region price' });
         // Legacy back-compat fields so any INR-only path keeps working: prefer IN,
         // else DEFAULT, else the first configured region.
@@ -216,7 +235,29 @@ export default async function handler(req, res) {
       const { id, ...fields } = req.body || {};
       if (!id) return res.status(400).json({ error: 'id required' });
       const allowed = {};
-      for (const k of ['name', 'description', 'price_paise', 'duration_days', 'features', 'active', 'prices']) if (k in fields) allowed[k] = fields[k];
+      for (const k of ['name', 'description', 'price_paise', 'duration_days', 'features', 'active']) if (k in fields) allowed[k] = fields[k];
+
+      // Editing regional prices → normalize + (for monthly) create/reuse the
+      // Razorpay plan per currency, then keep the legacy INR fields in sync.
+      if ('prices' in fields && fields.prices && typeof fields.prices === 'object') {
+        const cur = (await sb(`plans?id=eq.${encodeURIComponent(id)}&select=interval,name,description,prices`).catch(() => []))[0] || {};
+        let norm;
+        try {
+          norm = await normalizeRegionPrices({
+            name: fields.name || cur.name || 'Plan',
+            description: fields.description ?? cur.description ?? '',
+            interval: cur.interval || 'once',
+            prices: fields.prices,
+            oldPrices: (cur.prices && typeof cur.prices === 'object') ? cur.prices : {},
+          });
+        } catch (err) { return res.status(400).json({ error: String(err.message || err) }); }
+        if (!Object.keys(norm).length) return res.status(400).json({ error: 'Provide at least one region price' });
+        allowed.prices = norm;
+        const legacy = norm.IN || norm.DEFAULT || Object.values(norm)[0];
+        if (legacy) allowed.price_paise = legacy.amount;
+        allowed.razorpay_plan_id = norm.IN?.razorpay_plan_id || null;
+      }
+
       const rows = await sb(`plans?id=eq.${encodeURIComponent(id)}`, { method: 'PATCH', body: JSON.stringify(allowed) });
       return res.status(200).json(rows[0] || null);
     }
