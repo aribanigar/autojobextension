@@ -325,6 +325,28 @@
     .dash-hero p { color: var(--muted); font-size: 15px; margin-top: 6px; }
     /* Cards pop a little more against the coloured background */
     #view-dashboard .card, #view-dashboard .dl-card { box-shadow: 0 10px 30px -18px rgba(37,99,235,.28), 0 2px 8px rgba(15,23,42,.05); }
+
+    /* Install & activate — smart timeline */
+    .guide-head { display: flex; gap: 14px; align-items: flex-start; margin-bottom: 6px; }
+    .guide-ico { width: 46px; height: 46px; border-radius: 13px; flex-shrink: 0; background: linear-gradient(135deg, var(--accent-2), var(--accent-dk)); color: #fff; display: flex; align-items: center; justify-content: center; font-size: 21px; box-shadow: 0 8px 18px rgba(37,99,235,.3); }
+    .guide-ico i { font-size: 21px; }
+    .guide-head h3 { font-size: 17px; font-weight: 800; margin: 3px 0 2px; }
+    .guide-head p { font-size: 13.5px; color: var(--muted); }
+    .phase-tag { display: flex; align-items: center; gap: 9px; font-size: 12px; font-weight: 800; letter-spacing: .04em; text-transform: uppercase; color: var(--accent); margin: 22px 0 14px; }
+    .phase-tag .d { width: 20px; height: 20px; border-radius: 50%; background: var(--accent-dim); border: 1px solid rgba(37,99,235,.25); color: var(--accent); display: inline-flex; align-items: center; justify-content: center; font-size: 11px; }
+    .timeline { list-style: none; margin: 0; padding: 0; }
+    .tl { position: relative; display: flex; gap: 15px; padding-bottom: 18px; }
+    .tl:last-child { padding-bottom: 0; }
+    .tl::before { content: ''; position: absolute; left: 18px; top: 40px; bottom: 2px; width: 2px; background: linear-gradient(rgba(37,99,235,.35), rgba(37,99,235,.06)); }
+    .tl:last-child::before { display: none; }
+    .tl-dot { width: 38px; height: 38px; border-radius: 12px; flex-shrink: 0; background: var(--accent-dim); border: 1px solid rgba(37,99,235,.22); color: var(--accent); display: flex; align-items: center; justify-content: center; font-size: 16px; position: relative; z-index: 1; transition: transform .15s, box-shadow .15s; }
+    .tl-dot i { font-size: 16px; }
+    .tl-dot.go { background: linear-gradient(135deg, var(--accent-2), var(--accent-dk)); border-color: transparent; color: #fff; box-shadow: 0 8px 16px rgba(37,99,235,.32); }
+    .tl:hover .tl-dot { transform: translateY(-1px); box-shadow: 0 8px 16px -6px rgba(37,99,235,.4); }
+    .tl-body { padding-top: 3px; }
+    .tl-body b { display: block; font-size: 14.5px; font-weight: 750; margin-bottom: 3px; }
+    .tl-body span { font-size: 13.5px; color: var(--muted); line-height: 1.55; }
+    .tl-body code { background: var(--accent-dim); color: var(--accent-dk); padding: 1px 6px; border-radius: 5px; font-size: 12px; }
     .section-label {
       font-size: 11px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase;
       color: var(--muted); margin-bottom: 14px;
@@ -953,34 +975,46 @@
   </script>
 
   <!-- Install & Activate -->
-  <div class="card">
-    <h3>Install &amp; activate</h3>
-    <div class="steps">
-      <div class="step">
-        <span class="sn">1</span>
-        <p>Download the zip above and unzip it anywhere on your computer.</p>
-      </div>
-      <div class="step">
-        <span class="sn">2</span>
-        <p>Open <code>chrome://extensions</code> (or <code>edge://extensions</code>) and turn on <strong>Developer mode</strong> (top-right).</p>
-      </div>
-      <div class="step">
-        <span class="sn">3</span>
-        <p>Click <strong>Load unpacked</strong> and select the unzipped <code>extension</code> folder.</p>
-      </div>
-      <div class="step">
-        <span class="sn">4</span>
-        <p>Click the 🧩 puzzle icon in the toolbar → open the extension → <strong>Prefs</strong> tab.</p>
-      </div>
-      <div class="step">
-        <span class="sn">5</span>
-        <p>Paste your <strong>activation key</strong> (shown in the Activation Key box above) and click <strong>Save &amp; Activate</strong>, it should say “✓ Activated”.</p>
-      </div>
-      <div class="step">
-        <span class="sn">6</span>
-        <p>Open LinkedIn Jobs, Indeed, Naukri, or Bayt, fill your profile, and hit <strong>Start</strong>.</p>
+  <div class="card guide-card">
+    <div class="guide-head">
+      <div class="guide-ico"><i class="fi-rr-rocket"></i></div>
+      <div>
+        <h3>Install &amp; activate</h3>
+        <p>Six quick steps, about two minutes, then you're applying on autopilot.</p>
       </div>
     </div>
+
+    <div class="phase-tag"><span class="d">1</span> Add the extension to your browser</div>
+    <ol class="timeline">
+      <li class="tl">
+        <span class="tl-dot"><i class="fi-rr-download"></i></span>
+        <div class="tl-body"><b>Download &amp; unzip</b><span>Grab the <code>.zip</code> above and unzip it anywhere on your computer.</span></div>
+      </li>
+      <li class="tl">
+        <span class="tl-dot"><i class="fi-rr-browser"></i></span>
+        <div class="tl-body"><b>Open your extensions page</b><span>Go to <code>chrome://extensions</code> (or <code>edge://extensions</code>) and switch on <strong>Developer mode</strong> in the top-right.</span></div>
+      </li>
+      <li class="tl">
+        <span class="tl-dot"><i class="fi-rr-folder-open"></i></span>
+        <div class="tl-body"><b>Load unpacked</b><span>Click <strong>Load unpacked</strong> and pick the unzipped <code>extension</code> folder.</span></div>
+      </li>
+      <li class="tl">
+        <span class="tl-dot"><i class="fi-rr-settings-sliders"></i></span>
+        <div class="tl-body"><b>Open the extension</b><span>Click the 🧩 puzzle icon in the toolbar, open AutoApplier, and go to the <strong>Prefs</strong> tab.</span></div>
+      </li>
+    </ol>
+
+    <div class="phase-tag"><span class="d">2</span> Activate &amp; start applying</div>
+    <ol class="timeline">
+      <li class="tl">
+        <span class="tl-dot"><i class="fi-rr-key"></i></span>
+        <div class="tl-body"><b>Paste your key &amp; activate</b><span>Copy the <strong>activation key</strong> from the box above into <strong>License Key</strong>, then click <strong>Save &amp; Activate</strong> — it should say “✓ Activated”.</span></div>
+      </li>
+      <li class="tl">
+        <span class="tl-dot go"><i class="fi-rr-rocket"></i></span>
+        <div class="tl-body"><b>Search &amp; press Start</b><span>Open LinkedIn, Indeed, Naukri or Bayt, fill your profile once, run a search, and hit <strong>Start</strong>. 🚀</span></div>
+      </li>
+    </ol>
   </div>
 
   <!-- Referral link (any signed-in user) -->
