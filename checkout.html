@@ -436,14 +436,22 @@
 
     // Boot: show plans right away. If already licensed, jump to the dashboard.
     (async () => {
-      loadPlans();
+      await loadPlans();
+      const urlPlan = new URLSearchParams(location.search).get('plan');
       if (token) {
         try {
           const lic = await fetch('/api/license', { headers:{ Authorization:'Bearer '+token } }).then(x=>x.json()).catch(()=>({}));
           const email = localStorage.getItem(EMAIL) || '';
           if (email) { const w = $('#who'); w.textContent = email; w.style.display = ''; }
-          if (lic.active) location.href = '/crm.html';
+          if (lic.active) { location.href = '/crm.html'; return; }
         } catch {}
+      }
+      // Deep-link from the dashboard (?plan=<id>): preselect that plan and start.
+      // Signed-in users go straight to Razorpay; others get the account modal.
+      if (urlPlan) {
+        const sel = (window.CSS && CSS.escape) ? CSS.escape(urlPlan) : urlPlan;
+        const btn = document.querySelector('.buy[data-id="' + sel + '"]');
+        if (btn) { try { btn.scrollIntoView({ behavior:'smooth', block:'center' }); } catch {} btn.click(); }
       }
     })();
   </script>
