@@ -55,8 +55,12 @@ p{color:var(--muted)}
 .cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:14px;margin-top:16px}
 .pcard{display:flex;flex-direction:column;gap:6px;background:#fff;border:1px solid var(--border);border-radius:14px;padding:18px;transition:border-color .12s,transform .12s,box-shadow .12s}
 .pcard:hover{border-color:var(--accent);transform:translateY(-2px);box-shadow:0 14px 34px rgba(37,99,235,.12)}
+.pcard img{align-self:flex-start;width:auto;height:22px;max-width:120px;object-fit:contain;margin-bottom:2px}
 .pcard b{font-size:15.5px}
 .pcard span{font-size:13.5px;color:var(--muted)}
+/* Keep hero/pill logos in true aspect ratio too */
+.pill img{width:auto;height:16px;object-fit:contain}
+.brand img{width:auto;object-fit:contain}
 
 .cta-band{padding:52px 0;text-align:center;background:linear-gradient(135deg,var(--accent),var(--accent-dk));color:#fff}
 .cta-band h2{color:#fff}
