@@ -752,6 +752,64 @@
     </div>
   </div>
 
+  <!-- One-click action band (photos from Pixabay) -->
+  <style>
+    .oneclick { padding: 58px 0; }
+    .oc-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 46px; align-items: center; }
+    .oc-media { position: relative; }
+    .oc-media img { width: 100%; border-radius: 18px; box-shadow: 0 26px 64px -26px rgba(15,23,42,.4); display: block; }
+    .oc-badge { position: absolute; top: 16px; left: 16px; background: #16a34a; color: #fff; font-weight: 800; font-size: 13px; padding: 8px 15px; border-radius: 999px; box-shadow: 0 10px 24px rgba(22,163,74,.4); display: inline-flex; align-items: center; gap: 8px; }
+    .oc-badge .dot { width: 8px; height: 8px; border-radius: 50%; background: #fff; box-shadow: 0 0 0 4px rgba(255,255,255,.35); }
+    .oc-copy h2 { font-size: clamp(26px, 3.4vw, 38px); line-height: 1.1; letter-spacing: -.02em; margin-bottom: 14px; }
+    .oc-copy .grad2 { color: var(--accent); }
+    .oc-copy p.lead { font-size: 17px; color: var(--muted); margin-bottom: 22px; line-height: 1.6; }
+    .oc-steps { list-style: none; display: flex; flex-direction: column; gap: 13px; margin-bottom: 24px; }
+    .oc-steps li { display: flex; gap: 13px; align-items: flex-start; font-size: 15.5px; }
+    .oc-steps .n { flex-shrink: 0; width: 28px; height: 28px; border-radius: 50%; background: var(--accent-dim); color: var(--accent); font-weight: 800; font-size: 13px; display: flex; align-items: center; justify-content: center; }
+    .oc-trio { display: grid; grid-template-columns: repeat(3, 1fr); gap: 18px; }
+    .oc-trio figure { background: #fff; border: 1px solid var(--border); border-radius: 16px; overflow: hidden; box-shadow: 0 12px 32px -20px rgba(15,23,42,.28); }
+    .oc-trio img { width: 100%; height: 184px; object-fit: cover; display: block; }
+    .oc-trio figcaption { padding: 15px 17px; }
+    .oc-trio b { display: block; font-size: 15.5px; margin-bottom: 3px; }
+    .oc-trio span { font-size: 13.5px; color: var(--muted); }
+    @media (max-width: 860px) { .oc-grid { grid-template-columns: 1fr; gap: 28px; } }
+    @media (max-width: 760px) { .oc-trio { grid-template-columns: 1fr; } }
+  </style>
+  <section class="section oneclick">
+    <div class="wrap">
+      <div class="oc-grid">
+        <div class="oc-media">
+          <img src="/assets/photos/apply-now.jpg" alt="Apply now key on a keyboard" loading="lazy" width="1280" height="851" />
+          <span class="oc-badge"><span class="dot"></span> Auto Apply</span>
+        </div>
+        <div class="oc-copy">
+          <h2>Press <span class="grad2">one button</span> and it starts applying to every job</h2>
+          <p class="lead">No opening listings one by one. Run your normal search, click <strong>Start applying on autopilot</strong>, and AutoApplier immediately begins applying to every matching job for you — filling the form, answering the screening questions, and moving to the next one.</p>
+          <ol class="oc-steps">
+            <li><span class="n">1</span><div><b>Click Auto Apply once</b> — that single click starts the whole run.</div></li>
+            <li><span class="n">2</span><div><b>It applies automatically</b> — job after job, page after page, hands-free.</div></li>
+            <li><span class="n">3</span><div><b>You stay in control</b> — watch the live count and press Stop anytime.</div></li>
+          </ol>
+          <button class="btn btn-primary btn-lg" onclick="gotoSignup()">Start applying on autopilot <i class="fi-rr-arrow-right"></i></button>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="section section-alt">
+    <div class="wrap">
+      <div class="sec-head">
+        <h2>From “apply” to hired, faster</h2>
+        <p>More applications with far less effort — so you reach more interviews.</p>
+      </div>
+      <div class="oc-trio">
+        <figure><img src="/assets/photos/professional.jpg" alt="Applying to jobs on a laptop" loading="lazy" /><figcaption><b>Apply on autopilot</b><span>It works through page after page of jobs while you do something else.</span></figcaption></figure>
+        <figure><img src="/assets/photos/team.jpg" alt="Job interviews" loading="lazy" /><figcaption><b>More interviews</b><span>Applying to more roles is the single biggest lever for landing interviews.</span></figcaption></figure>
+        <figure><img src="/assets/photos/hired.jpg" alt="Getting hired" loading="lazy" /><figcaption><b>Get hired faster</b><span>Be an early applicant on every matching job, every single day.</span></figcaption></figure>
+      </div>
+    </div>
+  </section>
+
   <!-- Intro / what it is -->
   <section class="section">
     <div class="wrap">
