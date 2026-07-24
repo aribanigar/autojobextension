@@ -132,6 +132,7 @@
         <button data-tab="users">Users &amp; Access</button>
         <button data-tab="coupons">Referral Codes</button>
         <button data-tab="purchases">Purchases</button>
+        <button data-tab="demos">Demos</button>
         <button data-tab="health">Health</button>
       </div>
 
@@ -277,6 +278,11 @@
       <!-- PURCHASES -->
       <section id="tab-purchases" style="display:none"><div id="purchases-list"></div></section>
 
+      <section id="tab-demos" style="display:none">
+        <div class="card"><h2>Demo requests</h2><p style="color:var(--muted);font-size:13px;margin-bottom:2px">People who asked for a demo from the landing page. Reach out to follow up.</p></div>
+        <div id="demos-list"></div>
+      </section>
+
       <section id="tab-health" style="display:none">
         <p style="color:#666;margin:0 0 10px">Anonymous field-health beacons from the extension. Spot a job site changing its DOM or an integration breaking. Last 300 events.</p>
         <div id="health-summary" style="margin-bottom:12px"></div>
@@ -320,13 +326,14 @@
 
     document.querySelectorAll('.tabs button').forEach(b=>b.onclick=()=>{
       document.querySelectorAll('.tabs button').forEach(x=>x.classList.remove('on')); b.classList.add('on');
-      ['subscribers','keys','plans','users','coupons','purchases','health'].forEach(t=>$('#tab-'+t).style.display = t===b.dataset.tab?'':'none');
+      ['subscribers','keys','plans','users','coupons','purchases','demos','health'].forEach(t=>$('#tab-'+t).style.display = t===b.dataset.tab?'':'none');
       if(b.dataset.tab==='subscribers') loadSubscribers();
       if(b.dataset.tab==='keys') loadKeys();
       if(b.dataset.tab==='plans') loadPlans();
       if(b.dataset.tab==='users') loadUsers();
       if(b.dataset.tab==='coupons') loadCoupons();
       if(b.dataset.tab==='purchases') loadPurchases();
+      if(b.dataset.tab==='demos') loadDemos();
       if(b.dataset.tab==='health') loadTelemetry();
     });
 
@@ -602,6 +609,37 @@ alter table users add column if not exists phone text;</pre>
             <td>${esc(p.interval)}</td>
             <td style="color:var(--muted)">${new Date(p.created_at).toLocaleString()}</td></tr>`).join('')}</tbody></table>`;
       } catch(e){ $('#purchases-list').innerHTML='<p class="msg err">'+esc(e.message)+'</p>'; }
+    }
+
+    // DEMO REQUESTS
+    async function loadDemos() {
+      try {
+        const rows = await adminPost({ action:'list_demos' });
+        if (rows && rows.schema_missing) {
+          $('#demos-list').innerHTML = `<div class="msg err" style="padding:12px 14px;border:1px solid rgba(220,38,38,.35);border-radius:10px;line-height:1.5">
+            ⚠ <b>Demo requests table not found.</b> Run this once in <b>Supabase → SQL Editor</b>, then demo requests will appear here (until then they are emailed to the admin if email is configured):
+            <pre style="background:#fff;border:1px solid var(--border);border-radius:8px;padding:10px;margin-top:8px;overflow-x:auto;font-size:12.5px">create table if not exists demo_requests (
+  id uuid primary key default gen_random_uuid(),
+  name text, email text, phone text, message text,
+  created_at timestamptz not null default now()
+);
+alter table demo_requests enable row level security;</pre></div>`;
+          return;
+        }
+        if (!rows.length) { $('#demos-list').innerHTML = '<div class="card" style="text-align:center;color:var(--muted)">No demo requests yet.</div>'; return; }
+        const digits = p => String(p||'').replace(/[^\d+]/g,'');
+        $('#demos-list').innerHTML = `<table><thead><tr><th>Name</th><th>Email</th><th>Phone</th><th>Message</th><th>When</th><th></th></tr></thead><tbody>${
+          rows.map(r=>{
+            const phone = r.phone ? `<a href="tel:${esc(digits(r.phone))}">${esc(r.phone)}</a> · <a href="https://wa.me/${esc(digits(r.phone).replace(/^\+/,''))}" target="_blank" rel="noopener">WA</a>` : '<span style="color:var(--muted)">–</span>';
+            return `<tr>
+              <td>${r.name?esc(r.name):'<span style="color:var(--muted)">–</span>'}</td>
+              <td><a href="mailto:${esc(r.email)}">${esc(r.email)}</a></td>
+              <td style="white-space:nowrap">${phone}</td>
+              <td style="max-width:280px;color:var(--muted)">${r.message?esc(r.message):'–'}</td>
+              <td style="color:var(--muted);white-space:nowrap">${new Date(r.created_at).toLocaleString()}</td>
+              <td><button class="mini" data-deldemo="${esc(r.id)}">Delete</button></td></tr>`;}).join('')}</tbody></table>`;
+        $('#demos-list').querySelectorAll('[data-deldemo]').forEach(b=>b.onclick=async()=>{ if(confirm('Delete this demo request?')){ await adminPost({action:'delete_demo',id:b.dataset.deldemo}); loadDemos(); } });
+      } catch(e){ $('#demos-list').innerHTML='<p class="msg err">'+esc(e.message)+'</p>'; }
     }
 
     async function loadTelemetry() {

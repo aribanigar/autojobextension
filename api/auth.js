@@ -64,6 +64,31 @@ async function sendResetEmail(email, link) {
   return { ok: r.ok };
 }
 
+// Notify the admin of a new demo request by email (best-effort). Requires
+// RESEND_API_KEY + ADMIN_EMAIL; silently no-ops if either is missing.
+async function sendDemoEmail(r) {
+  if (!process.env.RESEND_API_KEY) return { ok: false };
+  const to = (process.env.ADMIN_EMAIL || '').trim();
+  if (!to) return { ok: false };
+  const esc = s => String(s || '').replace(/[<>&]/g, c => ({ '<': '&lt;', '>': '&gt;', '&': '&amp;' }[c]));
+  const from = process.env.RESEND_FROM || 'AutoApplier <onboarding@resend.dev>';
+  const resp = await fetch('https://api.resend.com/emails', {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${process.env.RESEND_API_KEY}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      from, to, subject: 'New AutoApplier demo request',
+      html: `<div style="font-family:system-ui,sans-serif;max-width:460px">
+        <h2>New demo request</h2>
+        <p><b>Name:</b> ${esc(r.name)}</p>
+        <p><b>Email:</b> ${esc(r.email)}</p>
+        <p><b>Phone:</b> ${esc(r.phone) || '—'}</p>
+        <p><b>Message:</b> ${esc(r.message) || '—'}</p>
+      </div>`,
+    }),
+  });
+  return { ok: resp.ok };
+}
+
 export default async function handler(req, res) {
   cors(res);
   if (req.method === 'OPTIONS') return res.status(204).end();
@@ -91,6 +116,19 @@ export default async function handler(req, res) {
   const phone = String((req.body && req.body.phone) || '').trim().slice(0, 40);
 
   try {
+    // ── Demo request (public, no auth) — captured for the sales team ─────────
+    // Stored in demo_requests and (best-effort) emailed to the admin, so a
+    // pre-migration DB without the table still forwards the lead by email.
+    if (action === 'demo') {
+      if (!emailOk) return res.status(400).json({ error: 'Enter a valid email address' });
+      if (!name)    return res.status(400).json({ error: 'Enter your name' });
+      const message = String((req.body && req.body.message) || '').trim().slice(0, 1000);
+      const row = { name, email, phone, message: message || null };
+      try { await sb('demo_requests', { method: 'POST', body: JSON.stringify([row]) }); } catch { /* table not created yet */ }
+      try { await sendDemoEmail(row); } catch { /* email is best-effort */ }
+      return res.status(200).json({ ok: true });
+    }
+
     // ── Forgot: email a reset link (needs only an email) ────────────────────
     if (action === 'forgot') {
       if (!emailOk) return res.status(400).json({ error: 'Enter a valid email address' });

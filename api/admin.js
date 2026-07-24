@@ -184,6 +184,21 @@ export default async function handler(req, res) {
       return res.status(200).json(await sb('purchases?order=created_at.desc&limit=500'));
     }
 
+    // ── Demo requests ──────────────────────────────────────────────────────
+    if (action === 'list_demos') {
+      try {
+        return res.status(200).json(await sb('demo_requests?order=created_at.desc&limit=1000'));
+      } catch {
+        return res.status(200).json({ schema_missing: true }); // table not created yet
+      }
+    }
+    if (action === 'delete_demo') {
+      const { id } = req.body || {};
+      if (!id) return res.status(400).json({ error: 'id required' });
+      await sb(`demo_requests?id=eq.${encodeURIComponent(id)}`, { method: 'DELETE' });
+      return res.status(200).json({ ok: true });
+    }
+
     // ── Plan management ────────────────────────────────────────────────────
     if (action === 'list_plans') {
       return res.status(200).json(await sb('plans?order=created_at.desc'));
