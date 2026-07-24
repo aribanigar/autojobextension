@@ -1,5 +1,5 @@
 {
-  "version": "1.6.7",
+  "version": "1.6.8",
   "url": "https://jobs.qckserve.in/jobbot-extension.zip",
   "notes": "LinkedIn: autofill saved contact details even when field labels are weak (semantic-attribute fallback)",
   "min_supported": "1.0.0"
