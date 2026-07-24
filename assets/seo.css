@@ -79,6 +79,13 @@ p{color:var(--muted)}
 .faqs details[open] summary::after{content:"–"}
 .faqs details p{padding:0 0 14px;font-size:15px}
 
+.post .lead{font-size:19px;color:var(--muted);margin-bottom:20px}
+.post h2{margin:28px 0 10px;font-size:23px;font-weight:800;letter-spacing:-.01em}
+.post p{font-size:16.5px;margin-bottom:14px;color:#334155}
+.post a{color:var(--accent);font-weight:600}
+.post a:hover{text-decoration:underline}
+.post code{background:var(--accent-dim);color:var(--accent-dk);padding:2px 6px;border-radius:6px;font-size:14px;font-family:ui-monospace,Menlo,monospace}
+
 .foot{border-top:1px solid var(--border);padding:40px 0 28px;background:var(--soft)}
 .foot-grid{display:grid;grid-template-columns:1.5fr 1fr 1fr;gap:26px}
 .foot-grid p{font-size:14px;margin-top:10px;max-width:340px}
