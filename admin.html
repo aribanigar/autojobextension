@@ -656,10 +656,15 @@
 alter table users add column if not exists phone text;</pre>
              </div>`
           : '';
-        $('#users-list').innerHTML = banner + `<table><thead><tr><th>Name</th><th>Email</th><th>Phone</th><th>Licensed</th><th>Type</th><th>Expires</th><th></th></tr></thead><tbody>${
+        const toolbar = `<div style="display:flex;gap:12px;align-items:center;margin-bottom:10px">
+            <button class="btn-danger" id="u-bulk-del" disabled>Delete selected (0)</button>
+            <span style="font-size:12px;color:var(--muted)">Tick users to select, then bulk-delete. Total: ${users.length}</span>
+          </div>`;
+        $('#users-list').innerHTML = banner + toolbar + `<table><thead><tr><th style="width:34px"><input type="checkbox" id="u-selectall" title="Select all"></th><th>Name</th><th>Email</th><th>Phone</th><th>Licensed</th><th>Type</th><th>Expires</th><th></th></tr></thead><tbody>${
           users.map(u=>{
             const phone = u.phone ? `<a href="tel:${esc(digits(u.phone))}">${esc(u.phone)}</a> · <a href="https://wa.me/${esc(digits(u.phone).replace(/^\+/,''))}" target="_blank" rel="noopener">WA</a>` : '<span style="color:var(--muted)">–</span>';
             return `<tr>
+            <td><input type="checkbox" class="u-check" data-email="${esc(u.email)}"></td>
             <td>${u.name?esc(u.name):'<span style="color:var(--muted)">–</span>'}</td>
             <td><a href="mailto:${esc(u.email)}">${esc(u.email)}</a></td>
             <td style="white-space:nowrap">${phone}</td>
@@ -668,6 +673,20 @@ alter table users add column if not exists phone text;</pre>
             <td style="color:var(--muted)">${u.expires_at?new Date(u.expires_at).toLocaleDateString():(u.licensed?'lifetime':'–')}</td>
             <td><button class="mini" data-del="${esc(u.email)}">Delete</button></td>
           </tr>`;}).join('')}</tbody></table>`;
+
+        const checks = () => Array.from($('#users-list').querySelectorAll('.u-check'));
+        const selected = () => checks().filter(c=>c.checked).map(c=>c.dataset.email);
+        const updateBulk = () => { const n = selected().length; const b=$('#u-bulk-del'); b.textContent='Delete selected ('+n+')'; b.disabled = n===0; };
+        $('#u-selectall').onchange = (e) => { checks().forEach(c=>c.checked=e.target.checked); updateBulk(); };
+        checks().forEach(c=>c.onchange=updateBulk);
+        $('#u-bulk-del').onclick = async () => {
+          const emails = selected();
+          if (!emails.length) return;
+          if (!confirm('Delete '+emails.length+' selected user'+(emails.length>1?'s':'')+'? This cannot be undone.')) return;
+          $('#u-bulk-del').disabled = true; $('#u-bulk-del').textContent='Deleting…';
+          try { await adminPost({ action:'bulk_delete_users', emails }); loadUsers(); }
+          catch(e){ $('#users-list').insertAdjacentHTML('afterbegin','<p class="msg err">'+esc(e.message)+'</p>'); updateBulk(); }
+        };
         $('#users-list').querySelectorAll('[data-del]').forEach(b=>b.onclick=async()=>{ if(confirm('Delete '+b.dataset.del+'?')){ await adminPost({action:'delete_user',email:b.dataset.del}); loadUsers(); } });
       } catch(e){ $('#users-list').innerHTML='<p class="msg err">'+esc(e.message)+'</p>'; }
     }

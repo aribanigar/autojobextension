@@ -145,6 +145,15 @@ export default async function handler(req, res) {
       return res.status(200).json({ ok: true });
     }
 
+    if (action === 'bulk_delete_users') {
+      const emails = Array.isArray(req.body && req.body.emails) ? req.body.emails : [];
+      const list = emails.map(e => String(e || '').trim().toLowerCase()).filter(Boolean).slice(0, 500);
+      if (!list.length) return res.status(400).json({ error: 'No users selected' });
+      // Single DELETE with an IN() filter — one round-trip, no per-row timeout.
+      await sb(`users?email=in.(${list.map(encodeURIComponent).join(',')})`, { method: 'DELETE' });
+      return res.status(200).json({ ok: true, deleted: list.length });
+    }
+
     if (action === 'reset_password') {
       if (!email) return res.status(400).json({ error: 'email required' });
       if (!password || String(password).length < 6) return res.status(400).json({ error: 'Password must be at least 6 characters' });
