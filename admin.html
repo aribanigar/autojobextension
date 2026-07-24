@@ -588,11 +588,12 @@
           duration_days: $('#p-days').value ? parseInt($('#p-days').value,10) : null,
           active:$('#p-active').value==='true', features, prices,
         };
-        if (editing) await adminPost({ action:'update_plan', id:editingPlanId, ...body });
-        else await adminPost({ action:'create_plan', ...body });
-        $('#p-msg').className='msg ok'; $('#p-msg').textContent = editing ? 'Plan updated' : 'Plan created';
+        const resp = editing ? await adminPost({ action:'update_plan', id:editingPlanId, ...body })
+                             : await adminPost({ action:'create_plan', ...body });
         resetPlanForm();
         loadPlans();
+        if (resp && resp.warning) { $('#p-msg').className='msg err'; $('#p-msg').textContent = resp.warning; }
+        else { $('#p-msg').className='msg ok'; $('#p-msg').textContent = editing ? 'Plan updated' : 'Plan created'; }
       } catch(e){ $('#p-msg').className='msg err'; $('#p-msg').textContent=e.message; }
     };
     async function loadPlans() {

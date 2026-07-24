@@ -33,6 +33,8 @@ const ADMIN_PASSWORD = (process.env.ADMIN_PASSWORD || 'Autoapplier@54321').trim(
 // Razorpay plan's amount is immutable, so a changed price needs a fresh plan).
 // Throws a descriptive error if Razorpay rejects a currency. Shared by
 // create_plan and update_plan so editing behaves exactly like creating.
+const MIGRATION_PRICES_MSG = "Saved the base price. To store per-region/per-country prices, run this once in Supabase → SQL Editor, then save again:  alter table plans add column if not exists prices jsonb not null default '{}'::jsonb;";
+
 async function normalizeRegionPrices({ name, description, interval, prices, oldPrices = {} }) {
   const DEFCUR = { IN: 'INR', AE: 'AED', US: 'USD', GB: 'GBP', DEFAULT: 'USD' };
   const norm = {};
@@ -228,14 +230,22 @@ export default async function handler(req, res) {
         // Legacy back-compat fields so any INR-only path keeps working: prefer IN,
         // else DEFAULT, else the first configured region.
         const legacy = norm.IN || norm.DEFAULT || Object.values(norm)[0];
-        const rows = await sb('plans', {
-          method: 'POST',
-          body: JSON.stringify([{
-            name, description, price_paise: legacy.amount, interval, duration_days: dur,
-            razorpay_plan_id: norm.IN?.razorpay_plan_id || null, features, active, prices: norm,
-          }]),
-        });
-        return res.status(201).json(rows[0]);
+        const baseRow = {
+          name, description, price_paise: legacy.amount, interval, duration_days: dur,
+          razorpay_plan_id: norm.IN?.razorpay_plan_id || null, features, active,
+        };
+        let rows, warning;
+        try {
+          rows = await sb('plans', { method: 'POST', body: JSON.stringify([{ ...baseRow, prices: norm }]) });
+        } catch (err) {
+          // The plans.prices column doesn't exist yet → save the base price so the
+          // plan is still created, and tell the admin how to enable regional prices.
+          if (/prices|PGRST204|schema cache/i.test(String(err.message))) {
+            rows = await sb('plans', { method: 'POST', body: JSON.stringify([baseRow]) });
+            warning = MIGRATION_PRICES_MSG;
+          } else throw err;
+        }
+        return res.status(201).json({ ...(rows[0] || {}), warning });
       }
 
       // ── Legacy single-price (INR) plan — unchanged behaviour ────────────────
@@ -282,8 +292,18 @@ export default async function handler(req, res) {
         allowed.razorpay_plan_id = norm.IN?.razorpay_plan_id || null;
       }
 
-      const rows = await sb(`plans?id=eq.${encodeURIComponent(id)}`, { method: 'PATCH', body: JSON.stringify(allowed) });
-      return res.status(200).json(rows[0] || null);
+      let rows, warning;
+      try {
+        rows = await sb(`plans?id=eq.${encodeURIComponent(id)}`, { method: 'PATCH', body: JSON.stringify(allowed) });
+      } catch (err) {
+        // plans.prices column missing → retry without it so the edit still saves.
+        if ('prices' in allowed && /prices|PGRST204|schema cache/i.test(String(err.message))) {
+          const { prices, ...rest } = allowed;
+          rows = await sb(`plans?id=eq.${encodeURIComponent(id)}`, { method: 'PATCH', body: JSON.stringify(rest) });
+          warning = MIGRATION_PRICES_MSG;
+        } else throw err;
+      }
+      return res.status(200).json({ ...((rows && rows[0]) || {}), warning });
     }
 
     if (action === 'delete_plan') {
