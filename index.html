@@ -757,8 +757,8 @@
     .video-panel { padding: 40px 22px 8px; display: flex; justify-content: center; }
     .video-box { position: relative; width: 100%; max-width: 880px; border-radius: 18px; overflow: hidden; background: #0b1220; line-height: 0; border: 1px solid var(--border); box-shadow: 0 34px 80px -34px rgba(15,23,42,.5), 0 4px 14px rgba(15,23,42,.08); }
     .video-box video { display: block; width: 100%; height: auto; max-height: 78vh; object-fit: contain; }
-    /* Blur the bottom 25% of the video */
-    .video-blur-bottom { position: absolute; left: 0; right: 0; bottom: 0; height: 25%; backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px); background: rgba(11,18,32,.08); pointer-events: none; z-index: 1; }
+    /* Blur only the horizontal strip band (watermark row), not the whole bottom */
+    .video-blur-bottom { position: absolute; left: 0; right: 0; top: 74%; height: 14%; backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px); background: rgba(11,18,32,.08); pointer-events: none; z-index: 1; }
     .video-mute { position: absolute; bottom: 12px; right: 12px; z-index: 2; width: 40px; height: 40px; border-radius: 999px; border: none; background: rgba(0,0,0,.55); color: #fff; font-size: 17px; line-height: 1; cursor: pointer; display: flex; align-items: center; justify-content: center; box-shadow: 0 4px 12px rgba(0,0,0,.3); }
     .video-mute:hover { background: rgba(0,0,0,.72); }
     @media (max-width: 560px) { .video-panel { padding: 26px 16px 4px; } }
