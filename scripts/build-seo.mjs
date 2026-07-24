@@ -59,30 +59,9 @@ const nav = `<header class="nav"><div class="wrap nav-in">
 <a class="btn btn-primary" href="/">Get started</a>
 </div></header>`;
 
-const footer = `<footer class="foot"><div class="wrap">
-<div class="foot-grid">
-  <div>
-    <a class="brand" href="/"><img src="/favicon.svg" alt="AutoApplier" width="24" height="24" /> AutoApplier</a>
-    <p class="muted">Auto apply to jobs on LinkedIn, Indeed, Naukri and Bayt — the agent opens each listing, fills the form, answers screening questions and submits, hands-free.</p>
-  </div>
-  <div>
-    <h4>Auto apply</h4>
-    <a href="/auto-apply-jobs">Auto apply to jobs</a>
-    <a href="/linkedin-auto-apply">LinkedIn auto apply</a>
-    <a href="/indeed-auto-apply">Indeed auto apply</a>
-    <a href="/naukri-auto-apply">Naukri auto apply</a>
-    <a href="/bayt-auto-apply">Bayt auto apply</a>
-  </div>
-  <div>
-    <h4>Product</h4>
-    <a href="/">Home</a>
-    <a href="/checkout">Pricing</a>
-    <a href="/best-auto-apply-tools">Best auto apply tools</a>
-    <a href="/crm.html">Application tracker</a>
-  </div>
-</div>
-<div class="foot-b muted">© <span id="yr"></span> AutoApplier. Automated job applications for LinkedIn, Indeed, Naukri and Bayt.</div>
-</div><script>document.getElementById('yr').textContent=new Date().getFullYear();</script></footer>`;
+// The mega SEO footer (`footer`) is defined further down, after the role/city/
+// platform/alternative data arrays it links to. Page functions reference it in
+// their bodies (closures), which only run at the bottom — so it is in scope.
 
 const softwareApp = {
   '@context': 'https://schema.org', '@type': 'SoftwareApplication',
@@ -652,13 +631,230 @@ ${footer}
   }) + body;
 }
 
+// ── Extra platform pages (no logo asset) ─────────────────────────────────────
+// Naukri Gulf and Internshala are supported but have no logo image; these render
+// with a text pill instead of an <img>, so they never 404 on a missing asset.
+const extraPlatforms = [
+  {
+    slug: 'naukri-gulf-auto-apply', name: 'Naukri Gulf',
+    what: 'Naukri Gulf auto apply means automating applications on naukrigulf.com, the Gulf-focused arm of Naukri. AutoApplier opens each role, answers the application questions from your saved profile — notice period, current and expected salary, experience and location — submits, and moves to the next listing across every results page.',
+    lead: 'Auto apply to Gulf jobs on Naukri Gulf. AutoApplier fills each application from your profile, answers screening questions and submits — job after job, hands-free.',
+    benefits: ['Auto applies across naukrigulf.com listings', 'Answers Gulf employer screening questions from your profile', 'Learns any answer you type for next time', 'Runs on your own login with human-like pacing', 'Every application logged in the built-in tracker'],
+  },
+  {
+    slug: 'internshala-auto-apply', name: 'Internshala',
+    what: 'Internshala auto apply means bulk-applying to internships and fresher jobs on internshala.com. AutoApplier opens each Easy-Apply internship, answers the confirmation and cover-letter style questions from your profile, submits, and continues to the next one — ideal for students and freshers applying at volume.',
+    lead: 'Auto apply to internships on Internshala. AutoApplier applies to matching internships one after another, answering each question from your profile — built for students and freshers.',
+    benefits: ['Bulk auto apply to Internshala internships and fresher jobs', 'Answers availability and screening questions automatically', 'Skips ones you already applied to', 'Runs on your own login with human-like pacing', 'Great for students applying to many internships fast'],
+  },
+];
+
+// ── Role / job-title pages ───────────────────────────────────────────────────
+const roles = [
+  { slug: 'software-developer', label: 'software developer', kw: 'software developer and engineering' },
+  { slug: 'data-analyst', label: 'data analyst', kw: 'data analyst and data science' },
+  { slug: 'sales', label: 'sales', kw: 'sales and business development' },
+  { slug: 'marketing', label: 'marketing', kw: 'marketing and brand' },
+  { slug: 'digital-marketing', label: 'digital marketing', kw: 'digital marketing, SEO and performance' },
+  { slug: 'accountant', label: 'accountant', kw: 'accounting and finance' },
+  { slug: 'human-resources', label: 'HR', kw: 'human resources and recruiting' },
+  { slug: 'customer-service', label: 'customer service', kw: 'customer support and BPO' },
+  { slug: 'graphic-designer', label: 'graphic designer', kw: 'graphic design and creative' },
+  { slug: 'content-writer', label: 'content writer', kw: 'content writing and copywriting' },
+  { slug: 'business-analyst', label: 'business analyst', kw: 'business analysis and product' },
+  { slug: 'fresher', label: 'fresher', kw: 'entry-level and fresher' },
+];
+
+// ── Location / city pages ────────────────────────────────────────────────────
+const cities = [
+  { slug: 'delhi', label: 'Delhi', region: 'India' },
+  { slug: 'mumbai', label: 'Mumbai', region: 'India' },
+  { slug: 'bangalore', label: 'Bangalore', region: 'India' },
+  { slug: 'hyderabad', label: 'Hyderabad', region: 'India' },
+  { slug: 'pune', label: 'Pune', region: 'India' },
+  { slug: 'chennai', label: 'Chennai', region: 'India' },
+  { slug: 'kolkata', label: 'Kolkata', region: 'India' },
+  { slug: 'gurgaon', label: 'Gurgaon', region: 'India' },
+  { slug: 'noida', label: 'Noida', region: 'India' },
+  { slug: 'dubai', label: 'Dubai', region: 'the UAE' },
+  { slug: 'abu-dhabi', label: 'Abu Dhabi', region: 'the UAE' },
+  { slug: 'remote', label: 'remote', region: 'anywhere' },
+];
+
+// ── Extra competitor alternative pages ───────────────────────────────────────
+const extraAlternatives = [
+  { slug: 'sonara-alternative', comp: 'Sonara',
+    focus: 'Sonara is known as an AI job-search service that curates matching roles and assists with applications, mainly for the US market.',
+    reasons: ['You want the agent to fully submit on LinkedIn, Indeed, Naukri, Naukri Gulf and Bayt', 'You want screening questions answered from your profile and remembered', 'You want to run on your own login with human-like pacing', 'You want local-currency pricing for India, the Middle East, the US and the UK'] },
+  { slug: 'jobcopilot-alternative', comp: 'JobCopilot',
+    focus: 'JobCopilot is known for auto-applying to jobs from aggregated feeds with an AI assistant, aimed at a global audience.',
+    reasons: ['You want native support for LinkedIn Easy Apply, Indeed, Naukri, Naukri Gulf and Bayt', 'You want each application actually completed and submitted, not feed-matched', 'You want a built-in application tracker', 'You want captcha hand-off with auto-resume instead of a stalled run'] },
+  { slug: 'aiapply-alternative', comp: 'AIApply',
+    focus: 'AIApply is known for AI tools that generate resumes and cover letters and help auto-apply, primarily for US job seekers.',
+    reasons: ['You want a hands-free agent that submits on LinkedIn, Indeed, Naukri and Bayt', 'You want screening answers filled from your profile with smart memory', 'You want India and Middle East job boards covered', 'You want transparent local-currency pricing'] },
+  { slug: 'massive-alternative', comp: 'Massive',
+    focus: 'Massive (formerly known for bulk auto-apply) focuses on applying to many jobs quickly, mainly on LinkedIn and US boards.',
+    reasons: ['You want to cover Indeed, Naukri, Naukri Gulf and Bayt as well as LinkedIn', 'You want screening questions answered and learned from your profile', 'You want to run on your own login inside your own browser', 'You want every application logged in a built-in tracker'] },
+];
+
+function simplePlatformPage(p) {
+  const path = '/' + p.slug;
+  const faqs = [
+    { q: `Can AutoApplier auto apply on ${p.name}?`, a: `Yes. AutoApplier opens each ${p.name} role, answers the application questions from your saved profile and submits, then moves to the next one.` },
+    { q: `Does it remember my ${p.name} answers?`, a: 'Yes. Any answer you provide manually is captured and auto-filled the next time the same or a similar question appears.' },
+    { q: `Is ${p.name} auto apply safe?`, a: 'It runs inside your own browser with your own login and human-like timing, and never auto-solves captchas. You can stop it at any moment.' },
+    { q: 'Which browsers does it support?', a: 'Chrome and Edge, as a Manifest V3 extension.' },
+  ];
+  const body = `<body>
+${nav}
+<main>
+<section class="hero"><div class="wrap">
+  <div class="pill">${esc(p.name)} auto apply</div>
+  <h1>Auto apply to ${esc(p.name)} jobs, automatically</h1>
+  <p class="lead">${esc(p.lead)}</p>
+  <div class="cta-row"><a class="btn btn-primary btn-lg" href="/">Start applying on autopilot →</a><a class="btn btn-ghost btn-lg" href="/checkout">See pricing</a></div>
+  <p class="micro">Works on Chrome &amp; Edge · runs on your own login · stop anytime</p>
+</div></section>
+<section class="sec"><div class="wrap narrow"><h2>What is ${esc(p.name)} auto apply?</h2><p>${esc(p.what)}</p></div></section>
+<section class="sec sec-alt"><div class="wrap"><h2>Why use AutoApplier for ${esc(p.name)}</h2>${checks(p.benefits)}</div></section>
+<section class="sec"><div class="wrap"><h2>One agent for every job board</h2>
+  <div class="cards">${platforms.map(o => `<a class="pcard" href="/${o.slug}"><img src="/assets/logos/${o.logo}" alt="${o.name}" height="22" /><b>${o.name} auto apply</b><span>Automate applications on ${o.name}.</span></a>`).join('')}</div>
+</div></section>
+${faqBlock(faqs)}
+</main>
+${footer}
+</body></html>`;
+  return head({
+    title: `${p.name} Auto Apply — Auto Apply to ${p.name} Jobs | AutoApplier`,
+    desc: `${p.lead} Runs on Chrome and Edge from your own login.`,
+    path, jsonLd: [softwareApp, org, crumbs(`${p.name} auto apply`, path), faqLd(faqs)],
+  }) + body;
+}
+
+function rolePage(r) {
+  const path = `/auto-apply-${r.slug}-jobs`;
+  const A = /^[aeiou]/i.test(r.label) ? 'an' : 'a';
+  const faqs = [
+    { q: `Can I auto apply to ${r.label} jobs?`, a: `Yes. Run your normal search for ${r.label} roles on any supported board and AutoApplier applies to each matching job for you — filling the form, answering screening questions from your profile and submitting.` },
+    { q: `Does AutoApplier work for ${r.label} roles specifically?`, a: `AutoApplier is role-agnostic — it applies to whatever your search returns. For ${r.kw} roles it answers the usual screening questions (experience, notice period, expected salary) from your saved profile.` },
+    { q: 'Is it safe?', a: 'It runs inside your own browser using your own login with human-like timing, and never auto-solves captchas. You can stop it instantly.' },
+    { q: 'Which job boards does it cover?', a: 'LinkedIn Easy Apply, Indeed, Naukri, Naukri Gulf and Bayt — all from one profile.' },
+  ];
+  const body = `<body>
+${nav}
+<main>
+<section class="hero"><div class="wrap">
+  <div class="pill">${esc(r.label)} jobs</div>
+  <h1>Auto apply to ${esc(r.label)} jobs</h1>
+  <p class="lead">Applying to ${esc(r.label)} roles one by one is slow. AutoApplier auto-applies to ${esc(r.label)} jobs for you across <b>LinkedIn Easy Apply, Indeed, Naukri, Naukri Gulf and Bayt</b> — filling each form, answering screening questions from your profile and submitting, hands-free.</p>
+  <div class="cta-row"><a class="btn btn-primary btn-lg" href="/">Start applying on autopilot →</a><a class="btn btn-ghost btn-lg" href="/checkout">See pricing</a></div>
+  <p class="micro">Works on Chrome &amp; Edge · runs on your own login · stop anytime</p>
+</div></section>
+<section class="sec"><div class="wrap narrow">
+  <h2>Auto apply to ${esc(r.label)} roles, hands-free</h2>
+  <p>AutoApplier is ${A} auto apply agent for ${esc(r.kw)} job seekers. Set up your profile once, run a search for ${esc(r.label)} roles on your job board, and press Start. It opens each listing, maps the fields to your profile, answers screening questions — experience, notice period, expected salary, work authorization — clicks through the multi-step flow, submits, and moves to the next ${esc(r.label)} job on its own.</p>
+</div></section>
+<section class="sec sec-alt"><div class="wrap">
+  <h2>Auto apply on every board</h2>
+  <div class="cards">${platforms.map(o => `<a class="pcard" href="/${o.slug}"><img src="/assets/logos/${o.logo}" alt="${o.name}" height="22" /><b>${o.name} auto apply</b><span>Apply to ${esc(r.label)} jobs on ${o.name}.</span></a>`).join('')}</div>
+</div></section>
+<section class="sec"><div class="wrap narrow">
+  <h2>Why it beats applying by hand</h2>
+  ${checks(['Applies to far more ' + r.label + ' roles in the same time', 'Answers screening questions from your profile automatically', 'Learns new answers you type for next time', 'Runs across every results page until you press Stop', 'Every application logged in a built-in tracker'])}
+  <div class="cta-row" style="margin-top:20px"><a class="btn btn-primary btn-lg" href="/">Try AutoApplier →</a></div>
+</div></section>
+${faqBlock(faqs)}
+</main>
+${footer}
+</body></html>`;
+  return head({
+    title: `Auto Apply to ${r.label.replace(/\b\w/g, c => c.toUpperCase())} Jobs — On LinkedIn, Indeed, Naukri & Bayt | AutoApplier`,
+    desc: `Auto apply to ${r.label} jobs automatically on LinkedIn Easy Apply, Indeed, Naukri and Bayt. AutoApplier fills each form, answers screening questions from your profile and submits, hands-free.`,
+    path, jsonLd: [softwareApp, org, crumbs(`Auto apply to ${r.label} jobs`, path), faqLd(faqs)],
+  }) + body;
+}
+
+function cityPage(c) {
+  const path = `/auto-apply-jobs-in-${c.slug}`;
+  const inLabel = c.slug === 'remote' ? 'remote jobs' : `jobs in ${c.label}`;
+  const titleLabel = c.slug === 'remote' ? 'Remote Jobs' : `Jobs in ${c.label}`;
+  const faqs = [
+    { q: `Can I auto apply to ${inLabel}?`, a: `Yes. Filter your search to ${inLabel} on any supported board and AutoApplier applies to each matching role — filling the form, answering screening questions from your profile and submitting.` },
+    { q: `Does it work for ${c.label} employers?`, a: `AutoApplier applies to whatever your search returns, so any ${c.label === 'remote' ? 'remote' : c.label} listing on LinkedIn, Indeed, Naukri, Naukri Gulf or Bayt is covered.` },
+    { q: 'Is it safe?', a: 'It runs inside your own browser using your own login with human-like timing, and never auto-solves captchas. You can stop it instantly.' },
+  ];
+  const body = `<body>
+${nav}
+<main>
+<section class="hero"><div class="wrap">
+  <div class="pill">${esc(c.slug === 'remote' ? 'Remote' : c.label)}</div>
+  <h1>Auto apply to ${esc(inLabel)}</h1>
+  <p class="lead">Looking for ${esc(c.slug === 'remote' ? 'remote roles you can do from anywhere' : `${inLabel} in ${c.region}`)}? AutoApplier auto-applies for you across <b>LinkedIn Easy Apply, Indeed, Naukri, Naukri Gulf and Bayt</b> — just filter your search to ${esc(c.slug === 'remote' ? 'remote roles' : c.label)}, press Start, and it fills and submits each application from your profile.</p>
+  <div class="cta-row"><a class="btn btn-primary btn-lg" href="/">Start applying on autopilot →</a><a class="btn btn-ghost btn-lg" href="/checkout">See pricing</a></div>
+  <p class="micro">Works on Chrome &amp; Edge · runs on your own login · stop anytime</p>
+</div></section>
+<section class="sec"><div class="wrap narrow">
+  <h2>Auto apply to ${esc(inLabel)}, hands-free</h2>
+  <p>Set up your profile once, filter your job board to ${esc(c.slug === 'remote' ? 'remote roles' : c.label + ' roles')}, and press Start. AutoApplier opens each listing, answers screening questions from your profile, submits, and moves to the next one across every results page — so you cover far more ${esc(inLabel)} than you could by hand.</p>
+</div></section>
+<section class="sec sec-alt"><div class="wrap">
+  <h2>Auto apply on every board</h2>
+  <div class="cards">${platforms.map(o => `<a class="pcard" href="/${o.slug}"><img src="/assets/logos/${o.logo}" alt="${o.name}" height="22" /><b>${o.name} auto apply</b><span>Apply to ${esc(inLabel)} on ${o.name}.</span></a>`).join('')}</div>
+</div></section>
+${faqBlock(faqs)}
+</main>
+${footer}
+</body></html>`;
+  return head({
+    title: `Auto Apply to ${titleLabel} — LinkedIn, Indeed, Naukri & Bayt | AutoApplier`,
+    desc: `Auto apply to ${inLabel} automatically. AutoApplier fills each application from your profile, answers screening questions and submits across LinkedIn, Indeed, Naukri and Bayt.`,
+    path, jsonLd: [softwareApp, org, crumbs(`Auto apply to ${inLabel}`, path), faqLd(faqs)],
+  }) + body;
+}
+
+// ── Mega SEO footer (tripmore-style link hub) ────────────────────────────────
+const footCol = (title, links) => `<div><h4>${title}</h4>${links.map(([href, txt]) => `<a href="${href}">${esc(txt)}</a>`).join('')}</div>`;
+const footer = `<footer class="foot"><div class="wrap">
+<div class="foot-lead">
+  <a class="brand" href="/"><img src="/favicon.svg" alt="AutoApplier" width="24" height="24" /> AutoApplier</a>
+  <p class="muted">Auto apply to jobs on LinkedIn, Indeed, Naukri, Naukri Gulf, Bayt and Internshala — the agent opens each listing, fills the form, answers screening questions and submits, hands-free.</p>
+</div>
+<div class="foot-cols">
+  ${footCol('Auto apply by platform', [
+    ['/auto-apply-jobs', 'Auto apply to jobs'],
+    ['/linkedin-auto-apply', 'LinkedIn auto apply'],
+    ['/indeed-auto-apply', 'Indeed auto apply'],
+    ['/naukri-auto-apply', 'Naukri auto apply'],
+    ['/naukri-gulf-auto-apply', 'Naukri Gulf auto apply'],
+    ['/bayt-auto-apply', 'Bayt auto apply'],
+    ['/internshala-auto-apply', 'Internshala auto apply'],
+  ])}
+  ${footCol('Auto apply by role', roles.map(r => [`/auto-apply-${r.slug}-jobs`, `${r.label.replace(/\b\w/, c => c.toUpperCase())} jobs`]))}
+  ${footCol('Auto apply by city', cities.map(c => [`/auto-apply-jobs-in-${c.slug}`, c.slug === 'remote' ? 'Remote jobs' : `Jobs in ${c.label}`]))}
+  ${footCol('Compare & alternatives', [
+    ['/best-auto-apply-tools', 'Best auto apply tools'],
+    ...[...alternatives, ...extraAlternatives].map(a => [`/${a.slug}`, `${a.comp} alternative`]),
+  ])}
+  ${footCol('Guides', [['/blog', 'Blog'], ...posts.map(p => [`/blog/${p.slug}`, p.title])])}
+  ${footCol('Product', [
+    ['/', 'Home'],
+    ['/checkout', 'Pricing'],
+    ['/crm.html', 'Application tracker'],
+  ])}
+</div>
+<div class="foot-b muted">© <span id="yr"></span> AutoApplier. Automated job applications for LinkedIn, Indeed, Naukri, Naukri Gulf, Bayt and Internshala.</div>
+</div><script>document.getElementById('yr').textContent=new Date().getFullYear();</script></footer>`;
+
 // ── Write pages ──────────────────────────────────────────────────────────────
 import { mkdirSync } from 'node:fs';
 const pages = [];
 writeFileSync(join(ROOT, 'auto-apply-jobs.html'), pillarPage()); pages.push('/auto-apply-jobs');
 for (const p of platforms) { const f = `${p.slug}.html`; writeFileSync(join(ROOT, f), platformPage(p)); pages.push('/' + p.slug); }
 writeFileSync(join(ROOT, 'best-auto-apply-tools.html'), bestToolsPage()); pages.push('/best-auto-apply-tools');
-for (const a of alternatives) { writeFileSync(join(ROOT, `${a.slug}.html`), alternativePage(a)); pages.push('/' + a.slug); }
+for (const p of extraPlatforms) { writeFileSync(join(ROOT, `${p.slug}.html`), simplePlatformPage(p)); pages.push('/' + p.slug); }
+for (const r of roles) { const f = `auto-apply-${r.slug}-jobs.html`; writeFileSync(join(ROOT, f), rolePage(r)); pages.push(`/auto-apply-${r.slug}-jobs`); }
+for (const c of cities) { const f = `auto-apply-jobs-in-${c.slug}.html`; writeFileSync(join(ROOT, f), cityPage(c)); pages.push(`/auto-apply-jobs-in-${c.slug}`); }
+for (const a of [...alternatives, ...extraAlternatives]) { writeFileSync(join(ROOT, `${a.slug}.html`), alternativePage(a)); pages.push('/' + a.slug); }
 // Blog index + posts (served from /blog and /blog/<slug> via a blog/ folder).
 mkdirSync(join(ROOT, 'blog'), { recursive: true });
 writeFileSync(join(ROOT, 'blog', 'index.html'), blogIndex()); pages.push('/blog');

@@ -304,9 +304,15 @@
       border-top: 1px solid var(--border); padding: 30px 0;
       color: var(--dim); font-size: 13px;
     }
-    footer.site .wrap { display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap; }
+    footer.site .wrap { display: block; }
     footer.site a { color: var(--muted); text-decoration: none; }
     footer.site a:hover { color: var(--accent); }
+    footer.site .foot-cols { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 22px 26px; margin: 6px 0 26px; }
+    footer.site .foot-cols h4 { margin: 0 0 8px; font-size: 13px; color: var(--text); }
+    footer.site .foot-cols a { display: block; font-size: 13.5px; padding: 3px 0; line-height: 1.25; }
+    footer.site .foot-lead { margin-bottom: 20px; }
+    footer.site .foot-lead p { font-size: 13.5px; max-width: 500px; margin-top: 8px; }
+    footer.site .foot-bottom { display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap; padding-top: 18px; border-top: 1px solid var(--border); }
 
     /* ── Dashboard ───────────────────────────────────── */
     #view-dashboard { position: relative; max-width: 760px; margin: 0 auto; padding: 40px 24px 90px; }
@@ -1155,18 +1161,81 @@
 
   <footer class="site">
     <div class="wrap">
-      <div class="nav-logo" style="font-size:15px"><img src="/favicon.svg" alt="AutoApplier logo" class="logo-img"/> AutoApplier</div>
-      <div>© <span id="yr"></span> AutoApplier. Automated job applications for LinkedIn, Indeed, Naukri and Bayt.</div>
-      <div style="display:flex;gap:16px;flex-wrap:wrap">
-        <a href="/auto-apply-jobs">Auto apply to jobs</a>
-        <a href="/linkedin-auto-apply">LinkedIn auto apply</a>
-        <a href="/indeed-auto-apply">Indeed auto apply</a>
-        <a href="/naukri-auto-apply">Naukri auto apply</a>
-        <a href="/bayt-auto-apply">Bayt auto apply</a>
-        <a href="/best-auto-apply-tools">Compare</a>
-        <a href="/crm.html">CRM</a>
-        <a href="/checkout.html">Plans</a>
-        <a href="#" onclick="gotoLogin();return false;">Sign in</a>
+      <div class="foot-lead">
+        <div class="nav-logo" style="font-size:15px"><img src="/favicon.svg" alt="AutoApplier logo" class="logo-img"/> AutoApplier</div>
+        <p>Auto apply to jobs on LinkedIn, Indeed, Naukri, Naukri Gulf, Bayt and Internshala — the agent opens each listing, fills the form, answers screening questions and submits, hands-free.</p>
+      </div>
+      <div class="foot-cols">
+        <div>
+          <h4>Auto apply by platform</h4>
+          <a href="/auto-apply-jobs">Auto apply to jobs</a>
+          <a href="/linkedin-auto-apply">LinkedIn auto apply</a>
+          <a href="/indeed-auto-apply">Indeed auto apply</a>
+          <a href="/naukri-auto-apply">Naukri auto apply</a>
+          <a href="/naukri-gulf-auto-apply">Naukri Gulf auto apply</a>
+          <a href="/bayt-auto-apply">Bayt auto apply</a>
+          <a href="/internshala-auto-apply">Internshala auto apply</a>
+        </div>
+        <div>
+          <h4>Auto apply by role</h4>
+          <a href="/auto-apply-software-developer-jobs">Software developer jobs</a>
+          <a href="/auto-apply-data-analyst-jobs">Data analyst jobs</a>
+          <a href="/auto-apply-sales-jobs">Sales jobs</a>
+          <a href="/auto-apply-marketing-jobs">Marketing jobs</a>
+          <a href="/auto-apply-digital-marketing-jobs">Digital marketing jobs</a>
+          <a href="/auto-apply-accountant-jobs">Accountant jobs</a>
+          <a href="/auto-apply-human-resources-jobs">HR jobs</a>
+          <a href="/auto-apply-customer-service-jobs">Customer service jobs</a>
+          <a href="/auto-apply-graphic-designer-jobs">Graphic designer jobs</a>
+          <a href="/auto-apply-content-writer-jobs">Content writer jobs</a>
+          <a href="/auto-apply-business-analyst-jobs">Business analyst jobs</a>
+          <a href="/auto-apply-fresher-jobs">Fresher jobs</a>
+        </div>
+        <div>
+          <h4>Auto apply by city</h4>
+          <a href="/auto-apply-jobs-in-delhi">Jobs in Delhi</a>
+          <a href="/auto-apply-jobs-in-mumbai">Jobs in Mumbai</a>
+          <a href="/auto-apply-jobs-in-bangalore">Jobs in Bangalore</a>
+          <a href="/auto-apply-jobs-in-hyderabad">Jobs in Hyderabad</a>
+          <a href="/auto-apply-jobs-in-pune">Jobs in Pune</a>
+          <a href="/auto-apply-jobs-in-chennai">Jobs in Chennai</a>
+          <a href="/auto-apply-jobs-in-kolkata">Jobs in Kolkata</a>
+          <a href="/auto-apply-jobs-in-gurgaon">Jobs in Gurgaon</a>
+          <a href="/auto-apply-jobs-in-noida">Jobs in Noida</a>
+          <a href="/auto-apply-jobs-in-dubai">Jobs in Dubai</a>
+          <a href="/auto-apply-jobs-in-abu-dhabi">Jobs in Abu Dhabi</a>
+          <a href="/auto-apply-jobs-in-remote">Remote jobs</a>
+        </div>
+        <div>
+          <h4>Compare &amp; alternatives</h4>
+          <a href="/best-auto-apply-tools">Best auto apply tools</a>
+          <a href="/loopcv-alternative">LoopCV alternative</a>
+          <a href="/lazyapply-alternative">LazyApply alternative</a>
+          <a href="/simplify-alternative">Simplify alternative</a>
+          <a href="/jobright-alternative">Jobright alternative</a>
+          <a href="/sonara-alternative">Sonara alternative</a>
+          <a href="/jobcopilot-alternative">JobCopilot alternative</a>
+          <a href="/aiapply-alternative">AIApply alternative</a>
+          <a href="/massive-alternative">Massive alternative</a>
+        </div>
+        <div>
+          <h4>Guides</h4>
+          <a href="/blog">Blog</a>
+          <a href="/blog/how-to-auto-apply-linkedin-jobs">Auto apply on LinkedIn</a>
+          <a href="/blog/how-to-apply-100-jobs-a-day">Apply to 100+ jobs a day</a>
+          <a href="/blog/auto-apply-vs-autofill">Auto apply vs autofill</a>
+          <a href="/blog/auto-apply-naukri-bayt-guide">Auto apply on Naukri &amp; Bayt</a>
+        </div>
+        <div>
+          <h4>Product</h4>
+          <a href="/checkout.html">Pricing</a>
+          <a href="/crm.html">Application tracker</a>
+          <a href="#" onclick="gotoLogin();return false;">Sign in</a>
+        </div>
+      </div>
+      <div class="foot-bottom">
+        <div class="nav-logo" style="font-size:14px"><img src="/favicon.svg" alt="AutoApplier logo" class="logo-img"/> AutoApplier</div>
+        <div>© <span id="yr"></span> AutoApplier. Automated job applications for LinkedIn, Indeed, Naukri, Naukri Gulf, Bayt and Internshala.</div>
       </div>
     </div>
   </footer>

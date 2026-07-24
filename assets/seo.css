@@ -94,3 +94,9 @@ p{color:var(--muted)}
 .foot-grid a:hover{color:var(--accent)}
 .foot-b{margin-top:26px;padding-top:18px;border-top:1px solid var(--border);font-size:13px}
 @media(max-width:640px){.foot-grid{grid-template-columns:1fr}}
+/* Mega SEO footer (link hub) */
+.foot-lead p{font-size:14px;margin-top:10px;max-width:460px}
+.foot-cols{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:22px 26px;margin-top:26px}
+.foot-cols h4{margin:0 0 8px;font-size:13px}
+.foot-cols a{display:block;color:var(--muted);font-size:13.5px;padding:3px 0;line-height:1.25}
+.foot-cols a:hover{color:var(--accent)}
