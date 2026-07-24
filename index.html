@@ -752,15 +752,19 @@
     </div>
   </div>
 
-  <!-- Demo video panel (full-bleed, muted autoplay) -->
+  <!-- Demo video panel (centered box, muted autoplay) -->
   <style>
-    .video-panel { width: 100vw; position: relative; left: 50%; transform: translateX(-50%); background: #0b1220; line-height: 0; overflow: hidden; }
-    .video-panel video { display: block; width: 100%; height: auto; max-height: 100vh; object-fit: cover; }
+    .video-panel { padding: 40px 22px 8px; display: flex; justify-content: center; }
+    .video-box { width: 100%; max-width: 880px; border-radius: 18px; overflow: hidden; background: #0b1220; line-height: 0; border: 1px solid var(--border); box-shadow: 0 34px 80px -34px rgba(15,23,42,.5), 0 4px 14px rgba(15,23,42,.08); }
+    .video-box video { display: block; width: 100%; height: auto; max-height: 78vh; object-fit: contain; }
+    @media (max-width: 560px) { .video-panel { padding: 26px 16px 4px; } }
   </style>
   <section class="video-panel" aria-label="AutoApplier demo video">
-    <video autoplay muted loop playsinline preload="metadata">
-      <source src="https://upload.hudace.com/wp-content/uploads/2026/07/JOB-AUTO-APPLY-BOT.mp4" type="video/mp4" />
-    </video>
+    <div class="video-box">
+      <video autoplay muted loop playsinline preload="metadata">
+        <source src="https://upload.hudace.com/wp-content/uploads/2026/07/JOB-AUTO-APPLY-BOT.mp4" type="video/mp4" />
+      </video>
+    </div>
   </section>
 
   <!-- One-click action band (photos from Pixabay) -->
