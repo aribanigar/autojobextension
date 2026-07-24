@@ -436,6 +436,17 @@
     .auth-or { display: flex; align-items: center; gap: 10px; margin: 16px 0 4px; color: var(--muted); font-size: 12px; }
     .auth-or::before, .auth-or::after { content: ""; flex: 1; height: 1px; background: var(--border); }
 
+    /* Request-a-demo modal */
+    .demo-overlay { position: fixed; inset: 0; background: rgba(15,23,42,.5); backdrop-filter: blur(4px); display: none; align-items: center; justify-content: center; z-index: 200; padding: 20px; }
+    .demo-overlay.on { display: flex; }
+    .demo-modal { width: 100%; max-width: 440px; background: #fff; border: 1px solid var(--border); border-radius: 18px; padding: 28px 26px; position: relative; box-shadow: 0 30px 70px -20px rgba(15,23,42,.4); max-height: 92vh; overflow-y: auto; }
+    .demo-modal h2 { font-size: 22px; font-weight: 800; margin-bottom: 4px; }
+    .demo-modal .sub { font-size: 14px; color: var(--muted); margin-bottom: 16px; }
+    .demo-modal textarea { width: 100%; background: var(--card); border: 1px solid var(--border); color: var(--text); border-radius: 9px; padding: 10px 12px; font-size: 14px; font-family: inherit; resize: vertical; }
+    .demo-modal textarea:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px rgba(37,99,235,.14); }
+    .demo-x { position: absolute; top: 14px; right: 16px; background: none; border: none; font-size: 24px; line-height: 1; color: var(--muted); cursor: pointer; }
+    .demo-x:hover { color: var(--text); }
+
     /* ── Subscribe / plans section ─────────────────────────────────────────── */
     .sub-hero {
       text-align: center; padding: 30px 24px 6px; margin-bottom: 22px;
@@ -631,6 +642,7 @@
     <a href="#platforms">Platforms</a>
     <a href="#features">Features</a>
     <a href="#faq">FAQ</a>
+    <a href="#" onclick="openDemo();return false;">Request a demo</a>
   </div>
   <div id="nav-right">
     <button class="btn btn-ghost" onclick="gotoLogin()">Sign In</button>
@@ -651,6 +663,7 @@
           <div class="hero-cta">
             <button class="btn btn-primary btn-lg" onclick="gotoSignup()">Start applying on autopilot <i class="fi-rr-arrow-right"></i></button>
             <a class="btn btn-ghost btn-lg" href="#how">See how it works</a>
+            <button class="btn btn-ghost btn-lg" onclick="openDemo()">Request a demo</button>
           </div>
           <div class="feature-list">
             <div class="feature-item"><span class="tick"><i class="fi-rr-check"></i></span> Applies for you on LinkedIn Easy Apply, Indeed, Naukri and Bayt</div>
@@ -1264,6 +1277,29 @@
 
 </div>
 
+<!-- Request-a-demo modal -->
+<div id="demo-overlay" class="demo-overlay">
+  <div class="demo-modal">
+    <button class="demo-x" onclick="closeDemo()" aria-label="Close">×</button>
+    <h2>Request a demo</h2>
+    <p class="sub">Leave your details and our team will reach out to walk you through AutoApplier.</p>
+    <form id="demo-form" onsubmit="submitDemo(event)">
+      <div class="field"><label>Full name</label><input type="text" id="d-name" placeholder="Your name" autocomplete="name" required /></div>
+      <div class="field"><label>Email</label><input type="email" id="d-email" placeholder="you@example.com" autocomplete="email" required /></div>
+      <div class="field"><label>Phone / WhatsApp</label><input type="tel" id="d-phone" placeholder="+91 90000 00000" autocomplete="tel" required /></div>
+      <div class="field"><label>Message <span style="text-transform:none;font-weight:400;color:var(--dim)">(optional)</span></label><textarea id="d-msg" rows="2" placeholder="What would you like to see?"></textarea></div>
+      <div class="ferr" id="demo-err"></div>
+      <button type="submit" id="demo-btn" class="btn btn-primary btn-lg" style="width:100%;margin-top:4px;">Request demo</button>
+    </form>
+    <div id="demo-ok" style="display:none;text-align:center;padding:12px 0">
+      <div style="font-size:40px">✅</div>
+      <h3 style="margin:8px 0 4px">Thanks — we'll be in touch!</h3>
+      <p class="sub">Our team will reach out to you shortly.</p>
+      <button class="btn btn-ghost btn-lg" style="margin-top:12px" onclick="closeDemo()">Close</button>
+    </div>
+  </div>
+</div>
+
 <div id="toast"></div>
 
 <script>
@@ -1569,6 +1605,45 @@
   document.getElementById('s-eye')?.addEventListener('click', () => {
     const p = document.getElementById('s-pass'); p.type = p.type === 'password' ? 'text' : 'password';
   });
+
+  // ── Request a demo ─────────────────────────────────────────────────────────
+  function openDemo() {
+    const ov = document.getElementById('demo-overlay');
+    document.getElementById('demo-form').style.display = '';
+    document.getElementById('demo-ok').style.display = 'none';
+    ['d-name','d-email','d-phone','d-msg'].forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
+    const err = document.getElementById('demo-err'); if (err) err.classList.remove('show');
+    ov.classList.add('on');
+    setTimeout(() => document.getElementById('d-name')?.focus(), 60);
+  }
+  function closeDemo() { document.getElementById('demo-overlay')?.classList.remove('on'); }
+  document.getElementById('demo-overlay')?.addEventListener('click', e => { if (e.target.id === 'demo-overlay') closeDemo(); });
+  async function submitDemo(e) {
+    e.preventDefault();
+    const name = document.getElementById('d-name').value.trim();
+    const email = document.getElementById('d-email').value.trim();
+    const phone = document.getElementById('d-phone').value.trim();
+    const message = document.getElementById('d-msg').value.trim();
+    const btn = document.getElementById('demo-btn');
+    const err = document.getElementById('demo-err');
+    err.classList.remove('show');
+    btn.disabled = true; btn.textContent = 'Sending…';
+    try {
+      const r = await post('/api/auth', { action: 'demo', name, email, phone, message });
+      const d = await r.json().catch(() => ({}));
+      if (r.ok) {
+        document.getElementById('demo-form').style.display = 'none';
+        document.getElementById('demo-ok').style.display = 'block';
+      } else {
+        err.textContent = d.error || 'Could not send your request — please try again';
+        err.classList.add('show');
+      }
+    } catch {
+      err.textContent = 'Network error, please try again';
+      err.classList.add('show');
+    }
+    btn.disabled = false; btn.textContent = 'Request demo';
+  }
 
   // Reveal the landing view and open the sign-up card (hero CTA for new users).
   function gotoSignup() {

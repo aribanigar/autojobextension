@@ -50,6 +50,19 @@ alter table users add column if not exists reset_expires timestamptz;
 alter table users add column if not exists name  text;
 alter table users add column if not exists phone text;
 
+-- Demo requests from the landing page "Request a demo" form. Shown in the admin
+-- Demos tab so the team can follow up. (Safe to re-run.)
+create table if not exists demo_requests (
+  id         uuid primary key default gen_random_uuid(),
+  name       text,
+  email      text,
+  phone      text,
+  message    text,
+  created_at timestamptz not null default now()
+);
+alter table demo_requests enable row level security;
+create index if not exists demo_requests_created_idx on demo_requests (created_at desc);
+
 -- Plans the admin creates in the admin panel. price_paise is in paise (₹1 = 100).
 -- interval 'once' = lifetime one-time purchase; 'monthly' = Razorpay subscription.
 -- features is a free-form JSON map of feature-flags the admin can toggle per plan.
