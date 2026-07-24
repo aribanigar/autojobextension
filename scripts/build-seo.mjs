@@ -9,7 +9,7 @@ import { dirname, join, resolve } from 'node:path';
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const BASE = 'https://jobs.qckserve.in';
 const GA = 'G-39RMDHJLXG';
-const TODAY = '2026-07-23';
+const TODAY = '2026-07-24';
 
 const esc = s => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 const jsonld = o => JSON.stringify(o).replace(/</g, '\\u003c');
@@ -48,6 +48,7 @@ ${jsonLd.map(o => `<script type="application/ld+json">${jsonld(o)}</script>`).jo
 const nav = `<header class="nav"><div class="wrap nav-in">
 <a class="brand" href="/"><img src="/favicon.svg" alt="AutoApplier logo" width="26" height="26" /> AutoApplier</a>
 <nav class="nav-links">
+  <a href="/auto-apply-jobs">Auto apply</a>
   <a href="/linkedin-auto-apply">LinkedIn</a>
   <a href="/indeed-auto-apply">Indeed</a>
   <a href="/naukri-auto-apply">Naukri</a>
@@ -66,6 +67,7 @@ const footer = `<footer class="foot"><div class="wrap">
   </div>
   <div>
     <h4>Auto apply</h4>
+    <a href="/auto-apply-jobs">Auto apply to jobs</a>
     <a href="/linkedin-auto-apply">LinkedIn auto apply</a>
     <a href="/indeed-auto-apply">Indeed auto apply</a>
     <a href="/naukri-auto-apply">Naukri auto apply</a>
@@ -564,9 +566,96 @@ ${footer}
   return head({ title: 'AutoApplier Blog — Auto Apply Guides for LinkedIn, Indeed, Naukri & Bayt', desc: 'Guides on auto applying to jobs on LinkedIn, Indeed, Naukri and Bayt — save hours, apply to more roles, and do it safely.', path, jsonLd: [blogLd, crumbs('Blog', path)] }) + body;
 }
 
+// ── Head-term pillar page: "auto apply to jobs" / "auto job apply" ────────────
+// The primary keyword page (LoopCV-style head term). Everything else links up
+// into this, and it links out to every platform + comparison page.
+function pillarPage() {
+  const path = '/auto-apply-jobs';
+  const faqs = [
+    { q: 'What is auto apply for jobs?', a: 'Auto apply is software that submits job applications for you. Instead of opening each posting and retyping the same details, an auto apply agent like AutoApplier opens each listing, fills the form, answers the screening questions from your saved profile, clicks through the multi-step flow and submits — then moves to the next job on its own.' },
+    { q: 'Is there a bot that applies to jobs for you?', a: 'Yes. AutoApplier is a job application bot — a Chrome and Edge extension that auto-applies on LinkedIn Easy Apply, Indeed, Naukri, Naukri Gulf and Bayt. It runs inside your own browser on your own login, answers screening questions from your profile, and keeps applying across results pages until you press Stop.' },
+    { q: 'How do I auto apply to jobs automatically?', a: 'Install the AutoApplier extension, fill your profile once, run your normal search on any supported job board, and press Start applying on autopilot. The agent applies to every matching role — or only the ones you tick — and logs each application in a built-in tracker.' },
+    { q: 'Is auto applying to jobs safe?', a: 'AutoApplier runs inside your own browser using your own login, with human-like timing, and never auto-solves captchas — it flags them and resumes once you solve them. It does nothing you could not do yourself, and you can stop it instantly.' },
+    { q: 'Which job boards can it auto apply to?', a: 'LinkedIn Easy Apply, Indeed, Naukri, Naukri Gulf and Bayt — all from one profile and one extension, with pricing shown in your local currency for the India, Middle East, US and UK markets.' },
+    { q: 'Does it just autofill or actually submit?', a: 'It fully submits. Autofill tools only pre-fill fields and still make you click Submit on every job. AutoApplier completes the whole application, clicks through the multi-step flow, submits, and continues to the next job automatically.' },
+  ];
+  const stepList = [
+    { t: 'Install the extension', d: 'Add AutoApplier to Chrome or Edge in a couple of minutes — the dashboard walks you through every step.' },
+    { t: 'Fill your profile once', d: 'Enter your details, experience, notice period, salary and work authorization. These answer screening questions automatically; anything new is learned the first time you type it.' },
+    { t: 'Search and press Start', d: 'Run your normal search on any supported board and press Start applying on autopilot. The agent opens each role, fills the form and submits.' },
+    { t: 'It applies, page after page', d: 'AutoApplier works through every results page hands-free, pausing only for captchas — which it flags and then resumes once solved.' },
+  ];
+  const benefits = [
+    'Auto applies on LinkedIn Easy Apply, Indeed, Naukri, Naukri Gulf and Bayt',
+    'Fully submits applications — not just autofill',
+    'Answers screening questions from your profile and learns new ones',
+    'Runs on your own login with human-like pacing',
+    'Apply to everything, or tick only the roles you want',
+    'Every application logged in a built-in tracker',
+  ];
+  const body = `<body>
+${nav}
+<main>
+<section class="hero"><div class="wrap">
+  <div class="pill">Auto apply to jobs</div>
+  <h1>Auto apply to jobs — the bot that applies for you</h1>
+  <p class="lead">AutoApplier is an auto job apply agent for <b>LinkedIn Easy Apply, Indeed, Naukri, Naukri Gulf and Bayt</b>. Set up your profile once, run your normal search, and it applies to job after job automatically — filling the form, answering screening questions and submitting, hands-free.</p>
+  <div class="cta-row">
+    <a class="btn btn-primary btn-lg" href="/">Start applying on autopilot →</a>
+    <a class="btn btn-ghost btn-lg" href="/checkout">See pricing</a>
+  </div>
+  <p class="micro">Works on Chrome &amp; Edge · runs on your own login · stop anytime</p>
+</div></section>
+
+<section class="sec"><div class="wrap narrow">
+  <h2>What is auto apply for jobs?</h2>
+  <p>Auto apply means software applies to jobs for you. Instead of opening each posting, retyping your details and answering the same screening questions over and over, an auto apply agent completes the whole application and submits it — then moves on to the next job by itself. AutoApplier is a true auto apply tool (a job application bot), not just an autofill helper: it opens each listing, maps every field to your saved profile, answers screening questions, clicks through the multi-step flow, submits, and keeps going across every results page until you tell it to stop.</p>
+</div></section>
+
+<section class="sec sec-alt"><div class="wrap">
+  <h2>How to auto apply to jobs</h2>
+  ${steps(stepList)}
+</div></section>
+
+<section class="sec"><div class="wrap">
+  <h2>Why AutoApplier</h2>
+  ${checks(benefits)}
+</div></section>
+
+<section class="sec sec-alt"><div class="wrap">
+  <h2>Auto apply on every major job board</h2>
+  <p class="muted">One extension, one profile — auto apply across all four supported boards:</p>
+  <div class="cards">
+    ${platforms.map(o => `<a class="pcard" href="/${o.slug}"><img src="/assets/logos/${o.logo}" alt="${o.name}" height="22" /><b>${o.name} auto apply</b><span>Automate applications on ${o.name}.</span></a>`).join('')}
+  </div>
+</div></section>
+
+<section class="sec"><div class="wrap narrow">
+  <h2>Auto apply vs autofill</h2>
+  <p>Autofill only pre-fills form fields — you still open each job and click Submit yourself, so you stay the bottleneck. Auto apply completes and submits the whole application and continues to the next job on its own. If you want your time back, you want a true auto apply agent. Compare the options on the <a href="/best-auto-apply-tools">best auto apply tools</a> page, or see how AutoApplier stacks up as a <a href="/loopcv-alternative">LoopCV alternative</a>, <a href="/lazyapply-alternative">LazyApply alternative</a> and <a href="/simplify-alternative">Simplify alternative</a>.</p>
+</div></section>
+
+<section class="cta-band"><div class="wrap">
+  <h2>Let the bot apply while you do something else</h2>
+  <p>Set up your profile once and let AutoApplier work through page after page of matching jobs — hands-free.</p>
+  <a class="btn btn-primary btn-lg" href="/">Get started free →</a>
+</div></section>
+
+${faqBlock(faqs)}
+</main>
+${footer}
+</body></html>`;
+  return head({
+    title: 'Auto Apply to Jobs — Auto Job Apply Bot for LinkedIn, Indeed, Naukri & Bayt | AutoApplier',
+    desc: 'Auto apply to jobs automatically. AutoApplier is an auto job apply bot for LinkedIn Easy Apply, Indeed, Naukri and Bayt — it opens each listing, fills the form, answers screening questions and submits, hands-free.',
+    path, jsonLd: [softwareApp, org, crumbs('Auto apply to jobs', path), faqLd(faqs)],
+  }) + body;
+}
+
 // ── Write pages ──────────────────────────────────────────────────────────────
 import { mkdirSync } from 'node:fs';
 const pages = [];
+writeFileSync(join(ROOT, 'auto-apply-jobs.html'), pillarPage()); pages.push('/auto-apply-jobs');
 for (const p of platforms) { const f = `${p.slug}.html`; writeFileSync(join(ROOT, f), platformPage(p)); pages.push('/' + p.slug); }
 writeFileSync(join(ROOT, 'best-auto-apply-tools.html'), bestToolsPage()); pages.push('/best-auto-apply-tools');
 for (const a of alternatives) { writeFileSync(join(ROOT, `${a.slug}.html`), alternativePage(a)); pages.push('/' + a.slug); }
@@ -578,7 +667,7 @@ for (const p of posts) { writeFileSync(join(ROOT, 'blog', `${p.slug}.html`), art
 // Sitemap (marketing + SEO pages only; app/utility pages excluded).
 const sitemapUrls = [
   { loc: '/', pr: '1.0' }, { loc: '/checkout', pr: '0.8' },
-  ...pages.map(u => ({ loc: u, pr: '0.9' })),
+  ...pages.map(u => ({ loc: u, pr: u === '/auto-apply-jobs' ? '0.95' : '0.9' })),
 ];
 const sitemap = `<?xml version="1.0" encoding="UTF-8"?>
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
