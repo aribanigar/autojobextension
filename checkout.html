@@ -259,8 +259,10 @@
     <div class="modal">
       <button class="x" id="close">×</button>
       <h2 id="m-title">Continue to payment</h2>
-      <p id="m-sub">Enter your email and a password. We'll create your account and take you to payment.</p>
+      <p id="m-sub">Create your account and we'll take you to payment.</p>
+      <input id="m-name" type="text" placeholder="Full name" autocomplete="name" />
       <input id="m-email" type="email" placeholder="Email" autocomplete="email" />
+      <input id="m-phone" type="tel" placeholder="Phone / WhatsApp" autocomplete="tel" />
       <div style="position:relative">
         <input id="m-pass" type="password" placeholder="Password (min 6 chars)" autocomplete="current-password" style="padding-right:44px" />
         <button type="button" id="m-eye" title="Show/hide" style="position:absolute;right:10px;top:50%;transform:translateY(-50%);background:none;border:none;color:var(--muted);cursor:pointer;font-size:16px">👁</button>
@@ -330,8 +332,9 @@
     function start(plan_id, name) {
       pendingPlan = { id: plan_id, name };
       if (token) return pay();
-      $('#m-msg').textContent = ''; $('#m-email').value = ''; $('#m-pass').value = '';
-      $('#overlay').classList.add('on'); $('#m-email').focus();
+      $('#m-msg').textContent = '';
+      ['m-name','m-email','m-phone','m-pass'].forEach(id => { const el = $('#'+id); if (el) el.value = ''; });
+      $('#overlay').classList.add('on'); $('#m-name').focus();
     }
     $('#close').onclick = () => $('#overlay').classList.remove('on');
 
@@ -339,9 +342,12 @@
     // already exists, log in with the same password — then go straight to pay.
     async function continueAndPay() {
       const email = $('#m-email').value.trim(), password = $('#m-pass').value;
+      const name = ($('#m-name')?.value || '').trim(), phone = ($('#m-phone')?.value || '').trim();
       if (!email || password.length < 6) { $('#m-msg').className='msg err'; $('#m-msg').textContent = 'Enter your email and a password (min 6 characters)'; return; }
       $('#m-msg').className='msg'; $('#m-msg').textContent = 'Setting up your account…';
-      const call = action => fetch('/api/auth', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({action,email,password}) });
+      // name/phone are captured on signup so the owner can follow up with buyers;
+      // the login action simply ignores them for an existing account.
+      const call = action => fetch('/api/auth', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({action,email,password,name,phone}) });
       try {
         let r = await call('signup'), d = await r.json();
         if (r.status === 409) { r = await call('login'); d = await r.json(); } // exists → log in
