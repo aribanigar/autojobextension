@@ -793,8 +793,8 @@
   <style>
     .oneclick { padding: 58px 0; }
     .oc-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 46px; align-items: center; }
-    .oc-media { position: relative; }
-    .oc-media img { width: 100%; border-radius: 18px; box-shadow: 0 26px 64px -26px rgba(15,23,42,.4); display: block; }
+    .oc-media { position: relative; max-width: 360px; margin: 0 auto; }
+    .oc-media img { width: 100%; height: auto; border-radius: 18px; box-shadow: 0 26px 64px -26px rgba(15,23,42,.4); display: block; border: 1px solid var(--border); }
     .oc-badge { position: absolute; top: 16px; left: 16px; background: #16a34a; color: #fff; font-weight: 800; font-size: 13px; padding: 8px 15px; border-radius: 999px; box-shadow: 0 10px 24px rgba(22,163,74,.4); display: inline-flex; align-items: center; gap: 8px; }
     .oc-badge .dot { width: 8px; height: 8px; border-radius: 50%; background: #fff; box-shadow: 0 0 0 4px rgba(255,255,255,.35); }
     .oc-copy h2 { font-size: clamp(26px, 3.4vw, 38px); line-height: 1.1; letter-spacing: -.02em; margin-bottom: 14px; }
