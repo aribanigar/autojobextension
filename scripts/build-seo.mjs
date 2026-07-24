@@ -53,6 +53,7 @@ const nav = `<header class="nav"><div class="wrap nav-in">
   <a href="/naukri-auto-apply">Naukri</a>
   <a href="/bayt-auto-apply">Bayt</a>
   <a href="/best-auto-apply-tools">Compare</a>
+  <a href="/blog">Blog</a>
 </nav>
 <a class="btn btn-primary" href="/">Get started</a>
 </div></header>`;
@@ -358,10 +359,221 @@ ${footer}
   }) + body;
 }
 
+// ── Competitor alternative pages ─────────────────────────────────────────────
+// Neutral, factual positioning against each tool's publicly described focus.
+const alternatives = [
+  {
+    slug: 'loopcv-alternative', comp: 'LoopCV',
+    focus: 'LoopCV is known as an automated job-search platform that finds jobs from feeds and can send applications and outreach emails, aimed at a global audience.',
+    reasons: ['You want a tool built for LinkedIn Easy Apply, Indeed, Naukri, Naukri Gulf and Bayt specifically', 'You want the agent to fully complete and submit each application form, not just email or feed-match', 'You want screening questions answered from your profile and remembered for next time', 'You want pricing shown in your local currency for India, the Middle East, the US or the UK'],
+  },
+  {
+    slug: 'lazyapply-alternative', comp: 'LazyApply',
+    focus: 'LazyApply is widely known for bulk-applying to jobs, with a strong focus on LinkedIn Easy Apply.',
+    reasons: ['You want to cover Indeed, Naukri, Naukri Gulf and Bayt as well as LinkedIn', 'You want an agent that answers screening questions from your profile and learns new ones', 'You want captcha hand-off with auto-resume instead of a run that stalls', 'You want every application logged in a built-in tracker'],
+  },
+  {
+    slug: 'simplify-alternative', comp: 'Simplify',
+    focus: 'Simplify is popular as an autofill assistant that pre-fills application forms across many ATS portals, primarily for the US market.',
+    reasons: ['You want the application actually submitted, not just autofilled for you to click Submit', 'You want coverage of LinkedIn Easy Apply, Indeed, Naukri, Naukri Gulf and Bayt', 'You want it to run job after job across every results page on its own', 'You want India and Middle East job boards and local-currency pricing'],
+  },
+  {
+    slug: 'jobright-alternative', comp: 'Jobright',
+    focus: 'Jobright is known for AI job matching and an autofill/turbo apply assistant, mainly for US roles.',
+    reasons: ['You want a hands-free agent that submits on LinkedIn, Indeed, Naukri and Bayt', 'You want screening answers filled from your profile with smart memory', 'You want to run on your own login inside your own browser with human-like pacing', 'You want transparent local-currency pricing for India, the Middle East, the US and the UK'],
+  },
+];
+
+function alternativePage(a) {
+  const path = '/' + a.slug;
+  const faqs = [
+    { q: `What is a good ${a.comp} alternative?`, a: `AutoApplier is a strong ${a.comp} alternative if you apply on LinkedIn Easy Apply, Indeed, Naukri, Naukri Gulf or Bayt. It fully completes and submits each application, answers screening questions from your profile, learns new answers, and runs job after job on its own.` },
+    { q: `How is AutoApplier different from ${a.comp}?`, a: `${a.focus} AutoApplier focuses on completing and submitting real applications across LinkedIn, Indeed, Naukri, Naukri Gulf and Bayt, with local-currency pricing for the India, Middle East, US and UK markets.` },
+    { q: 'Does AutoApplier actually submit applications?', a: 'Yes. It is a true auto apply tool — it opens each listing, fills the form, answers screening questions, clicks through the multi-step flow and submits, then moves to the next job.' },
+    { q: 'Is AutoApplier safe to use?', a: 'It runs inside your own browser using your own login, with human-like timing, and never auto-solves captchas. You stay in control and can stop it instantly.' },
+  ];
+  const rows = [
+    ['AutoApplier', 'LinkedIn, Indeed, Naukri, Naukri Gulf, Bayt', 'Full submit + learns answers', 'India, Middle East, US, UK'],
+    [a.comp, '—', a.focus.replace(/\.$/, ''), '—'],
+  ];
+  const table = `<div class="tablewrap"><table class="cmp"><thead><tr><th>Tool</th><th>Job boards</th><th>What it does</th><th>Best for</th></tr></thead><tbody>${rows.map((r, i) => `<tr${i === 0 ? ' class="hi"' : ''}>${r.map((c, j) => `<td>${j === 0 ? `<b>${esc(c)}</b>` : esc(c)}</td>`).join('')}</tr>`).join('')}</tbody></table></div>`;
+  const body = `<body>
+${nav}
+<main>
+<section class="hero"><div class="wrap">
+  <div class="pill">${esc(a.comp)} alternative</div>
+  <h1>The best ${esc(a.comp)} alternative for LinkedIn, Indeed, Naukri &amp; Bayt</h1>
+  <p class="lead">Looking for a ${esc(a.comp)} alternative that actually submits applications across the job boards you use? AutoApplier auto-applies on LinkedIn Easy Apply, Indeed, Naukri, Naukri Gulf and Bayt — answering screening questions from your profile and moving job to job, hands-free.</p>
+  <div class="cta-row"><a class="btn btn-primary btn-lg" href="/">Start applying on autopilot →</a><a class="btn btn-ghost btn-lg" href="/checkout">See pricing</a></div>
+</div></section>
+<section class="sec"><div class="wrap narrow">
+  <h2>What is ${esc(a.comp)}?</h2>
+  <p>${esc(a.focus)} It is a solid option for its use case — but if your job search runs through LinkedIn, Indeed, Naukri or Bayt and you want the whole application completed and submitted for you, AutoApplier is built for exactly that.</p>
+</div></section>
+<section class="sec sec-alt"><div class="wrap">
+  <h2>AutoApplier vs ${esc(a.comp)}</h2>
+  ${table}
+  <p class="micro">Comparison reflects each tool’s primary, publicly described focus and can change as products update. AutoApplier is our own product.</p>
+</div></section>
+<section class="sec"><div class="wrap narrow">
+  <h2>When AutoApplier is the better choice</h2>
+  ${checks(a.reasons)}
+  <div class="cta-row" style="margin-top:20px"><a class="btn btn-primary btn-lg" href="/">Try AutoApplier →</a></div>
+</div></section>
+<section class="sec sec-alt"><div class="wrap">
+  <h2>Auto apply, board by board</h2>
+  <div class="cards">${platforms.map(o => `<a class="pcard" href="/${o.slug}"><img src="/assets/logos/${o.logo}" alt="${o.name}" height="22" /><b>${o.name} auto apply</b><span>How AutoApplier automates ${o.name}.</span></a>`).join('')}</div>
+</div></section>
+${faqBlock(faqs)}
+</main>
+${footer}
+</body></html>`;
+  return head({
+    title: `Best ${a.comp} Alternative (2026) — Auto Apply on LinkedIn, Indeed, Naukri & Bayt | AutoApplier`,
+    desc: `Looking for a ${a.comp} alternative? AutoApplier auto-applies on LinkedIn Easy Apply, Indeed, Naukri, Naukri Gulf and Bayt — fully submitting applications and answering screening questions from your profile.`,
+    path, jsonLd: [org, softwareApp, crumbs(`${a.comp} alternative`, path), faqLd(faqs)],
+  }) + body;
+}
+
+// ── Blog ─────────────────────────────────────────────────────────────────────
+const posts = [
+  {
+    slug: 'how-to-auto-apply-linkedin-jobs', date: '2026-07-20',
+    title: 'How to Auto Apply to Jobs on LinkedIn (2026 Guide)',
+    desc: 'A step-by-step guide to auto applying on LinkedIn Easy Apply — set up your profile once and let AutoApplier open, fill and submit each application for you.',
+    h1: 'How to auto apply to jobs on LinkedIn (2026 guide)',
+    body: `<p class="lead">Applying to LinkedIn jobs by hand is slow: open a posting, click Easy Apply, retype the same details, answer the same screening questions, submit, repeat. This guide shows how to auto apply on LinkedIn Easy Apply so the whole loop runs for you.</p>
+<h2>What "auto apply" means on LinkedIn</h2>
+<p>LinkedIn auto apply means software completes the Easy Apply flow on your behalf — reading each modal, mapping fields to your profile, answering screening questions, and clicking Next, Review and Submit. You still run a normal search; the tool just does the repetitive part.</p>
+<h2>Step 1 — Install AutoApplier</h2>
+<p>AutoApplier is a Chrome and Edge extension. Sign in on the dashboard, download the zip, unzip it, open <code>chrome://extensions</code>, turn on Developer mode, and click Load unpacked to add the folder. The dashboard walks you through every step.</p>
+<h2>Step 2 — Fill your profile once</h2>
+<p>Enter your name, contact details, experience, notice period, salary expectations and work authorization in the extension. These answer the screening questions automatically, and anything the agent can't map is learned the first time you answer it.</p>
+<h2>Step 3 — Search on LinkedIn and press Start</h2>
+<p>Open LinkedIn Jobs, filter by title, location and Easy Apply, then press Start. AutoApplier opens each Easy Apply role, fills the form, handles the multi-step flow including the resume step, submits, and moves to the next job across every results page.</p>
+<h2>Step 4 — Stay in control</h2>
+<p>The agent runs on your own login with human-like timing. It never auto-solves captchas — it flags them and resumes once you solve them — and you can stop it instantly. You can also tick only the specific roles you want instead of applying to everything.</p>
+<h2>Do more than LinkedIn</h2>
+<p>The same profile and extension also auto-apply on <a href="/indeed-auto-apply">Indeed</a>, <a href="/naukri-auto-apply">Naukri</a> and <a href="/bayt-auto-apply">Bayt</a>. See the full <a href="/linkedin-auto-apply">LinkedIn auto apply</a> page for details.</p>`,
+    faqs: [
+      { q: 'Is auto applying on LinkedIn safe?', a: 'AutoApplier runs inside your own browser using your own login, with human-like timing, and never auto-solves captchas. You stay in control and can stop it instantly.' },
+      { q: 'Can I control which LinkedIn jobs it applies to?', a: 'Yes — apply to every job matching your search, or tick only the specific roles you want and it applies to just those, in order.' },
+    ],
+  },
+  {
+    slug: 'how-to-apply-100-jobs-a-day', date: '2026-07-18',
+    title: 'How to Apply to 100+ Jobs a Day Without Doing It Manually',
+    desc: 'Applying to more roles is the single biggest lever for landing interviews. Here is how to apply to 100+ jobs a day using an auto apply agent instead of doing it by hand.',
+    h1: 'How to apply to 100+ jobs a day without doing it manually',
+    body: `<p class="lead">More applications means more interviews — but nobody can hand-apply to a hundred jobs a day for long. The fix isn't working faster; it's letting an agent do the repetitive applying while you focus on the roles that matter.</p>
+<h2>Why volume matters</h2>
+<p>Early applicants get seen first, and every extra application is another shot at a match. Most people stall after a handful because the process is repetitive. Automation removes that ceiling.</p>
+<h2>Autofill isn't enough</h2>
+<p>Autofill tools pre-fill fields but still make you click Submit on every job — so you're still the bottleneck. A true auto apply agent completes and submits the application and moves on by itself. Read more in <a href="/best-auto-apply-tools">best auto apply tools</a>.</p>
+<h2>How to actually hit high volume</h2>
+<p>1) Set up your profile once so screening questions answer themselves. 2) Run a broad but relevant search on your job board. 3) Press Start and let AutoApplier work through page after page — on <a href="/linkedin-auto-apply">LinkedIn</a>, <a href="/indeed-auto-apply">Indeed</a>, <a href="/naukri-auto-apply">Naukri</a> and <a href="/bayt-auto-apply">Bayt</a>. 4) Check the built-in tracker to see everything it applied to.</p>
+<h2>Do it responsibly</h2>
+<p>Keep your search relevant so you apply to roles you'd actually take, run on your own login with human-like pacing, and solve captchas yourself when the agent flags them. Volume works best when the applications still fit you.</p>`,
+    faqs: [
+      { q: 'Is it realistic to apply to 100 jobs a day?', a: 'With an auto apply agent handling the forms and screening questions, working through page after page of relevant roles is realistic — far more than hand-applying allows.' },
+      { q: 'Will applying to many jobs hurt my chances?', a: 'Keep your search relevant so every application still fits you. Volume helps most when the roles are a genuine match.' },
+    ],
+  },
+  {
+    slug: 'auto-apply-vs-autofill', date: '2026-07-15',
+    title: 'Auto Apply vs Autofill: Which Actually Submits Your Applications?',
+    desc: 'Autofill and auto apply sound similar but do very different things. Here is the difference — and why it decides how much time you actually save.',
+    h1: 'Auto apply vs autofill: which actually submits your applications?',
+    body: `<p class="lead">Many "job application" tools only autofill. A few actually auto apply. The difference decides whether you save minutes or hours — so it's worth understanding before you pick one.</p>
+<h2>What autofill does</h2>
+<p>Autofill reads a form and pre-fills fields from a saved profile. It's helpful, but you still open each job, review the fields, handle multi-step screens, and click Submit yourself. You remain the bottleneck on every single application.</p>
+<h2>What auto apply does</h2>
+<p>Auto apply completes the whole application: it opens the listing, fills every field, answers screening questions, clicks through the multi-step flow, submits, and moves to the next job — on its own. That's the category AutoApplier is in.</p>
+<h2>Why it matters for screening questions</h2>
+<p>Real applications ask questions autofill can't guess — notice period, expected salary, work authorization. AutoApplier answers these from your profile and <b>learns</b> new ones you type, so future applications get faster. Autofill typically leaves these to you.</p>
+<h2>Which should you choose?</h2>
+<p>If you apply on <a href="/linkedin-auto-apply">LinkedIn</a>, <a href="/indeed-auto-apply">Indeed</a>, <a href="/naukri-auto-apply">Naukri</a> or <a href="/bayt-auto-apply">Bayt</a> and want your time back, choose a true auto apply agent. See the <a href="/best-auto-apply-tools">comparison of auto apply tools</a> for how the options stack up.</p>`,
+    faqs: [
+      { q: 'Is autofill the same as auto apply?', a: 'No. Autofill only pre-fills fields — you still submit each job. Auto apply completes and submits the whole application and moves to the next one on its own.' },
+      { q: 'Does AutoApplier autofill or auto apply?', a: 'AutoApplier is a true auto apply agent: it fills, clicks through the multi-step flow, submits, and continues to the next job automatically.' },
+    ],
+  },
+  {
+    slug: 'auto-apply-naukri-bayt-guide', date: '2026-07-12',
+    title: 'How to Auto Apply on Naukri and Bayt (India & Middle East Guide)',
+    desc: 'A practical guide to auto applying on Naukri, Naukri Gulf and Bayt — the leading job boards for India and the Middle East — without retyping the same answers.',
+    h1: 'How to auto apply on Naukri and Bayt (India & Middle East guide)',
+    body: `<p class="lead">If your job search is in India or the Middle East, Naukri and Bayt are where the roles are. Here's how to auto apply on both — plus Naukri Gulf — so you cover far more listings without answering the same questions over and over.</p>
+<h2>Naukri: answer the chatbot automatically</h2>
+<p>Naukri applications often trigger a chatbot asking for notice period, current and expected CTC, total experience and location. AutoApplier answers these from your saved profile and remembers anything you type manually, so <a href="/naukri-auto-apply">Naukri auto apply</a> gets faster the more you use it. Naukri Gulf is supported as a separate platform for Gulf roles.</p>
+<h2>Bayt: the leading Middle East board</h2>
+<p>Bayt.com is the biggest job site across the Gulf and MENA. AutoApplier opens each Easy Apply role, answers Bayt's additional questions from your profile, and caps the time per job so it never stalls — see <a href="/bayt-auto-apply">Bayt auto apply</a> for the full flow.</p>
+<h2>One profile, both boards</h2>
+<p>Set your details once and the same profile drives Naukri, Naukri Gulf and Bayt — plus <a href="/linkedin-auto-apply">LinkedIn</a> and <a href="/indeed-auto-apply">Indeed</a>. Pricing is shown in your local currency for the India and Middle East markets.</p>
+<h2>Get started</h2>
+<p>Install the extension, fill your profile, run your normal Naukri or Bayt search, and press Start. The agent applies to matching roles and logs each one in the built-in tracker.</p>`,
+    faqs: [
+      { q: 'Can AutoApplier auto apply on both Naukri and Bayt?', a: 'Yes. It supports Naukri.com, Naukri Gulf and Bayt.com, answering each site’s screening questions from your saved profile.' },
+      { q: 'Is pricing in local currency for India and the Middle East?', a: 'Yes. AutoApplier shows pricing in your local currency, with plans for the India, Middle East, US and UK markets.' },
+    ],
+  },
+];
+
+function articlePage(p) {
+  const path = '/blog/' + p.slug;
+  const article = {
+    '@context': 'https://schema.org', '@type': 'BlogPosting',
+    headline: p.title, description: p.desc,
+    datePublished: p.date, dateModified: p.date,
+    author: { '@type': 'Organization', name: 'AutoApplier' },
+    publisher: { '@type': 'Organization', name: 'AutoApplier', logo: { '@type': 'ImageObject', url: BASE + '/favicon.svg' } },
+    mainEntityOfPage: BASE + path, image: BASE + '/assets/og.png',
+  };
+  const body = `<body>
+${nav}
+<main>
+<article class="sec"><div class="wrap narrow">
+  <p class="micro"><a href="/blog">← Blog</a> · ${p.date}</p>
+  <h1>${esc(p.h1)}</h1>
+  <div class="post">${p.body}</div>
+  <div class="cta-row" style="margin-top:26px"><a class="btn btn-primary btn-lg" href="/">Start applying on autopilot →</a><a class="btn btn-ghost btn-lg" href="/checkout">See pricing</a></div>
+</div></article>
+${faqBlock(p.faqs)}
+</main>
+${footer}
+</body></html>`;
+  return head({ title: `${p.title} | AutoApplier`, desc: p.desc, path, jsonLd: [article, crumbs(p.title, path), faqLd(p.faqs)] }) + body;
+}
+
+function blogIndex() {
+  const path = '/blog';
+  const list = posts.map(p => `<a class="pcard" href="/blog/${p.slug}"><span class="micro">${p.date}</span><b>${esc(p.title)}</b><span>${esc(p.desc)}</span></a>`).join('');
+  const body = `<body>
+${nav}
+<main>
+<section class="hero"><div class="wrap">
+  <h1>AutoApplier blog</h1>
+  <p class="lead">Guides on auto applying to jobs on LinkedIn, Indeed, Naukri and Bayt — how to save hours, apply to more roles, and do it safely.</p>
+</div></section>
+<section class="sec"><div class="wrap"><div class="cards">${list}</div></div></section>
+</main>
+${footer}
+</body></html>`;
+  const blogLd = { '@context': 'https://schema.org', '@type': 'Blog', name: 'AutoApplier blog', url: BASE + path,
+    blogPost: posts.map(p => ({ '@type': 'BlogPosting', headline: p.title, url: BASE + '/blog/' + p.slug, datePublished: p.date })) };
+  return head({ title: 'AutoApplier Blog — Auto Apply Guides for LinkedIn, Indeed, Naukri & Bayt', desc: 'Guides on auto applying to jobs on LinkedIn, Indeed, Naukri and Bayt — save hours, apply to more roles, and do it safely.', path, jsonLd: [blogLd, crumbs('Blog', path)] }) + body;
+}
+
 // ── Write pages ──────────────────────────────────────────────────────────────
+import { mkdirSync } from 'node:fs';
 const pages = [];
 for (const p of platforms) { const f = `${p.slug}.html`; writeFileSync(join(ROOT, f), platformPage(p)); pages.push('/' + p.slug); }
 writeFileSync(join(ROOT, 'best-auto-apply-tools.html'), bestToolsPage()); pages.push('/best-auto-apply-tools');
+for (const a of alternatives) { writeFileSync(join(ROOT, `${a.slug}.html`), alternativePage(a)); pages.push('/' + a.slug); }
+// Blog index + posts (served from /blog and /blog/<slug> via a blog/ folder).
+mkdirSync(join(ROOT, 'blog'), { recursive: true });
+writeFileSync(join(ROOT, 'blog', 'index.html'), blogIndex()); pages.push('/blog');
+for (const p of posts) { writeFileSync(join(ROOT, 'blog', `${p.slug}.html`), articlePage(p)); pages.push('/blog/' + p.slug); }
 
 // Sitemap (marketing + SEO pages only; app/utility pages excluded).
 const sitemapUrls = [
