@@ -564,7 +564,17 @@
       try {
         const users = await adminPost({ action:'list_users' });
         const digits = p => String(p||'').replace(/[^\d+]/g,'');
-        $('#users-list').innerHTML = `<table><thead><tr><th>Name</th><th>Email</th><th>Phone</th><th>Licensed</th><th>Type</th><th>Expires</th><th></th></tr></thead><tbody>${
+        // Definitive check: PostgREST omits the name/phone keys entirely when
+        // those columns don't exist, so signups can't store them. Tell the admin.
+        const schemaMissing = users.length > 0 && !users.some(u => ('name' in u) || ('phone' in u));
+        const banner = schemaMissing
+          ? `<div class="msg err" style="padding:12px 14px;border:1px solid rgba(220,38,38,.35);border-radius:10px;margin-bottom:12px;line-height:1.5">
+               ⚠ <b>Name &amp; phone aren't being saved.</b> The <code>users.name</code> / <code>users.phone</code> columns don't exist in your database, so signups drop them. Run this once in <b>Supabase → SQL Editor</b>, then new signups will show here:
+               <pre style="background:#fff;border:1px solid var(--border);border-radius:8px;padding:10px;margin-top:8px;overflow-x:auto;font-size:12.5px">alter table users add column if not exists name  text;
+alter table users add column if not exists phone text;</pre>
+             </div>`
+          : '';
+        $('#users-list').innerHTML = banner + `<table><thead><tr><th>Name</th><th>Email</th><th>Phone</th><th>Licensed</th><th>Type</th><th>Expires</th><th></th></tr></thead><tbody>${
           users.map(u=>{
             const phone = u.phone ? `<a href="tel:${esc(digits(u.phone))}">${esc(u.phone)}</a> · <a href="https://wa.me/${esc(digits(u.phone).replace(/^\+/,''))}" target="_blank" rel="noopener">WA</a>` : '<span style="color:var(--muted)">–</span>';
             return `<tr>
