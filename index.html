@@ -752,6 +752,17 @@
     </div>
   </div>
 
+  <!-- Demo video panel (full-bleed, muted autoplay) -->
+  <style>
+    .video-panel { width: 100vw; position: relative; left: 50%; transform: translateX(-50%); background: #0b1220; line-height: 0; overflow: hidden; }
+    .video-panel video { display: block; width: 100%; height: auto; max-height: 100vh; object-fit: cover; }
+  </style>
+  <section class="video-panel" aria-label="AutoApplier demo video">
+    <video autoplay muted loop playsinline preload="metadata">
+      <source src="https://upload.hudace.com/wp-content/uploads/2026/07/JOB-AUTO-APPLY-BOT.mp4" type="video/mp4" />
+    </video>
+  </section>
+
   <!-- One-click action band (photos from Pixabay) -->
   <style>
     .oneclick { padding: 58px 0; }
