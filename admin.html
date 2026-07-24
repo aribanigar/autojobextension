@@ -213,6 +213,17 @@
               <div style="display:flex;flex-direction:column;gap:4px"><input id="p-price-DEFAULT" type="number" min="0" step="0.01" placeholder="optional" style="width:100%"><select id="p-cur-DEFAULT" title="Currency" style="width:100%"><option>USD</option><option>AED</option><option>GBP</option><option>INR</option></select></div></div>
           </div>
           <div style="font-size:12px;color:var(--muted);margin-top:4px">Choose the currency and amount for each country you sell in (amount in that currency's main unit — e.g. 799, 100, 9.99). Visitors only ever see the price for their own country. Monthly plans auto-create a Razorpay subscription plan in each currency (needs international payments enabled on Razorpay). Leave a region blank to hide the plan there; blank regions fall back to “Rest of world”, or India if that's also blank.</div>
+
+          <label style="margin-top:14px;display:block">Add any other country</label>
+          <div id="p-custom-countries"></div>
+          <div style="display:flex;gap:8px;align-items:flex-end;flex-wrap:wrap;margin-top:6px">
+            <div style="flex:1;min-width:180px"><label style="font-weight:600">Country</label><select id="p-add-country" style="width:100%"></select></div>
+            <div style="width:110px"><label style="font-weight:600">Currency</label><select id="p-add-currency" style="width:100%"></select></div>
+            <div style="width:120px"><label style="font-weight:600">Amount</label><input id="p-add-amount" type="number" min="0" step="0.01" placeholder="e.g. 12.99" style="width:100%"></div>
+            <button class="mini" id="p-add-country-btn" type="button" style="height:38px">＋ Add country</button>
+          </div>
+          <div style="font-size:12px;color:var(--muted);margin-top:4px">Pick a country and set its own price + currency. That country's visitors then see exactly this price. Any country you don't add still falls back to its region (India / Middle East / USA / UK) or “Rest of world”.</div>
+
           <label>Description</label><textarea id="p-desc" rows="2" style="width:100%" placeholder="What this plan includes"></textarea>
           <label>Features (one per line, shown as ticks on checkout)</label>
           <textarea id="p-feats" rows="3" style="width:100%" placeholder="LinkedIn auto-apply&#10;Indeed auto-apply&#10;AI smart answers"></textarea>
@@ -448,13 +459,60 @@
 
     // PLANS
     const PRICE_REG = [['IN','INR'],['AE','AED'],['US','USD'],['GB','GBP'],['DEFAULT','USD']];
+    const FIXED_CC = new Set(['IN','AE','US','GB','DEFAULT']);
     let editingPlanId = null;
     let PLANS_CACHE = [];
+
+    // Supported currencies (must match CURRENCY_SYMBOL in api/_lib.js).
+    const CURRENCIES = ['INR','USD','EUR','GBP','AED','SAR','QAR','KWD','BHD','OMR','CAD','AUD','NZD','SGD','HKD','JPY','CNY','CHF','SEK','NOK','DKK','ZAR','PKR','BDT','LKR','NPR','PHP','MYR','IDR','THB','VND','NGN','KES','GHS','EGP','MAD','TRY','RUB','BRL','MXN','ARS','CLP','COP','PLN','CZK','HUF','ILS','RON'];
+    // Countries the admin can add individually (code, name, default currency).
+    const COUNTRIES = [
+      ['AE','United Arab Emirates','AED'],['SA','Saudi Arabia','SAR'],['QA','Qatar','QAR'],['KW','Kuwait','KWD'],['BH','Bahrain','BHD'],['OM','Oman','OMR'],['JO','Jordan','USD'],['LB','Lebanon','USD'],['EG','Egypt','EGP'],['MA','Morocco','MAD'],['IQ','Iraq','USD'],
+      ['US','United States','USD'],['CA','Canada','CAD'],['MX','Mexico','MXN'],['BR','Brazil','BRL'],['AR','Argentina','ARS'],['CL','Chile','CLP'],['CO','Colombia','COP'],
+      ['GB','United Kingdom','GBP'],['IE','Ireland','EUR'],['DE','Germany','EUR'],['FR','France','EUR'],['ES','Spain','EUR'],['IT','Italy','EUR'],['NL','Netherlands','EUR'],['BE','Belgium','EUR'],['PT','Portugal','EUR'],['AT','Austria','EUR'],['CH','Switzerland','CHF'],['SE','Sweden','SEK'],['NO','Norway','NOK'],['DK','Denmark','DKK'],['PL','Poland','PLN'],['CZ','Czechia','CZK'],['HU','Hungary','HUF'],['RO','Romania','RON'],['RU','Russia','RUB'],['TR','Turkey','TRY'],
+      ['IN','India','INR'],['PK','Pakistan','PKR'],['BD','Bangladesh','BDT'],['LK','Sri Lanka','LKR'],['NP','Nepal','NPR'],['SG','Singapore','SGD'],['MY','Malaysia','MYR'],['ID','Indonesia','IDR'],['TH','Thailand','THB'],['VN','Vietnam','VND'],['PH','Philippines','PHP'],['HK','Hong Kong','HKD'],['CN','China','CNY'],['JP','Japan','JPY'],['AU','Australia','AUD'],['NZ','New Zealand','NZD'],
+      ['ZA','South Africa','ZAR'],['NG','Nigeria','NGN'],['KE','Kenya','KES'],['GH','Ghana','GHS'],['IL','Israel','ILS'],
+    ];
+    let customPrices = {}; // { CC: { currency, amount(minor units) } }
+
+    // Populate the "add country" dropdowns.
+    (function initCountryUI(){
+      const cSel = $('#p-add-country'), curSel = $('#p-add-currency');
+      if (!cSel || !curSel) return;
+      cSel.innerHTML = COUNTRIES.filter(([c])=>!FIXED_CC.has(c))
+        .map(([c,n])=>`<option value="${c}">${esc(n)}</option>`).join('');
+      curSel.innerHTML = CURRENCIES.map(c=>`<option>${c}</option>`).join('');
+      const syncCur = () => { const row = COUNTRIES.find(([c])=>c===cSel.value); if (row) curSel.value = row[2]; };
+      cSel.onchange = syncCur; syncCur();
+      $('#p-add-country-btn').onclick = () => {
+        const cc = cSel.value, cur = curSel.value, v = $('#p-add-amount').value;
+        if (v==='' || isNaN(parseFloat(v))) { $('#p-msg').className='msg err'; $('#p-msg').textContent='Enter an amount for the country'; return; }
+        customPrices[cc] = { currency: cur, amount: Math.round(parseFloat(v)*100) };
+        $('#p-add-amount').value=''; renderCustom(); $('#p-msg').textContent='';
+      };
+    })();
+
+    function renderCustom(){
+      const box = $('#p-custom-countries'); if (!box) return;
+      const rows = Object.entries(customPrices);
+      if (!rows.length) { box.innerHTML=''; return; }
+      box.innerHTML = rows.map(([cc,e])=>{
+        const row = COUNTRIES.find(([c])=>c===cc); const name = row ? row[1] : cc;
+        return `<div style="display:flex;gap:8px;align-items:center;margin-bottom:6px">
+          <span style="min-width:170px;font-weight:600">${esc(name)}</span>
+          <input type="number" min="0" step="0.01" value="${e.amount/100}" data-cc="${cc}" class="p-custom-amt" style="width:120px">
+          <span style="color:var(--muted);min-width:44px">${esc(e.currency)}</span>
+          <button class="mini" type="button" data-rmcc="${cc}">Remove</button>
+        </div>`;
+      }).join('');
+      box.querySelectorAll('[data-rmcc]').forEach(b=>b.onclick=()=>{ delete customPrices[b.dataset.rmcc]; renderCustom(); });
+    }
 
     function resetPlanForm() {
       editingPlanId = null;
       ['p-name','p-days','p-desc','p-feats','p-price-IN','p-price-AE','p-price-US','p-price-GB','p-price-DEFAULT'].forEach(id=>{ if($('#'+id)) $('#'+id).value=''; });
       PRICE_REG.forEach(([r,defCur]) => { const s=$('#p-cur-'+r); if(s) s.value=defCur; });
+      customPrices = {}; renderCustom();
       $('#p-interval').value='once'; $('#p-active').value='true';
       $('#p-form-title').textContent='Create a plan';
       $('#p-create').textContent='＋ Create plan';
@@ -477,6 +535,16 @@
         $('#p-price-'+r).value = e && Number.isFinite(+e.amount) ? (e.amount/100) : '';
         const s = $('#p-cur-'+r); if (s) s.value = (e && e.currency) || defCur;
       });
+      // Legacy plans (no regional prices map) still have a price_paise — show it
+      // in the India field so the existing rate is visible when editing.
+      if (!Object.keys(m).length && Number.isFinite(+p.price_paise) && +p.price_paise > 0) {
+        $('#p-price-IN').value = (+p.price_paise)/100;
+        if ($('#p-cur-IN')) $('#p-cur-IN').value = 'INR';
+      }
+      // Any per-country prices beyond the 5 fixed regions → custom-country rows.
+      customPrices = {};
+      Object.entries(m).forEach(([k,e])=>{ if (!FIXED_CC.has(k) && e && Number.isFinite(+e.amount)) customPrices[k] = { currency: e.currency || 'USD', amount: Math.round(+e.amount) }; });
+      renderCustom();
       $('#p-form-title').textContent = 'Edit plan — ' + (p.name || '');
       $('#p-create').textContent = '✔ Save changes';
       $('#p-cancel').style.display='';
@@ -495,6 +563,13 @@
         if (v !== '' && !isNaN(parseFloat(v))) {
           const cur = ($('#p-cur-'+r) && $('#p-cur-'+r).value) || defCur;
           prices[r] = { currency: cur, amount: Math.round(parseFloat(v)*100) };
+        }
+      });
+      // Merge the custom per-country prices (read current amounts from their inputs).
+      document.querySelectorAll('.p-custom-amt').forEach(inp => {
+        const cc = inp.dataset.cc, v = inp.value;
+        if (cc && v !== '' && !isNaN(parseFloat(v)) && customPrices[cc]) {
+          prices[cc] = { currency: customPrices[cc].currency, amount: Math.round(parseFloat(v)*100) };
         }
       });
       if (!Object.keys(prices).length) { $('#p-msg').className='msg err'; $('#p-msg').textContent='Enter a price for at least one region'; return; }

@@ -15,7 +15,7 @@ export default async function handler(req, res) {
     return res.status(500).json({ error: 'Backend not configured: set SUPABASE_URL and SUPABASE_SERVICE_KEY' });
   }
   try {
-    const region = regionForCountry(countryFromReq(req));
+    const cc = countryFromReq(req); // resolved to an exact-country/region price below
     // Select the prices map for server-side resolution; fall back gracefully if
     // the column doesn't exist yet (pre-migration → legacy INR pricing).
     let rows;
@@ -28,7 +28,7 @@ export default async function handler(req, res) {
     }
     // Return only the resolved price per plan — NEVER the full prices map.
     const out = rows.map(p => {
-      const pr = priceForPlan(p, region);
+      const pr = priceForPlan(p, cc);
       return {
         id: p.id, name: p.name, description: p.description,
         interval: p.interval, duration_days: p.duration_days, features: p.features,

@@ -20,7 +20,7 @@
 //   update_plan { id, ...fields }          → edit a plan
 //   delete_plan { id }                     → remove a plan
 import { createHash, scryptSync, randomBytes } from 'crypto';
-import { sb, backendConfigured, rzp, razorpayConfigured, issueKeyForEmail } from './_lib.js';
+import { sb, backendConfigured, rzp, razorpayConfigured, issueKeyForEmail, CURRENCY_SYMBOL } from './_lib.js';
 
 // .trim() guards against a trailing space/newline accidentally saved in the
 // Vercel env value — the most common cause of "my correct password won't work".
@@ -38,7 +38,7 @@ async function normalizeRegionPrices({ name, description, interval, prices, oldP
   const norm = {};
   for (const [region, e] of Object.entries(prices || {})) {
     if (!e || !Number.isFinite(+e.amount) || +e.amount < 0) continue;
-    const currency = ['INR', 'AED', 'USD', 'GBP'].includes(e.currency) ? e.currency : (DEFCUR[region] || 'USD');
+    const currency = (e.currency && CURRENCY_SYMBOL[e.currency]) ? e.currency : (DEFCUR[region] || 'USD');
     const amount = Math.round(+e.amount);
     let razorpay_plan_id = e.razorpay_plan_id || null;
     if (interval === 'monthly' && !razorpay_plan_id) {

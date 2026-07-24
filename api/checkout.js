@@ -75,8 +75,9 @@ export default async function handler(req, res) {
     // Geo price: charge in the visitor's own region currency (resolved from the
     // Vercel edge country). Falls back to the plan's legacy INR price when the
     // plan has no regional prices configured, so existing plans are unchanged.
-    const region = regionForCountry(countryFromReq(req));
-    const pr = priceForPlan(plan, region);
+    const cc = countryFromReq(req);
+    const pr = priceForPlan(plan, cc);   // exact country → region group → default → legacy
+    const region = pr.region;            // the matched price key, stored on the purchase
     const currency = pr.currency;
 
     // Referral / discount code. Discount applies to one-time plans; for monthly
