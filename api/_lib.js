@@ -104,7 +104,16 @@ export async function syncPurchaseKey(purchase) {
 // Regions: IN (India, ₹), AE (Middle East, AED), US (USA, $), GB (UK, £), plus a
 // DEFAULT for the rest of the world. Amounts are in the currency's smallest unit
 // (paise/fils/cents = major × 100), matching Razorpay.
-export const CURRENCY_SYMBOL = { INR: '₹', AED: 'AED', USD: '$', GBP: '£' };
+// Supported display currencies (also the allowlist for admin-entered prices).
+export const CURRENCY_SYMBOL = {
+  INR: '₹', USD: '$', EUR: '€', GBP: '£', AED: 'AED', SAR: 'SAR', QAR: 'QAR',
+  KWD: 'KWD', BHD: 'BHD', OMR: 'OMR', CAD: 'CA$', AUD: 'A$', NZD: 'NZ$',
+  SGD: 'S$', HKD: 'HK$', JPY: '¥', CNY: '¥', CHF: 'CHF', SEK: 'kr', NOK: 'kr',
+  DKK: 'kr', ZAR: 'R', PKR: '₨', BDT: '৳', LKR: 'Rs', NPR: 'Rs', PHP: '₱',
+  MYR: 'RM', IDR: 'Rp', THB: '฿', VND: '₫', NGN: '₦', KES: 'KSh', GHS: 'GH₵',
+  EGP: 'E£', MAD: 'MAD', TRY: '₺', RUB: '₽', BRL: 'R$', MXN: 'MX$', ARS: 'AR$',
+  CLP: 'CLP', COP: 'COL$', PLN: 'zł', CZK: 'Kč', HUF: 'Ft', ILS: '₪', RON: 'lei',
+};
 export const PRICE_REGIONS = ['IN', 'AE', 'US', 'GB', 'DEFAULT'];
 const MIDDLE_EAST = new Set(['AE', 'SA', 'QA', 'KW', 'BH', 'OM', 'JO', 'LB', 'EG', 'IQ', 'YE', 'PS', 'SY']);
 
@@ -128,19 +137,25 @@ export function countryFromReq(req) {
   return String(q || '').toUpperCase();
 }
 
-// The single price a region should see for a plan. Resolution: the region's own
-// entry → DEFAULT (rest of world) → legacy price_paise/INR. Never another
-// specific region, so an IN visitor can't be shown the US/AE/GB price and vice
-// versa. Plans with no prices map behave exactly as before (everyone sees INR).
-export function priceForPlan(plan, region) {
+// The single price a visitor should see for a plan. Takes the visitor's ISO
+// country code and resolves, in order: an exact per-country price → the region
+// group (IN / AE=Middle East / US / GB) → DEFAULT (rest of world) → legacy
+// price_paise/INR. Never another specific region's price, so an IN visitor can't
+// be shown the US/AE/GB price and vice versa. Plans with no prices map behave
+// exactly as before (everyone sees the legacy INR price).
+export function priceForPlan(plan, cc) {
   const prices = (plan && plan.prices && typeof plan.prices === 'object') ? plan.prices : {};
-  const entry = (prices[region] && Number.isFinite(+prices[region].amount)) ? prices[region]
-    : (prices.DEFAULT && Number.isFinite(+prices.DEFAULT.amount)) ? prices.DEFAULT : null;
+  const country = String(cc || '').toUpperCase();
+  const region = regionForCountry(country);
+  const ok = e => e && Number.isFinite(+e.amount);
+  let key = null, entry = null;
+  if (ok(prices[country]))      { key = country;   entry = prices[country]; }
+  else if (ok(prices[region]))  { key = region;    entry = prices[region]; }
+  else if (ok(prices.DEFAULT))  { key = 'DEFAULT'; entry = prices.DEFAULT; }
   if (entry) {
     const currency = CURRENCY_SYMBOL[entry.currency] ? entry.currency : 'INR';
     return {
-      region: prices[region] === entry ? region : 'DEFAULT',
-      currency, symbol: CURRENCY_SYMBOL[currency],
+      region: key, currency, symbol: CURRENCY_SYMBOL[currency],
       amount: Math.max(0, Math.round(+entry.amount)),
       razorpay_plan_id: entry.razorpay_plan_id || null,
     };
