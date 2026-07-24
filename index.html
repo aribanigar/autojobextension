@@ -633,7 +633,8 @@
     <a href="#faq">FAQ</a>
   </div>
   <div id="nav-right">
-    <button class="btn btn-primary" onclick="gotoLogin()">Sign In</button>
+    <button class="btn btn-ghost" onclick="gotoLogin()">Sign In</button>
+    <button class="btn btn-primary" onclick="gotoSignup()">Sign Up</button>
   </div>
 </nav>
 
@@ -1283,7 +1284,8 @@
       document.getElementById('view-landing').classList.add('active');
       document.getElementById('view-dashboard').classList.remove('active');
       document.getElementById('nav-right').innerHTML =
-        '<button class="btn btn-primary" onclick="gotoLogin()">Sign In</button>';
+        '<button class="btn btn-ghost" onclick="gotoLogin()">Sign In</button>' +
+        '<button class="btn btn-primary" onclick="gotoSignup()">Sign Up</button>';
     },
 
     showDashboard(s) {
