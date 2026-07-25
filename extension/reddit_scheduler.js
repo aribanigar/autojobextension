@@ -352,11 +352,34 @@
       else status("  (body editor not found — posting title only)");
     }
 
-    // 3) Open the Schedule dialog (clock button next to Post).
-    const trigger = await waitFor("post-form-date-picker-trigger button", { timeout: 15000 });
-    if (!trigger) throw new Error("Schedule button not found / still disabled.");
+    // 3) Open the Schedule dialog. The clock trigger button lives INSIDE the
+    //    <post-form-date-picker-trigger> shadow root, so a compound CSS selector
+    //    can't reach it — find the clock <svg> anywhere (deepQuery pierces shadow
+    //    roots) and climb to its enclosing <button> within the same tree.
+    let trigger = null;
+    const tEnd = Date.now() + 15000;
+    while (Date.now() < tEnd) {
+      const clocks = deepQueryAll('svg[icon-name="clock"]')
+        .map((s) => s.closest("button"))
+        .filter((b) => b && visible(b) && !b.disabled);
+      // Prefer the one whose shadow host is the date-picker trigger; else first.
+      trigger = clocks.find((b) => {
+        const host = b.getRootNode && b.getRootNode().host;
+        return host && /date-picker-trigger/i.test(host.tagName || "");
+      }) || clocks[0] || null;
+      // Fallback: reach into the trigger host's shadow root directly.
+      if (!trigger) {
+        const host = deepQuery("#date-picker-button") || deepQuery("post-form-date-picker-trigger");
+        const b = host && host.shadowRoot && host.shadowRoot.querySelector("button");
+        if (b && visible(b) && !b.disabled) trigger = b;
+      }
+      if (trigger) break;
+      await sleep(300);
+    }
+    if (!trigger) throw new Error("Schedule (clock) button not found / still disabled — is the title filled?");
+    try { trigger.scrollIntoView({ block: "center", behavior: "instant" }); } catch (_) {}
     trigger.click();
-    await sleep(1200);
+    await sleep(1300);
 
     // 4) Set date + time (native inputs inside the dialog's shadow roots).
     let dt = { date: post.date, time: post.time };
