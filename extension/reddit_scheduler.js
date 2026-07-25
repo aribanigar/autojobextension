@@ -311,18 +311,26 @@
     const sub = (subEl.value || "").trim().replace(/^r\//i, "");
     if (!sub) { status("Enter the subreddit name first."); return; }
     await gset({ [K.sub]: sub, [K.index]: 0, [K.running]: true });
-    status(`Starting: ${q.length} post(s) → r/${sub}. Opening the submit page…`);
-    gotoSubmit(sub);
+    status(`Starting: ${q.length} post(s) → r/${sub}.`);
+    if (onSubmitPage(sub)) {
+      // Already on the composer — begin typing right away (no navigation).
+      processCurrent().catch((e) => log("run error", e));
+    } else {
+      status("Opening the submit page…");
+      gotoSubmit(sub, 0);
+    }
   }
   async function stop() {
     await gset({ [K.running]: false });
     status("Stopped. (Any post already scheduled stays scheduled.)");
   }
-  function submitUrl(sub) { return `${location.origin}/r/${sub}/submit`; }
+  // `jbrs` cache-buster forces a real navigation between posts (so the composer
+  // fully re-renders); onSubmitPage ignores the query string.
+  function submitUrl(sub, idx) { return `${location.origin}/r/${sub}/submit?jbrs=${idx == null ? 0 : idx}`; }
   function onSubmitPage(sub) {
     return new RegExp(`/r/${sub}/submit/?$`, "i").test(location.pathname);
   }
-  function gotoSubmit(sub) { location.href = submitUrl(sub); }
+  function gotoSubmit(sub, idx) { location.href = submitUrl(sub, idx); }
 
   // Schedule ONE post on the current submit page.
   async function scheduleOne(post, idx, total) {
@@ -376,52 +384,56 @@
     await sleep(2500); // let the request go out
   }
 
-  // Auto-resume: on every submit-page load, if running, process the current row.
-  let ran = false;
-  async function tick() {
-    if (ran) return; ran = true;
-    const s = await gget([K.running, K.queue, K.index, K.sub]);
-    if (!s[K.running]) return;
-    const sub = s[K.sub]; const q = s[K.queue] || []; let idx = s[K.index] || 0;
-    if (!sub) return;
-    if (!onSubmitPage(sub)) { gotoSubmit(sub); return; }
-    if (idx >= q.length) {
-      await gset({ [K.running]: false });
-      status(`All done ✓ — ${q.length} post(s) scheduled in r/${sub}.`);
-      panelEl && panelEl.classList.add("open");
-      return;
-    }
-    panelEl && panelEl.classList.add("open");
+  // Handle exactly ONE post on this page life, then navigate for the next row.
+  // Runs on Start (current page) and on every submit-page load (auto-resume).
+  let processing = false;
+  async function processCurrent() {
+    if (processing) return; processing = true;
     try {
-      await scheduleOne(q[idx], idx, q.length);
+      const s = await gget([K.running, K.queue, K.index, K.sub]);
+      if (!s[K.running]) return;
+      const sub = s[K.sub]; const q = s[K.queue] || []; let idx = s[K.index] || 0;
+      if (!sub) return;
+      if (!onSubmitPage(sub)) { gotoSubmit(sub, idx); return; }
+      panelEl && panelEl.classList.add("open");
+      if (idx >= q.length) {
+        await gset({ [K.running]: false });
+        status(`All done ✓ — ${q.length} post(s) scheduled in r/${sub}.`);
+        return;
+      }
+      try {
+        await scheduleOne(q[idx], idx, q.length);
+      } catch (e) {
+        await gset({ [K.running]: false });
+        status(`⛔ Stopped on post ${idx + 1}: ${e.message}`);
+        return;
+      }
       idx += 1;
       await gset({ [K.index]: idx });
-    } catch (e) {
-      await gset({ [K.running]: false });
-      status(`⛔ Stopped on post ${idx + 1}: ${e.message}`);
-      return;
+      let chk = await gget([K.running]);
+      if (!chk[K.running]) { status("Stopped."); return; }
+      if (idx >= q.length) {
+        await gset({ [K.running]: false });
+        status(`All done ✓ — ${q.length} post(s) scheduled in r/${sub}.`);
+        return;
+      }
+      const wait = Math.round(rand(10000, 15000));
+      status(`Waiting ${Math.round(wait / 1000)}s before the next post…`);
+      await sleep(wait);
+      chk = await gget([K.running]);
+      if (!chk[K.running]) { status("Stopped."); return; }
+      gotoSubmit(sub, idx); // full reload → next row resumes on load
+    } finally {
+      processing = false;
     }
-    // Re-check running (user may have pressed Stop) before continuing.
-    const s2 = await gget([K.running]);
-    if (!s2[K.running]) { status("Stopped."); return; }
-    if (idx >= q.length) {
-      await gset({ [K.running]: false });
-      status(`All done ✓ — ${q.length} post(s) scheduled in r/${sub}.`);
-      return;
-    }
-    const wait = Math.round(rand(10000, 15000));
-    status(`Waiting ${Math.round(wait / 1000)}s before the next post…`);
-    await sleep(wait);
-    const s3 = await gget([K.running]);
-    if (!s3[K.running]) { status("Stopped."); return; }
-    gotoSubmit(sub); // reload composer for the next row
   }
 
   // ───────────────────────── boot ─────────────────────────
   function boot() {
     try { ensureUI(); } catch (e) { log("UI error", e); }
-    // Give Reddit's SPA a moment to render the composer before the first tick.
-    setTimeout(() => { tick().catch((e) => log("tick error", e)); }, 1800);
+    // Give Reddit's SPA a moment to render the composer, then auto-resume if a
+    // run is in progress (this fires on each submit-page load between posts).
+    setTimeout(() => { processCurrent().catch((e) => log("run error", e)); }, 1800);
   }
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", boot);
   else boot();
