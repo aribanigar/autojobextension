@@ -1,6 +1,6 @@
 {
-  "version": "1.6.8",
+  "version": "1.6.9",
   "url": "https://jobs.qckserve.in/jobbot-extension.zip",
-  "notes": "LinkedIn: autofill saved contact details even when field labels are weak (semantic-attribute fallback)",
+  "notes": "New isolated Reddit Post Scheduler: upload a CSV of posts and auto-schedule them on any subreddit (title, body, date, time) with human-like pauses.",
   "min_supported": "1.0.0"
 }
