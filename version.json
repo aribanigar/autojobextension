@@ -1,5 +1,5 @@
 {
-  "version": "1.6.10",
+  "version": "1.6.11",
   "url": "https://jobs.qckserve.in/jobbot-extension.zip",
   "notes": "New isolated Reddit Post Scheduler: upload a CSV of posts and auto-schedule them on any subreddit (title, body, date, time) with human-like pauses.",
   "min_supported": "1.0.0"
