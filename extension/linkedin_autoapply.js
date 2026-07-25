@@ -410,6 +410,14 @@
     } catch (_) {}
   }
   loadApplyProfile();
+  // Keep the apply profile fresh: if the user edits + saves their profile in the
+  // popup while this LinkedIn tab is already open, pick up the new values right
+  // away (no page reload needed) so the very next application fills them.
+  try {
+    chrome.storage.onChanged.addListener((changes, area) => {
+      if (area === "local" && changes.jobbot_profile) loadApplyProfile();
+    });
+  } catch (_) {}
 
   function answerForLabel(rawLabel) {
     const l = (rawLabel || "").toLowerCase().replace(/\s+/g, " ").trim();
@@ -497,7 +505,19 @@
       if ((fromProfile == null || fromProfile === "")) { const h = attrLabel(el); if (h) fromProfile = answerForLabel(h); }
       if (fromProfile != null && fromProfile !== "") { setNativeValue(el, fromProfile); return; }
       if (!required) return;
-      setNativeValue(el, type === "number" || looksLikeExperience(label) ? APPLY_PROFILE.years_of_experience : APPLY_PROFILE.years_of_experience);
+      // Required field we couldn't map to a saved value: fill a sensible default
+      // BY FIELD KIND — never jam the experience number into an unrelated field
+      // (phone/salary/email/etc.). Leave truly unknown fields blank.
+      const hint = (label + " " + attrLabel(el)).toLowerCase();
+      let fb = "";
+      if (/notice period|when can you (join|start)|available to (join|start)/.test(hint)) fb = APPLY_PROFILE.notice_period_days;
+      else if (/expected|desired/.test(hint) && /salary|ctc|comp/.test(hint)) fb = APPLY_PROFILE.expected_salary || APPLY_PROFILE.years_of_experience;
+      else if (/current|present/.test(hint) && /salary|ctc|comp/.test(hint)) fb = APPLY_PROFILE.current_salary || APPLY_PROFILE.expected_salary;
+      else if (/salary|ctc|comp/.test(hint)) fb = APPLY_PROFILE.expected_salary || APPLY_PROFILE.current_salary;
+      else if (type === "tel" || /(mobile|phone|contact)/.test(hint)) fb = APPLY_PROFILE.phone;
+      else if (type === "email" || /email/.test(hint)) fb = APPLY_PROFILE.email;
+      else if (type === "number" || /experien|years|how many|number of/.test(hint)) fb = APPLY_PROFILE.years_of_experience;
+      if (fb != null && fb !== "") setNativeValue(el, fb);
     });
   }
   function fillRadios(scope) {
