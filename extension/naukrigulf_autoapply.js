@@ -49,6 +49,12 @@
     return s.visibility !== "hidden" && s.display !== "none";
   }
   function textOf(el) { return (el && (el.textContent || "")).replace(/\s+/g, " ").trim(); }
+  // After the extension is reloaded, tabs left open from before have a
+  // disconnected content script — chrome.storage/runtime calls fail silently.
+  // Detect that so we can tell the user to refresh instead of doing nothing.
+  function extensionAlive() {
+    try { return !!(chrome && chrome.runtime && chrome.runtime.id); } catch (_) { return false; }
+  }
 
   // Human-like click sequence (own copy — does not reuse the locked agents'
   // realClick/humanClick helpers in content.js).
@@ -135,7 +141,13 @@
 
     logEl = panelEl.querySelector(".jbng-log");
     panelEl.querySelector(".jbng-x").onclick = () => panelEl.classList.remove("open");
-    panelEl.querySelector(".jbng-start").onclick = () => gset({ [K_RUNNING]: true }).then(() => { status("Started."); runSRP(); });
+    panelEl.querySelector(".jbng-start").onclick = () => {
+      if (!extensionAlive()) {
+        status("⚠ This tab lost its connection to the extension (usually happens right after reloading the extension). Please refresh this Naukri Gulf tab, then press Start again.");
+        return;
+      }
+      gset({ [K_RUNNING]: true }).then(() => { status("Started."); runSRP(); });
+    };
     panelEl.querySelector(".jbng-stop").onclick = () => gset({ [K_RUNNING]: false }).then(() => status("Stopped."));
   }
   function status(msg) {
@@ -144,11 +156,21 @@
   }
 
   // ───────────────────────── SRP (search results) logic ─────────────────────────
+  // Multiple selectors, additive (never replaced) — Naukri Gulf's card markup
+  // varies slightly across layouts, so we widen the net rather than narrow it.
   function collectEasyApplyCards() {
-    return Array.from(document.querySelectorAll(".ng-box.srp-tuple")).filter((card) => {
+    const seen = new Set();
+    const out = [];
+    document.querySelectorAll(".ng-box.srp-tuple, .srp-tuple, [class*='srp-tuple']").forEach((card) => {
+      if (seen.has(card)) return;
+      seen.add(card);
       const foot = card.querySelector(".foot");
-      return foot && /easy apply/i.test(textOf(foot.querySelector(".easy")) || textOf(foot));
+      const hasEasy = foot
+        ? /easy apply/i.test(textOf(foot.querySelector(".easy")) || textOf(foot))
+        : /easy apply/i.test(textOf(card));
+      if (hasEasy) out.push(card);
     });
+    return out;
   }
   function cardLink(card) {
     return card.querySelector('a.info-position[href]') || card.querySelector('a[href][target="_blank"]');
@@ -157,7 +179,11 @@
   let srpRunning = false;
   async function runSRP() {
     if (srpRunning) return;
-    if (!collectEasyApplyCards().length) return; // not a search-results page
+    if (!extensionAlive()) { status("⚠ Extension connection lost — refresh this page and press Start again."); return; }
+    if (!collectEasyApplyCards().length) {
+      status("No Easy Apply jobs found on this page. Make sure you're on a Naukri Gulf search-results page (not the homepage or a single job page) and that results have finished loading.");
+      return;
+    }
     srpRunning = true;
     panelEl && panelEl.classList.add("open");
     try {

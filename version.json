@@ -1,6 +1,6 @@
 {
-  "version": "1.6.13",
+  "version": "1.6.14",
   "url": "https://jobs.qckserve.in/jobbot-extension.zip",
-  "notes": "New isolated Naukri Gulf Easy Apply fixer: its own floating Start/Stop button auto-applies to Easy Apply jobs on the search results page (opens each job, clicks Easy Apply, returns for the next). Does not touch the existing Naukri agent.",
+  "notes": "Naukri Gulf Easy Apply fixer: clearer feedback when Start finds no jobs or the tab needs a refresh after an extension reload; broadened job-card detection.",
   "min_supported": "1.0.0"
 }
