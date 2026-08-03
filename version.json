@@ -1,6 +1,6 @@
 {
-  "version": "1.6.12",
+  "version": "1.6.13",
   "url": "https://jobs.qckserve.in/jobbot-extension.zip",
-  "notes": "LinkedIn AutoApply: correctly fill saved phone, CTC, experience and notice period (fix required-field fallback that wrote the wrong value), and pick up profile edits without a page reload.",
+  "notes": "New isolated Naukri Gulf Easy Apply fixer: its own floating Start/Stop button auto-applies to Easy Apply jobs on the search results page (opens each job, clicks Easy Apply, returns for the next). Does not touch the existing Naukri agent.",
   "min_supported": "1.0.0"
 }
