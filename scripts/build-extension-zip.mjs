@@ -33,7 +33,7 @@ const JsObf = require('javascript-obfuscator');
 
 // The scripts users receive. content.js and linkedin_autoapply.js are IIFEs;
 // background.js is the service worker; popup.js is the popup logic.
-const OBFUSCATE = new Set(['content.js', 'background.js', 'popup.js', 'linkedin_autoapply.js', 'internshala_autoapply.js', 'reddit_scheduler.js']);
+const OBFUSCATE = new Set(['content.js', 'background.js', 'popup.js', 'linkedin_autoapply.js', 'internshala_autoapply.js', 'reddit_scheduler.js', 'naukrigulf_autoapply.js']);
 
 // Safe, integration-preserving obfuscation options.
 const OPTS = {
