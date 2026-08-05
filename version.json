@@ -1,6 +1,6 @@
 {
-  "version": "1.6.14",
+  "version": "1.6.15",
   "url": "https://jobs.qckserve.in/jobbot-extension.zip",
-  "notes": "Naukri Gulf Easy Apply fixer: clearer feedback when Start finds no jobs or the tab needs a refresh after an extension reload; broadened job-card detection.",
+  "notes": "Fixed a Naukri Gulf crash on Start (null text lookup) that could cause opened job tabs to close unexpectedly; Start errors now show in the on-page log instead of failing silently.",
   "min_supported": "1.0.0"
 }
