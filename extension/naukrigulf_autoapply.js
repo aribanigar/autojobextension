@@ -48,7 +48,7 @@
     const s = getComputedStyle(el);
     return s.visibility !== "hidden" && s.display !== "none";
   }
-  function textOf(el) { return (el && (el.textContent || "")).replace(/\s+/g, " ").trim(); }
+  function textOf(el) { return ((el && el.textContent) || "").replace(/\s+/g, " ").trim(); }
   // After the extension is reloaded, tabs left open from before have a
   // disconnected content script — chrome.storage/runtime calls fail silently.
   // Detect that so we can tell the user to refresh instead of doing nothing.
@@ -146,7 +146,10 @@
         status("⚠ This tab lost its connection to the extension (usually happens right after reloading the extension). Please refresh this Naukri Gulf tab, then press Start again.");
         return;
       }
-      gset({ [K_RUNNING]: true }).then(() => { status("Started."); runSRP(); });
+      gset({ [K_RUNNING]: true }).then(() => {
+        status("Started.");
+        runSRP().catch((e) => { log("SRP error", e); status("⛔ Error: " + (e && e.message || e)); });
+      });
     };
     panelEl.querySelector(".jbng-stop").onclick = () => gset({ [K_RUNNING]: false }).then(() => status("Stopped."));
   }
@@ -180,13 +183,13 @@
   async function runSRP() {
     if (srpRunning) return;
     if (!extensionAlive()) { status("⚠ Extension connection lost — refresh this page and press Start again."); return; }
-    if (!collectEasyApplyCards().length) {
-      status("No Easy Apply jobs found on this page. Make sure you're on a Naukri Gulf search-results page (not the homepage or a single job page) and that results have finished loading.");
-      return;
-    }
     srpRunning = true;
-    panelEl && panelEl.classList.add("open");
     try {
+      if (!collectEasyApplyCards().length) {
+        status("No Easy Apply jobs found on this page. Make sure you're on a Naukri Gulf search-results page (not the homepage or a single job page) and that results have finished loading.");
+        return;
+      }
+      panelEl && panelEl.classList.add("open");
       const applied = (await gget([K_APPLIED]))[K_APPLIED] || {};
       const cards = collectEasyApplyCards();
       status(`Found ${cards.length} Easy Apply job(s) on this page.`);
