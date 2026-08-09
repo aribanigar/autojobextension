@@ -37,8 +37,93 @@
         || /\/uas\/captcha-submit/.test(location.pathname);
   }
   function visible(el) { if (!el) return false; const r = el.getBoundingClientRect(); return r.width > 0 && r.height > 0; }
-  function textOf(el) { return (el && (el.textContent || "")).replace(/\s+/g, " ").trim(); }
+  function textOf(el) { return ((el && el.textContent) || "").replace(/\s+/g, " ").trim(); }
   function esc(s) { return (window.CSS && CSS.escape ? CSS.escape(s) : s); }
+
+  // ─────────────────── learned answers (own memory) ───────────────────
+  // Any question this engine can't confidently answer from the saved profile
+  // gets remembered here — keyed by a normalized version of its label — the
+  // moment a value is typed into it (by our own best-guess fallback or by the
+  // human). Next time the same (or a reworded) question shows up on any
+  // LinkedIn job, it's answered from memory instead of guessed again. Own
+  // storage key (jbla_learned) — isolated from content.js's core agent memory
+  // (jobbot_learned) and every other add-on's memory, per the isolation rule.
+  const learnedAnswers = (() => {
+    let store = {};
+    const SYN = { yrs: "year", yr: "year", years: "year", exp: "experience", experiences: "experience",
+                  mob: "mobile", mos: "month", months: "month", ctc: "salary", lpa: "salary",
+                  dob: "birth", no: "number", num: "number", nums: "number", addr: "address", ph: "phone" };
+    const norm = q => String(q || "").toLowerCase()
+      .replace(/^\s*(?:q(?:uestion)?\s*)?\d+\s*[.):\-]\s*/i, " ")
+      .replace(/[*:?()\[\]{}.,<>/\\!"'’“”_#+=—–\-]+/g, " ")
+      .replace(/\s+/g, " ").trim().slice(0, 160);
+    const STOP = new Set(("a an the is are am was were be been being do does did done have has had " +
+      "you your yours yourself to of in on at for and or with from as by please enter provide give " +
+      "select choose specify what which who whom how this that these those it its we our they them " +
+      "i me my mine any all if then else about into per will would can could should may might here " +
+      "there field question answer also just only more most very kindly currently").split(/\s+/));
+    const stem = w => (w.length > 4 && w.endsWith("s")) ? w.slice(0, -1) : w;
+    const toks = q => {
+      const out = new Set();
+      norm(q).split(" ").forEach(w => { if (!w) return; w = SYN[w] || w; if (w.length >= 2 && !STOP.has(w)) out.add(stem(w)); });
+      return out;
+    };
+    try { chrome.storage.local.get("jbla_learned", d => { void chrome.runtime.lastError; if (d && d.jbla_learned) store = d.jbla_learned; }); } catch (_) {}
+    const persist = () => {
+      try {
+        const keys = Object.keys(store);
+        if (keys.length > 600) keys.slice(0, keys.length - 600).forEach(k => delete store[k]);
+        chrome.storage.local.set({ jbla_learned: store });
+      } catch (_) {}
+    };
+    return {
+      get: q => {
+        const k = norm(q);
+        if (!k || k.length < 4) return null;
+        if (store[k]) return store[k];
+        const qt = toks(q);
+        if (qt.size < 2) return null;
+        let best = null, bestScore = 0;
+        for (const sk of Object.keys(store)) {
+          const st = toks(sk); if (st.size < 2) continue;
+          let inter = 0; qt.forEach(w => { if (st.has(w)) inter++; });
+          if (inter < 2) continue;
+          const jaccard = inter / (qt.size + st.size - inter);
+          const contain = inter / Math.min(qt.size, st.size);
+          const score = (jaccard >= 0.6 || contain >= 0.85) ? Math.max(jaccard, contain) : 0;
+          if (score > bestScore) { bestScore = score; best = sk; }
+        }
+        return best ? store[best] : null;
+      },
+      set: (q, a) => {
+        const k = norm(q); const v = String(a == null ? "" : a).trim();
+        if (!k || k.length < 4 || !v || v.length > 600) return;
+        if (store[k] === v) return;
+        store[k] = v; persist();
+      },
+    };
+  })();
+
+  // Watches a field we couldn't answer; if a value ends up in it (our own
+  // fallback guess, or the human typing it in), remember it against this
+  // exact question so it's never guessed again.
+  function learnFromField(el, question) {
+    if (!el || !question || el._jblaLearn) return;
+    el._jblaLearn = true;
+    const grab = () => {
+      let val = "";
+      try {
+        if (el.matches && el.matches('input[type="radio"],input[type="checkbox"]')) {
+          if (el.checked) val = (el.closest("label")?.textContent || el.value || "").trim();
+        } else {
+          val = (el.value || "").trim();
+        }
+      } catch (_) {}
+      if (val) learnedAnswers.set(question, val);
+    };
+    el.addEventListener("change", grab);
+    el.addEventListener("blur", grab);
+  }
 
   // ──────────────────── humanised clicking ───────────────────
   function spotlight(el, holdMs) {
@@ -422,6 +507,10 @@
   function answerForLabel(rawLabel) {
     const l = (rawLabel || "").toLowerCase().replace(/\s+/g, " ").trim();
     if (!l) return null;
+    // A previously-learned manual/guessed answer wins — we already know how
+    // this exact question gets answered, so never re-guess it.
+    const learned = learnedAnswers.get(rawLabel);
+    if (learned) return learned;
     const A = APPLY_PROFILE;
     if (/years.*experience|how many years|total experience|relevant experience|years of work/.test(l)) return A.years_of_experience;
     if (/notice period|available to (join|start)|when can you (join|start)/.test(l)) return A.notice_period_days;
@@ -504,6 +593,10 @@
       let fromProfile = answerForLabel(label);
       if ((fromProfile == null || fromProfile === "")) { const h = attrLabel(el); if (h) fromProfile = answerForLabel(h); }
       if (fromProfile != null && fromProfile !== "") { setNativeValue(el, fromProfile); return; }
+      // Nothing in the profile (or memory) answers this — watch it so whatever
+      // ends up in it (our own fallback guess below, or the human correcting/
+      // typing it) is remembered for next time.
+      if (label) learnFromField(el, label);
       if (!required) return;
       // Required field we couldn't map to a saved value: fill a sensible default
       // BY FIELD KIND — never jam the experience number into an unrelated field
@@ -520,13 +613,45 @@
       if (fb != null && fb !== "") setNativeValue(el, fb);
     });
   }
+  // Best-effort question text for a radio group, so learned answers apply to
+  // yes/no and multiple-choice questions too, not just text inputs.
+  function radioGroupLabel(scope, group) {
+    const first = group[0];
+    if (!first) return "";
+    const fs = first.closest("fieldset");
+    if (fs) { const lg = fs.querySelector("legend"); if (lg) return textOf(lg); }
+    const wrap = first.closest("[data-test-form-element]") || first.closest(".fb-dash-form-element") || first.parentElement?.parentElement;
+    if (wrap) {
+      const h = wrap.querySelector("label, legend, span[aria-hidden='true']");
+      if (h && !first.contains(h)) return textOf(h);
+    }
+    return "";
+  }
   function fillRadios(scope) {
     const groups = {};
     scope.querySelectorAll('input[type="radio"]').forEach(r => { (groups[r.name] = groups[r.name] || []).push(r); });
     Object.values(groups).forEach(group => {
       if (group.some(r => r.checked)) return;
-      let pick = group.find(r => { const l = r.id && scope.querySelector('label[for="' + esc(r.id) + '"]'); return l && /^\s*yes\s*$/i.test(textOf(l)); }) || group[0];
-      if (pick) { const l = pick.id && scope.querySelector('label[for="' + esc(pick.id) + '"]'); humanClick(l || pick); }
+      const optLabel = r => { const l = r.id && scope.querySelector('label[for="' + esc(r.id) + '"]'); return l ? textOf(l) : (r.value || ""); };
+      const qLabel = radioGroupLabel(scope, group);
+      const learned = qLabel ? learnedAnswers.get(qLabel) : null;
+      let pick = null;
+      if (learned) {
+        const lc = learned.toLowerCase();
+        pick = group.find(r => optLabel(r).toLowerCase() === lc) || group.find(r => optLabel(r).toLowerCase().includes(lc));
+      }
+      if (!pick) pick = group.find(r => /^\s*yes\s*$/i.test(optLabel(r))) || group[0];
+      if (pick) {
+        const l = pick.id && scope.querySelector('label[for="' + esc(pick.id) + '"]');
+        humanClick(l || pick);
+        // Remember whichever option ends up checked (our pick, or the human
+        // changing it) against this question for next time.
+        if (qLabel && !group[0]._jblaLearn) {
+          group[0]._jblaLearn = true;
+          const grab = () => { const chosen = group.find(r => r.checked); if (chosen) learnedAnswers.set(qLabel, optLabel(chosen)); };
+          group.forEach(r => r.addEventListener("change", grab));
+        }
+      }
     });
   }
   function checkRequiredBoxes(scope) {
