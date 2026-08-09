@@ -17,6 +17,10 @@ const DEFAULT_PROFILE = {
 
 const VALID_PLATFORMS = ['linkedin', 'indeed', 'naukri', 'naukrigulf', 'bayt'];
 const stats = { linkedin: 0, indeed: 0, naukri: 0, naukrigulf: 0, bayt: 0, skipped: 0 };
+// Last-known update-check result ({ current, latest, available, url, notes } |
+// null). Declared up-front so updateBadge() below never hits a temporal-dead-
+// zone ReferenceError no matter which listener fires it first.
+let updateInfo = null;
 
 // The agent must only ever run after an explicit Start click in THIS browser
 // session. Clear any stale running flag left behind by a crash/closed browser,
@@ -33,14 +37,33 @@ const statsReady = new Promise(resolve => {
   });
 });
 
+// Hydrate the last-known update-check result too, so the toolbar badge shows
+// the "update available" indicator immediately on browser start/service-worker
+// wake — without waiting for a fresh network check to complete.
+chrome.storage.local.get('jobbot_update', d => {
+  void chrome.runtime.lastError;
+  if (d && d.jobbot_update) { updateInfo = d.jobbot_update; updateBadge(); }
+});
+
 function persistStats() {
   chrome.storage.local.set({ jobbot_stats: { ...stats } });
 }
 
+// Toolbar icon badge: an available update takes priority over the applied-job
+// count (the count is always visible inside the popup's Stats tab too, so
+// nothing is lost — this just makes the update impossible to miss). Purely
+// cosmetic/informational either way; the agent itself never checks this.
 function updateBadge() {
+  if (updateInfo && updateInfo.available) {
+    chrome.action.setBadgeText({ text: '!' });
+    chrome.action.setBadgeBackgroundColor({ color: '#ea580c' });
+    try { chrome.action.setTitle({ title: `JobBot – Auto Apply Agent — update available (v${updateInfo.latest}). Click to download.` }); } catch {}
+    return;
+  }
   const total = stats.linkedin + stats.indeed + stats.naukri + (stats.naukrigulf || 0) + (stats.bayt || 0);
   chrome.action.setBadgeText({ text: total > 0 ? String(total) : '' });
   chrome.action.setBadgeBackgroundColor({ color: '#7c3aed' });
+  try { chrome.action.setTitle({ title: 'JobBot – Auto Apply Agent' }); } catch {}
 }
 
 // ── CRM account session ──────────────────────────────────────────────────────
@@ -84,6 +107,8 @@ async function checkForUpdate() {
       checkedAt: Date.now(),
     };
     try { chrome.storage.local.set({ jobbot_update: info }); } catch {}
+    updateInfo = info;
+    updateBadge();
     return info;
   } catch {
     // Offline / old server / blocked — never disrupt the extension.

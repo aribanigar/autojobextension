@@ -1,6 +1,6 @@
 {
-  "version": "1.6.16",
+  "version": "1.6.17",
   "url": "https://jobs.qckserve.in/jobbot-extension.zip",
-  "notes": "Smart memory: LinkedIn AutoApply and Internshala AutoApply now learn every question they had to guess or you answered manually, and auto-fill it next time. Added a 'Reset Learned Answers & Applied History' button in the popup's Prefs tab to wipe that memory (your profile and license are never touched).",
+  "notes": "Old installs keep working as-is. The toolbar icon now shows an orange '!' badge when a newer build is available (in addition to the popup's update banner), so you notice without opening the popup — click the icon, then \"Download update\" in the banner to get the new zip.",
   "min_supported": "1.0.0"
 }
