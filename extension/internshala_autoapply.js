@@ -33,7 +33,70 @@
   function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
   function rand(min, max) { return min + Math.random() * (max - min); }
   function visible(el) { if (!el) return false; const r = el.getBoundingClientRect(); return r.width > 0 && r.height > 0; }
-  function textOf(el) { return (el && (el.textContent || "")).replace(/\s+/g, " ").trim(); }
+  function textOf(el) { return ((el && el.textContent) || "").replace(/\s+/g, " ").trim(); }
+
+  // ─────────────────── learned answers (own memory) ───────────────────
+  // Any custom text question this engine answers with the generic default
+  // gets remembered here (own storage key jbia_learned, isolated from
+  // content.js's core memory and every other add-on's memory) — keyed by a
+  // normalized version of the question. If the human edits the answer before
+  // submitting, that correction is captured too. Next time the same (or a
+  // reworded) question appears, it's answered from memory instead of the
+  // generic default.
+  const learnedAnswers = (() => {
+    let store = {};
+    const SYN = { yrs: "year", yr: "year", years: "year", exp: "experience", experiences: "experience",
+                  mob: "mobile", mos: "month", months: "month", ctc: "salary", lpa: "salary" };
+    const norm = q => String(q || "").toLowerCase()
+      .replace(/^\s*(?:q(?:uestion)?\s*)?\d+\s*[.):\-]\s*/i, " ")
+      .replace(/[*:?()\[\]{}.,<>/\\!"'’“”_#+=—–\-]+/g, " ")
+      .replace(/\s+/g, " ").trim().slice(0, 160);
+    const STOP = new Set(("a an the is are am was were be been being do does did done have has had " +
+      "you your yours yourself to of in on at for and or with from as by please enter provide give " +
+      "select choose specify what which who whom how this that these those it its we our they them " +
+      "i me my mine any all if then else about into per will would can could should may might here " +
+      "there field question answer also just only more most very kindly currently").split(/\s+/));
+    const stem = w => (w.length > 4 && w.endsWith("s")) ? w.slice(0, -1) : w;
+    const toks = q => {
+      const out = new Set();
+      norm(q).split(" ").forEach(w => { if (!w) return; w = SYN[w] || w; if (w.length >= 2 && !STOP.has(w)) out.add(stem(w)); });
+      return out;
+    };
+    try { chrome.storage.local.get("jbia_learned", d => { void chrome.runtime.lastError; if (d && d.jbia_learned) store = d.jbia_learned; }); } catch (_) {}
+    const persist = () => {
+      try {
+        const keys = Object.keys(store);
+        if (keys.length > 600) keys.slice(0, keys.length - 600).forEach(k => delete store[k]);
+        chrome.storage.local.set({ jbia_learned: store });
+      } catch (_) {}
+    };
+    return {
+      get: q => {
+        const k = norm(q);
+        if (!k || k.length < 4) return null;
+        if (store[k]) return store[k];
+        const qt = toks(q);
+        if (qt.size < 2) return null;
+        let best = null, bestScore = 0;
+        for (const sk of Object.keys(store)) {
+          const st = toks(sk); if (st.size < 2) continue;
+          let inter = 0; qt.forEach(w => { if (st.has(w)) inter++; });
+          if (inter < 2) continue;
+          const jaccard = inter / (qt.size + st.size - inter);
+          const contain = inter / Math.min(qt.size, st.size);
+          const score = (jaccard >= 0.6 || contain >= 0.85) ? Math.max(jaccard, contain) : 0;
+          if (score > bestScore) { bestScore = score; best = sk; }
+        }
+        return best ? store[best] : null;
+      },
+      set: (q, a) => {
+        const k = norm(q); const v = String(a == null ? "" : a).trim();
+        if (!k || k.length < 4 || !v || v.length > 600) return;
+        if (store[k] === v) return;
+        store[k] = v; persist();
+      },
+    };
+  })();
 
   // Default professional answers for open-ended text questions.
   let PROFILE = {};
@@ -56,6 +119,10 @@
   // Pick an answer for a text question. Cover-letter / "why" questions use the
   // saved cover letter when present; everything else gets the situational default.
   function answerForQuestion(qText) {
+    // A previously-learned answer (from an earlier default we gave, later
+    // corrected, or a fresh answer typed by the human) wins outright.
+    const learned = learnedAnswers.get(qText);
+    if (learned) return learned;
     const q = String(qText || "").toLowerCase();
     const pro = (PROFILE && PROFILE.professional) || {};
     if (/cover letter|why (do|are|should)|why you|tell us about yourself/.test(q) && pro.coverLetter) {
@@ -175,10 +242,24 @@
       for (const name of Object.keys(groups)) {
         const group = groups[name];
         if (group.some(r => r.checked)) continue;
-        const yes = group.find(r => /^\s*yes\s*$/i.test(r.value || "")) || group[0];
-        if (yes) {
-          const lab = yes.id && scope.querySelector('label[for="' + yes.id + '"]');
-          await humanClick(lab || yes);
+        const grp = group[0].closest(".additional_question");
+        const qLbl = grp && grp.querySelector(".assessment_question label");
+        const qText = qLbl ? textOf(qLbl) : "";
+        const learned = qText ? learnedAnswers.get(qText) : null;
+        let pick = null;
+        if (learned) {
+          const lc = learned.toLowerCase();
+          pick = group.find(r => (r.value || "").trim().toLowerCase() === lc);
+        }
+        if (!pick) pick = group.find(r => /^\s*yes\s*$/i.test(r.value || "")) || group[0];
+        if (pick) {
+          const lab = pick.id && scope.querySelector('label[for="' + pick.id + '"]');
+          await humanClick(lab || pick);
+          if (qText && !group[0]._jbiaLearn) {
+            group[0]._jbiaLearn = true;
+            const grab = () => { const chosen = group.find(r => r.checked); if (chosen) learnedAnswers.set(qText, chosen.value || ""); };
+            group.forEach(r => r.addEventListener("change", grab));
+          }
           await sleep(rand(120, 260));
         }
       }
@@ -196,6 +277,14 @@
           q = lbl ? textOf(lbl) : "";
         } catch (_) {}
         setNativeValue(ta, answerForQuestion(q));
+        // Watch for the human editing this before submit — their correction
+        // becomes the remembered answer for this exact question next time.
+        if (q && !ta._jbiaLearn) {
+          ta._jbiaLearn = true;
+          const grab = () => { const v = (ta.value || "").trim(); if (v) learnedAnswers.set(q, v); };
+          ta.addEventListener("change", grab);
+          ta.addEventListener("blur", grab);
+        }
         await sleep(rand(150, 320));
       }
     } catch (_) {}

@@ -1,6 +1,6 @@
 {
-  "version": "1.6.15",
+  "version": "1.6.16",
   "url": "https://jobs.qckserve.in/jobbot-extension.zip",
-  "notes": "Fixed a Naukri Gulf crash on Start (null text lookup) that could cause opened job tabs to close unexpectedly; Start errors now show in the on-page log instead of failing silently.",
+  "notes": "Smart memory: LinkedIn AutoApply and Internshala AutoApply now learn every question they had to guess or you answered manually, and auto-fill it next time. Added a 'Reset Learned Answers & Applied History' button in the popup's Prefs tab to wipe that memory (your profile and license are never touched).",
   "min_supported": "1.0.0"
 }

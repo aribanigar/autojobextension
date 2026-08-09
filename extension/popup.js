@@ -475,6 +475,20 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
   });
 
+  // Wipes every learned Q&A answer + "already applied" record across all
+  // platforms (core agent and every isolated add-on). Your saved profile,
+  // license key, and login are never touched, so nothing else breaks.
+  document.getElementById('btn-reset-memory')?.addEventListener('click', () => {
+    if (!confirm('This forgets every learned answer and "already applied" job across LinkedIn, Indeed, Naukri, Naukri Gulf, Bayt and Internshala, so the agent starts fully fresh. Your saved profile and license stay untouched. Continue?')) return;
+    chrome.runtime.sendMessage({ type: 'CLEAR_ALL_MEMORY' }, () => {
+      void chrome.runtime.lastError;
+      const ok = document.getElementById('ok-reset-memory');
+      if (ok) { ok.style.display = 'inline'; setTimeout(() => { ok.style.display = 'none'; }, 2200); }
+      refreshStats();
+      loadHistory();
+    });
+  });
+
   function htmlEsc(str) {
     const d = document.createElement('div');
     d.textContent = String(str);

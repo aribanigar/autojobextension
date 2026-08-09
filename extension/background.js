@@ -468,5 +468,30 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
       chrome.action.setBadgeText({ text: '' });
       sendResponse({ ok: true });
       break;
+
+    // Wipes every learned Q&A answer and "already applied" dedupe record, from
+    // both the core agent (content.js — LinkedIn/Indeed/Naukri/Bayt) and every
+    // isolated add-on (linkedin_autoapply.js, internshala_autoapply.js,
+    // naukrigulf_autoapply.js). Deliberately leaves jobbot_profile untouched —
+    // it holds the license key, login and saved answers the user typed
+    // themselves, so wiping it would break the "Start Agent" gate.
+    case 'CLEAR_ALL_MEMORY':
+      chrome.storage.local.remove([
+        'jobbot_learned',              // core agent — learned Q&A memory
+        'jobbot_applied_v2',           // core agent — permanent applied-job dedupe
+        'jobbot_history',              // application history list
+        'jbla_learned',                // LinkedIn autoapply (isolated) — learned Q&A memory
+        'jbia_learned',                // Internshala autoapply (isolated) — learned Q&A memory
+        'jobbot_internshala_applied',  // Internshala autoapply (isolated) — applied dedupe
+        'jobbot_naukrigulf_applied',   // Naukri Gulf autoapply (isolated) — applied dedupe
+      ], () => {
+        void chrome.runtime.lastError;
+        VALID_PLATFORMS.forEach(k => { stats[k] = 0; });
+        stats.skipped = 0;
+        persistStats();
+        chrome.action.setBadgeText({ text: '' });
+        sendResponse({ ok: true });
+      });
+      return true;
   }
 });
