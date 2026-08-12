@@ -316,6 +316,24 @@
   }
 
   // ─────────────────── easy-apply modal ──────────────────────
+  // Does this dialog contain the newer LinkedIn SDUI apply flow's <footer>
+  // Next/Review/Submit button (hashed classnames, no data-easy-apply-* hooks —
+  // see sduiFooterButton below)? Scoped to `d` so it only matches a footer
+  // button that's actually INSIDE this dialog, not anywhere on the page.
+  function dialogHasSduiFooterButton(d) {
+    if (!d || !d.querySelectorAll) return false;
+    const re = /^(next|continue|continue to next step|next step|review|review your application|review application|submit|submit application|send|send application)$/i;
+    for (const f of Array.from(d.querySelectorAll("footer"))) {
+      if (!visible(f)) continue;
+      for (const b of Array.from(f.querySelectorAll("button"))) {
+        if (!visible(b)) continue;
+        const t = (b.innerText || b.textContent || "").replace(/\s+/g, " ").trim();
+        const a = b.getAttribute("aria-label") || "";
+        if (re.test(t) || re.test(a)) return true;
+      }
+    }
+    return false;
+  }
   function isEasyApplyDialog(d) {
     if (!d) return false;
     if (d.getAttribute("aria-labelledby") === "jobs-apply-header") return true;
@@ -328,6 +346,12 @@
     )) return true;
     const header = d.querySelector("h2, h3, [role='heading']");
     if (header && /^apply to /i.test((header.textContent || "").trim())) return true;
+    // New SDUI apply flow has none of the markers above (hashed classnames, no
+    // data-easy-apply-* hooks, header text that doesn't start with "Apply to").
+    // Without this, the stray-modal watcher below mistakes the real, in-progress
+    // apply modal for an unrelated popup and closes it — often right as the
+    // Submit step is reached, which looks exactly like "it skips Submit".
+    if (dialogHasSduiFooterButton(d)) return true;
     return false;
   }
   function applyFormPresent() {
@@ -744,7 +768,7 @@
     if (!applyFormPresent()) return "skipped";
     await sleep(700 + Math.random() * 300);
 
-    let stuck = 0;
+    let stuck = 0, submitAttempts = 0;
     for (let step = 0; step < 16; step++) {
       if (state.cancel) { await discardAndClose(); return "skipped"; }
       if (isCheckpoint()) return "skipped";
@@ -752,7 +776,10 @@
       const scope = applyFormScope();
       if (!scope) { await discardAndClose(); return "skipped"; }
       autofill(scope);
-      await sleep(rand(500, 900));
+      // Give LinkedIn's (debounced) field validation time to actually enable the
+      // Submit/Next button before we look for it — too short a wait here is what
+      // makes the loop think a step still needs filling when it's really done.
+      await sleep(rand(700, 1200));
       try { closeStrayModals(); } catch (_) {}
 
       const submit = submitButton();
@@ -762,6 +789,15 @@
         let done = await waitAdvanced(beforeSubmit, 5000);
         if (!done) { escalateClick(submitButton() || submit); done = await waitAdvanced(beforeSubmit, 4000); }
         await closePostSubmit();
+        // Nothing visibly changed AND the very same Submit button is still just
+        // sitting there — the click almost certainly never registered. Retry the
+        // step instead of silently counting a job as "applied" when it wasn't.
+        if (!done && submitButton()) {
+          submitAttempts++;
+          if (submitAttempts < 3) continue;
+          await discardAndClose();
+          return "skipped";
+        }
         return "applied";
       }
       let advance = reviewButton() || nextButton();
