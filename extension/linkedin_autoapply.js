@@ -417,9 +417,34 @@
     }
     return null;
   }
-  function nextButton() { return qDoc(["button[data-easy-apply-next-button]","button[data-live-test-easy-apply-next-button]",'button[aria-label="Continue to next step"]','button[aria-label*="Continue to next" i]']) || findActionByText(/^(next|continue to next step|continue|next step)$/i) || sduiFooterButton(/^(next|continue|continue to next step|next step)$/i); }
-  function reviewButton() { return qDoc(["button[data-live-test-easy-apply-review-button]",'button[aria-label="Review your application"]','button[aria-label*="Review your" i]']) || findActionByText(/^(review|review your application|review application)$/i) || sduiFooterButton(/^(review|review your application|review application)$/i); }
-  function submitButton() { return qDoc(["button[data-live-test-easy-apply-submit-button]",'button[aria-label="Submit application"]','button[aria-label*="Submit application" i]']) || findActionByText(/^(submit|submit application|send|send application)$/i) || sduiFooterButton(/^(submit|submit application|send|send application)$/i); }
+  // Word-boundary (not fully-anchored) matching: LinkedIn's accessible buttons
+  // sometimes wrap the label with an icon or a visually-hidden duplicate node,
+  // so a strict "the WHOLE trimmed text must equal exactly this phrase" check
+  // can miss a button whose visible text is right but padded with extra nodes.
+  // Scoped searches (inside the apply dialog / its footer) make the looser
+  // match safe — there's nothing else in that scope to false-match against.
+  function nextButton() { return qDoc(["button[data-easy-apply-next-button]","button[data-live-test-easy-apply-next-button]",'button[aria-label="Continue to next step"]','button[aria-label*="Continue to next" i]']) || findActionByText(/\b(next step|continue to next step|next|continue)\b/i) || sduiFooterButton(/\b(next step|continue to next step|next|continue)\b/i); }
+  function reviewButton() { return qDoc(["button[data-live-test-easy-apply-review-button]",'button[aria-label="Review your application"]','button[aria-label*="Review your" i]']) || findActionByText(/\b(review your application|review application|review)\b/i) || sduiFooterButton(/\b(review your application|review application|review)\b/i); }
+  function submitButton() { return qDoc(["button[data-live-test-easy-apply-submit-button]",'button[aria-label="Submit application"]','button[aria-label*="Submit application" i]']) || findActionByText(/\b(submit application|send application|submit|send)\b/i) || sduiFooterButton(/\b(submit application|send application|submit|send)\b/i) || lastResortSubmitButton(); }
+
+  // Last-resort net: if every scoped lookup above missed it (a dialog-
+  // detection edge case), search any visible dialog/modal/footer on the page
+  // for a button whose label is unambiguously "Submit application" — narrow
+  // enough it can't collide with an unrelated page control, broad enough to
+  // catch the exact review-step button from the failure report.
+  function lastResortSubmitButton() {
+    const containers = Array.from(document.querySelectorAll('div[role="dialog"], .artdeco-modal, footer'));
+    for (const c of containers) {
+      if (!visible(c)) continue;
+      for (const b of Array.from(c.querySelectorAll("button"))) {
+        if (!visible(b) || b.disabled || b.getAttribute("aria-disabled") === "true") continue;
+        const t = (b.innerText || b.textContent || "").replace(/\s+/g, " ").trim();
+        const a = b.getAttribute("aria-label") || "";
+        if (/submit\s*(your\s*)?application/i.test(t) || /submit\s*(your\s*)?application/i.test(a)) return b;
+      }
+    }
+    return null;
+  }
 
   // ── New LinkedIn SDUI apply flow (2026 job-details refresh) ─────────────────
   // The refreshed UI renders each apply step with obfuscated, hashed class names

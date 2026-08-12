@@ -1,6 +1,6 @@
 {
-  "version": "1.6.18",
+  "version": "1.6.19",
   "url": "https://jobs.qckserve.in/jobbot-extension.zip",
-  "notes": "Fixed LinkedIn Auto Apply sometimes skipping the final 'Submit application' click: the background watcher that auto-closes unrelated popups could mistake the newer LinkedIn apply modal for a stray popup and close it mid-flow. Also added a safety retry so a submit click that silently fails is retried instead of being wrongly counted as applied.",
+  "notes": "LinkedIn Auto Apply: made the Next/Review/Submit button detection more forgiving (was requiring an exact text match, which could miss a button whose label had extra hidden/icon content) and added a broader last-resort search for the 'Submit application' button on the final review step, so a completed review page never gets discarded instead of submitted.",
   "min_supported": "1.0.0"
 }
