@@ -1,6 +1,6 @@
 {
-  "version": "1.6.17",
+  "version": "1.6.18",
   "url": "https://jobs.qckserve.in/jobbot-extension.zip",
-  "notes": "Old installs keep working as-is. The toolbar icon now shows an orange '!' badge when a newer build is available (in addition to the popup's update banner), so you notice without opening the popup — click the icon, then \"Download update\" in the banner to get the new zip.",
+  "notes": "Fixed LinkedIn Auto Apply sometimes skipping the final 'Submit application' click: the background watcher that auto-closes unrelated popups could mistake the newer LinkedIn apply modal for a stray popup and close it mid-flow. Also added a safety retry so a submit click that silently fails is retried instead of being wrongly counted as applied.",
   "min_supported": "1.0.0"
 }
