@@ -111,6 +111,7 @@
     <a class="nav-logo" href="/"><img src="/favicon.svg" alt="AutoApplier logo" class="logo-img"/> AutoApplier <span class="admin-tag">Admin</span></a>
     <div id="nav-right">
       <span id="who" class="who" style="display:none"></span>
+      <button id="signout" class="btn-g" type="button" style="display:none">Sign out</button>
       <a class="btn-g" href="/">← Home</a>
     </div>
   </nav>
@@ -127,6 +128,7 @@
       <input id="email" type="email" placeholder="Admin email" />
       <input id="pass" type="password" placeholder="Password" />
       <button class="btn-v" id="login" style="width:100%;margin-top:6px">Log in</button>
+      <a id="forgot" href="#" style="display:block;text-align:center;margin-top:10px;font-size:12.5px;color:var(--muted)">Forgot password?</a>
       <div id="gate-msg" class="msg"></div>
     </div>
 
@@ -330,16 +332,48 @@
       method:'POST', headers:{'Content-Type':'application/json', Authorization:'Bearer '+token}, body:JSON.stringify(body)
     }).then(async r => { const d = await r.json().catch(()=>({})); if (!r.ok) throw new Error(d.error||r.status); return d; });
 
+    function signedIn(email){
+      const w=$('#who'); w.textContent=email; w.style.display='';
+      const so=$('#signout'); if (so) so.style.display='';
+    }
     async function login() {
       const email=$('#email').value.trim(), password=$('#pass').value;
       try {
         const r = await fetch('/api/admin',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'login',email,password})});
         const d = await r.json(); if (!r.ok) throw new Error(d.error||r.status);
-        token=d.token; localStorage.setItem(TOKEN,token); const w=$('#who'); w.textContent=d.email; w.style.display=''; boot();
+        token=d.token; localStorage.setItem(TOKEN,token); signedIn(d.email); boot();
       } catch(e){ $('#gate-msg').className='msg err'; $('#gate-msg').textContent=e.message; }
     }
     $('#login').onclick=login;
     $('#pass').addEventListener('keydown',e=>{if(e.key==='Enter')login();});
+
+    // Forgot password: the admin credential is a fixed env var (not a stored
+    // user row), so there's no per-request reset token to generate — instead
+    // the backend emails a one-click login link to the admin's own address.
+    $('#forgot')?.addEventListener('click', async e => {
+      e.preventDefault();
+      const email = ($('#email').value || '').trim();
+      const msg = $('#gate-msg');
+      if (!email) { msg.className='msg err'; msg.textContent='Enter the admin email above first, then click "Forgot password?".'; return; }
+      msg.className='msg'; msg.textContent='Sending…';
+      try {
+        const r = await fetch('/api/admin',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'forgot_password',email})});
+        const d = await r.json().catch(()=>({}));
+        if (!r.ok) throw new Error(d.error||r.status);
+        msg.className='msg ok';
+        msg.textContent = d.emailed===false ? (d.note || 'Email provider not configured.') : "Check that inbox for a one-click login link.";
+      } catch(e2){ msg.className='msg err'; msg.textContent=e2.message; }
+    });
+
+    function signOut(){
+      token=''; localStorage.removeItem(TOKEN);
+      $('#pass').value='';
+      const w=$('#who'); w.style.display='none'; w.textContent='';
+      const so=$('#signout'); if (so) so.style.display='none';
+      $('#app').style.display='none'; $('#gate').style.display='';
+      $('#gate-msg').className='msg'; $('#gate-msg').textContent='';
+    }
+    $('#signout')?.addEventListener('click', signOut);
 
     document.querySelectorAll('.tabs button').forEach(b=>b.onclick=()=>{
       document.querySelectorAll('.tabs button').forEach(x=>x.classList.remove('on')); b.classList.add('on');
@@ -910,7 +944,23 @@ alter table demo_requests enable row level security;</pre></div>`;
 
     function boot(){ $('#gate').style.display='none'; $('#app').style.display=''; loadSubscribers(); }
     document.getElementById('yr').textContent = new Date().getFullYear();
-    if (token) boot();
+
+    // Magic login link from a "Forgot password?" email: ?admintoken=<token>.
+    // Trust it exactly like a normal login token (it's the same deterministic
+    // value the server issues from a correct password) — verify it against a
+    // real endpoint before treating it as signed-in, then scrub it from the
+    // URL/history so it never lingers in the address bar or browser history.
+    const urlToken = new URLSearchParams(location.search).get('admintoken');
+    if (urlToken) {
+      history.replaceState(null, '', location.pathname);
+      token = urlToken;
+      fetch('/api/admin',{method:'POST',headers:{'Content-Type':'application/json',Authorization:'Bearer '+token},body:JSON.stringify({action:'list_users'})})
+        .then(r => { if (!r.ok) throw new Error(); localStorage.setItem(TOKEN,token); signedIn('Admin'); boot(); })
+        .catch(() => { token=''; localStorage.removeItem(TOKEN); $('#gate-msg').className='msg err'; $('#gate-msg').textContent='That login link is invalid or expired — log in with your password instead.'; });
+    } else if (token) {
+      signedIn('Admin');
+      boot();
+    }
   </script>
 </body>
 </html>

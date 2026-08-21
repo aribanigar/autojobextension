@@ -82,6 +82,33 @@ const verifyAdmin = req => {
 const hashPassword = (pw, salt = randomBytes(16).toString('hex')) =>
   `${salt}:${scryptSync(pw, salt, 64).toString('hex')}`;
 
+// "Forgot password" for the admin console: the admin credential is a fixed
+// Vercel env var, not a stored user row, so there's nothing in a database to
+// generate a per-request reset token against. Instead we email a one-click
+// login link carrying the SAME deterministic admin token that a normal
+// login would issue — it never reveals the actual password, and (unlike a
+// stored reset token) needs no persistence to implement. Reuses the exact
+// Resend pattern already used for user password resets in api/auth.js.
+async function sendAdminLoginLink(link) {
+  if (!process.env.RESEND_API_KEY) return { ok: false, reason: 'no-email-provider' };
+  const from = process.env.RESEND_FROM || 'AutoApplier <onboarding@resend.dev>';
+  const r = await fetch('https://api.resend.com/emails', {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${process.env.RESEND_API_KEY}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      from, to: ADMIN_EMAIL, subject: 'Your AutoApplier admin login link',
+      html: `<div style="font-family:system-ui,sans-serif;max-width:440px;margin:auto">
+        <h2>Admin login link</h2>
+        <p>Forgot your admin password? Click below to open the admin console — no password needed.</p>
+        <p><a href="${link}" style="display:inline-block;background:#7c3aed;color:#fff;padding:12px 22px;border-radius:9px;text-decoration:none;font-weight:600">Open admin console</a></p>
+        <p style="color:#888;font-size:12px">This link only ever gets sent to this address, and it changes automatically if the admin password is ever changed.</p>
+        <p style="color:#888;font-size:12px">Or paste this link: ${link}</p>
+      </div>`,
+    }),
+  });
+  return { ok: r.ok };
+}
+
 export default async function handler(req, res) {
   cors(res);
   if (req.method === 'OPTIONS') return res.status(204).end();
@@ -96,6 +123,22 @@ export default async function handler(req, res) {
       return res.status(401).json({ error: 'Invalid admin credentials' });
     }
     return res.status(200).json({ token: adminToken(), role: 'admin', email: ADMIN_EMAIL });
+  }
+
+  // ── Forgot password (no Supabase required, no auth required) ─────────────
+  // Always responds the same shape whether or not the email matched, so this
+  // can't be used to probe for the admin's address.
+  if (action === 'forgot_password') {
+    const email = String(rawEmail || '').trim().toLowerCase();
+    if (email && email === ADMIN_EMAIL.toLowerCase()) {
+      const base = `https://${req.headers['x-forwarded-host'] || req.headers.host}`;
+      const link = `${base}/admin.html?admintoken=${adminToken()}`;
+      const sent = await sendAdminLoginLink(link);
+      if (!sent.ok && sent.reason === 'no-email-provider') {
+        return res.status(200).json({ ok: true, emailed: false, note: 'Email provider not configured (set RESEND_API_KEY in Vercel) — check the ADMIN_PASSWORD env var directly instead.' });
+      }
+    }
+    return res.status(200).json({ ok: true, note: "If that's the admin email, a login link is on its way." });
   }
 
   // ── All other actions require a valid admin token + Supabase ─────────────
